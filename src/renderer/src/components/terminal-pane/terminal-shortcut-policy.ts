@@ -60,6 +60,8 @@ export type TerminalShortcutAction =
   | { type: 'closeActivePane' }
   | { type: 'splitActivePane'; direction: 'vertical' | 'horizontal' }
   | { type: 'scrollViewport'; position: 'top' | 'bottom' }
+  | { type: 'navigatePrompt'; direction: 'previous' | 'next' }
+  | { type: 'toggleBookmark' }
   | {
       type: 'sendInput'
       data: string
@@ -167,6 +169,18 @@ export function resolveTerminalShortcutAction(
     if (keybindingMatchesAction('terminal.splitDown', event, platform, keybindings)) {
       return { type: 'splitActivePane', direction: 'horizontal' }
     }
+
+    if (keybindingMatchesAction('terminal.toggleBookmark', event, platform, keybindings)) {
+      return { type: 'toggleBookmark' }
+    }
+  }
+
+  // Why: outside the repeat guard so holding the chord steps through prompts.
+  if (keybindingMatchesAction('terminal.previousPrompt', event, platform, keybindings)) {
+    return { type: 'navigatePrompt', direction: 'previous' }
+  }
+  if (keybindingMatchesAction('terminal.nextPrompt', event, platform, keybindings)) {
+    return { type: 'navigatePrompt', direction: 'next' }
   }
 
   if (

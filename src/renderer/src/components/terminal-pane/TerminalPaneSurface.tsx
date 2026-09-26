@@ -272,6 +272,7 @@ export function TerminalPaneSurface({
         onCopyPaneId={contextMenu.onCopyPaneId}
         canCopyAgentSessionId={menuAgentSessionId !== null}
         onCopyAgentSessionId={() => void contextMenu.onCopyAgentSessionId()}
+        getMenuTerminal={contextMenu.getMenuTerminal}
       />
       <LinkActionPopover request={terminalLinkActionRequest} onClose={closeTerminalLinkActions} />
       {quickCommandEditorOpen ? (

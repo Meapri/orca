@@ -15,6 +15,7 @@ import type { PersistedNativeChatSessionOptions } from './native-chat-session-op
 import type { ComputerAwakeMode } from './computer-awake-mode'
 import type { CommitMessageAiSettings } from './commit-message-ai-types'
 import type { HostSettingOverrides } from './host-setting-overrides'
+import type { TerminalExperienceSettings } from './terminal-experience-settings-types'
 import type {
   ClaudeManagedAccount,
   ClaudeManagedAccountRuntimeSelection,
@@ -55,7 +56,7 @@ export type WorktreeVisibilityDefaults = {
   sourcePreferences?: WorktreeVisibilitySourcePreferences
 }
 
-export type GlobalSettings = {
+export type GlobalSettings = TerminalExperienceSettings & {
   workspaceDir: string
   /** Host-owned defaults used when a repository has no explicit visibility override. */
   worktreeVisibilityDefaults?: WorktreeVisibilityDefaults
@@ -108,8 +109,6 @@ export type GlobalSettings = {
   primarySelectionMiddleClickPasteDefaultedForTerminalDefaults?: boolean
   terminalFontSize: number
   terminalFontFamily: string
-  /** Comma-separated font stack tried after `terminalFontFamily` and before Orca's built-in fallbacks. */
-  terminalFontFallbackFamily?: string
   terminalFontWeight: number
   terminalFontWeightBold: number
   terminalLineHeight: number
@@ -141,11 +140,6 @@ export type GlobalSettings = {
   /** One-shot migration guard for moving inherited cursor defaults to block. */
   terminalCursorStyleDefaultedToBlock?: boolean
   terminalCursorBlink: boolean
-  /** Draw the IME preedit as terminal cells instead of xterm's DOM overlay; undefined means on.
-   *  Off restores the overlay path, kept as the instant fallback. */
-  terminalImePreeditInGrid?: boolean
-  /** GPU cursor glide and blink fade (WebGL renderer only). Undefined means on. */
-  terminalCursorAnimation?: boolean
   terminalThemeDark: string
   terminalCustomThemes?: TerminalCustomTheme[]
   terminalDividerColorDark: string
@@ -198,16 +192,10 @@ export type GlobalSettings = {
   /** 'auto' resolves to PowerShell 7+ when present, else falls back to inbox Windows PowerShell. */
   terminalWindowsPowerShellImplementation: 'auto' | 'powershell.exe' | 'pwsh.exe'
   terminalFocusFollowsMouse: boolean
-  /** Animates wheel-notch, Shift+PageUp/PageDown and jump-to-latest scrolling in the scrollback; reduced-motion always wins. */
-  terminalSmoothScroll: boolean
   /** X11/gnome-terminal "copy on select": selecting text auto-copies to the clipboard; default off. */
   terminalClipboardOnSelect: boolean
   /** Drops the left gutter agent CLIs paint their output behind when copying a terminal selection; default on. */
   terminalCopyTrimsGutter: boolean
-  /** Plain click on the input line moves the cursor via arrow keys; 'shell-prompt' needs OSC 133 prompt marks. Optional for older profiles. */
-  terminalClickToMoveCursor?: 'shell-prompt' | 'input-line' | 'off'
-  /** Terminal composer: press Enter after pasting the composed text. Optional for older profiles; default on. */
-  terminalComposerSubmitOnSend?: boolean
   /** Enables OSC 52 clipboard writes for TUIs (tmux/Zellij/nvim, incl. over SSH); default on. Clipboard *queries* stay blocked and payload size is capped, so this is write-only exposure. */
   terminalAllowOsc52Clipboard: boolean
   /** One-shot stamp: profiles saved under the old off default get flipped on once, after which an explicit opt-out sticks. */

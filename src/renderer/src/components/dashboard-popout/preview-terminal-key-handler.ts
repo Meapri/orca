@@ -206,8 +206,10 @@ export function installPreviewTerminalKeyHandler(args: {
       case 'equalizePaneSizes':
       case 'focusPane':
       case 'openComposer':
+      case 'navigatePrompt':
       case 'setTitle':
       case 'splitActivePane':
+      case 'toggleBookmark':
       case 'toggleExpandActivePane':
       case 'toggleSearch':
         return consumeEvent(event)

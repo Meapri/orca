@@ -12,6 +12,7 @@ import {
 import { smoothScrollTerminalTo } from '@/lib/pane-manager/terminal-smooth-scroll'
 import type { resolveTerminalKeyboardShortcutAction } from './terminal-keyboard-shortcut-matching'
 import { requestTerminalComposerOpen } from '../terminal-composer/terminal-composer-open-event'
+import { getTerminalPaneMarks } from './terminal-marks/terminal-pane-marks'
 
 type TerminalShortcutAction = NonNullable<ReturnType<typeof resolveTerminalKeyboardShortcutAction>>
 
@@ -82,7 +83,25 @@ export function dispatchTerminalShortcutAction(
     event.stopImmediatePropagation()
     return
   }
+  if (action.type === 'navigatePrompt') {
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    const pane = manager.getActivePane() ?? manager.getPanes()[0]
+    if (pane) {
+      getTerminalPaneMarks(pane.terminal)?.navigatePrompt(action.direction)
+    }
+    return
+  }
   if (event.repeat) {
+    return
+  }
+  if (action.type === 'toggleBookmark') {
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    const pane = manager.getActivePane() ?? manager.getPanes()[0]
+    if (pane) {
+      getTerminalPaneMarks(pane.terminal)?.toggleBookmark()
+    }
     return
   }
 

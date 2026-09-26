@@ -50,6 +50,29 @@ function findPrefixCarry(data: string): string {
   return ''
 }
 
+export type Osc133Mark =
+  | { kind: 'prompt-start' }
+  | { kind: 'command-start' }
+  | { kind: 'output-start' }
+  | { kind: 'command-finished'; exitCode: number | null }
+
+/** Parse the payload after `133;` (FinalTerm A/B/C/D); unknown sub-commands return null. */
+export function parseOsc133Payload(payload: string): Osc133Mark | null {
+  const [sequence, exitCode] = payload.split(';')
+  switch (sequence) {
+    case 'A':
+      return { kind: 'prompt-start' }
+    case 'B':
+      return { kind: 'command-start' }
+    case 'C':
+      return { kind: 'output-start' }
+    case 'D':
+      return { kind: 'command-finished', exitCode: parseBestEffortExitCode(exitCode) }
+    default:
+      return null
+  }
+}
+
 export type Osc133CommandFinishedScanner = {
   /** Feed one raw PTY chunk; fires once per complete OSC 133;D sequence. */
   scan: (data: string) => void
@@ -65,13 +88,13 @@ export function createOsc133CommandFinishedScanner(
   let carry = ''
 
   const handleOsc133 = (payload: string): void => {
-    const [sequence, exitCode] = payload.split(';')
-    if (sequence === 'C') {
+    const mark = parseOsc133Payload(payload)
+    if (mark?.kind === 'output-start') {
       onCommandStarted?.()
       return
     }
-    if (sequence === 'D') {
-      onCommandFinished(parseBestEffortExitCode(exitCode))
+    if (mark?.kind === 'command-finished') {
+      onCommandFinished(mark.exitCode)
     }
   }
 

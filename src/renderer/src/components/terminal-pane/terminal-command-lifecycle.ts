@@ -25,16 +25,16 @@ export function createTerminalCommandLifecycle(options: TerminalCommandLifecycle
   return {
     handlePtyData: scanner.scan,
     attachXtermConsumer(terminal) {
-      // Why: swallow OSC 133 so shell-integration markers never paint —
-      // rendering hygiene that applies regardless of side-effect authority.
+      // Why: xterm never paints an unhandled OSC; returning false keeps this
+      // (re)registration from shadowing older OSC 133 observers (command marks).
       // The mark still feeds the prompt-input anchor click-to-move relies on.
       const disposable = terminal.parser.registerOscHandler(133, (data) => {
         try {
           observeTerminalShellIntegrationMark(terminal, data)
         } catch {
-          // Why: the anchor is best-effort; a throw here must not unswallow the mark.
+          // Why: the anchor is best-effort; a throw here must not break later observers.
         }
-        return true
+        return false
       })
       disposables.push(disposable)
       return disposable
