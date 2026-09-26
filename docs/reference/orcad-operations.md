@@ -164,8 +164,13 @@ An external supervisor (systemd, launchd, a process manager). orcad conforms to 
 - **Logs.** orcad writes human-readable diagnostics to **stderr** and its readiness contract
   to **stdout**; the supervisor owns capture and rotation. The daemon, being detached, writes
   its own NDJSON lifecycle log to `<data-root>/logs/daemon.log` (suppressed by
-  `ORCA_DIAGNOSTICS_DISABLED=1`). Rotation of that file is not implemented — see
-  [What is not covered](#what-is-not-covered).
+  `ORCA_DIAGNOSTICS_DISABLED=1`). That file rotates by size: at 5 MB it becomes
+  `daemon.log.1`, the previous `.1` becomes `.2`, and the oldest is dropped, so the family
+  never exceeds three files (~15 MB). Rotation reads the file's on-disk size and takes a
+  short `daemon.log.rotate-lock`, so it stays bounded across daemon restarts and while two
+  daemon generations append to the same file. (A daemon forked from a build before this
+  change keeps its own per-process counter; it is still bounded, but only by that counter.) A failed write (for example `ENOSPC`)
+  pauses daemon logging for 60 s instead of for the rest of the daemon's life.
 
 ### orcad supervising the daemon
 
@@ -257,4 +262,3 @@ Named here so nothing reads as implemented that is not:
   conflict.
 - **Reconciling `webClientUrl` with reachability** under the loopback default.
 - **State-schema rollback rules.**
-- **Daemon log rotation.** `<data-root>/logs/daemon.log` grows unbounded.

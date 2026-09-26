@@ -1,8 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  utimesSync,
+  writeFileSync
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createDaemonFileLog, createNoopDaemonFileLog } from './daemon-file-log'
+import {
+  createDaemonFileLog,
+  createNoopDaemonFileLog,
+  DAEMON_LOG_FAILURE_BACKOFF_MS
+} from './daemon-file-log'
+import { ROTATION_LOCK_STALE_MS, rotationLockPath } from './daemon-file-log-rotation'
 
 let dir: string
 
@@ -86,6 +100,86 @@ describe('createDaemonFileLog', () => {
 
     const events = readLines(filePath).map((l) => l.event)
     expect(events).toEqual(['startup', 'daemon-log-closed'])
+  })
+})
+
+describe('createDaemonFileLog across processes', () => {
+  function familyBytes(filePath: string): number {
+    return [filePath, `${filePath}.1`, `${filePath}.2`, `${filePath}.3`]
+      .filter((path) => existsSync(path))
+      .reduce((sum, path) => sum + statSync(path).size, 0)
+  }
+
+  it('bounds the shared file when two daemon generations append to it', () => {
+    const filePath = join(dir, 'daemon.log')
+    // Two writers model the current daemon plus a legacy-protocol daemon on one --log-file.
+    const current = createDaemonFileLog(filePath, { maxBytes: 400, maxRotatedFiles: 2 })
+    const legacy = createDaemonFileLog(filePath, { maxBytes: 400, maxRotatedFiles: 2 })
+    for (let i = 0; i < 200; i++) {
+      current.log('tick', { i })
+      legacy.log('tock', { i })
+    }
+
+    expect(statSync(filePath).size).toBeLessThanOrEqual(400)
+    expect(existsSync(`${filePath}.3`)).toBe(false)
+    // Three files of at most maxBytes each, however many writers share them.
+    expect(familyBytes(filePath)).toBeLessThanOrEqual(3 * 400)
+    expect(existsSync(rotationLockPath(filePath))).toBe(false)
+  })
+
+  it('counts bytes a previous daemon wrote before this one started', () => {
+    const filePath = join(dir, 'daemon.log')
+    writeFileSync(filePath, `${'x'.repeat(390)}\n`)
+    const log = createDaemonFileLog(filePath, { maxBytes: 400, maxRotatedFiles: 2 })
+    log.log('startup')
+
+    expect(readFileSync(`${filePath}.1`, 'utf8')).toContain('xxxx')
+    expect(readLines(filePath).map((line) => line.event)).toEqual(['startup'])
+  })
+
+  it('appends without rotating while another writer holds a fresh rotation lock', () => {
+    const filePath = join(dir, 'daemon.log')
+    writeFileSync(filePath, `${'x'.repeat(390)}\n`)
+    writeFileSync(rotationLockPath(filePath), '')
+    const log = createDaemonFileLog(filePath, { maxBytes: 400, maxRotatedFiles: 2 })
+    log.log('startup')
+
+    expect(existsSync(`${filePath}.1`)).toBe(false)
+    expect(readFileSync(filePath, 'utf8')).toContain('"event":"startup"')
+  })
+
+  it('reclaims a rotation lock left by a writer that died mid-rotation', () => {
+    const filePath = join(dir, 'daemon.log')
+    writeFileSync(filePath, `${'x'.repeat(390)}\n`)
+    const lockPath = rotationLockPath(filePath)
+    writeFileSync(lockPath, '')
+    const staleSeconds = (Date.now() - ROTATION_LOCK_STALE_MS - 1_000) / 1000
+    utimesSync(lockPath, staleSeconds, staleSeconds)
+    const log = createDaemonFileLog(filePath, { maxBytes: 400, maxRotatedFiles: 2 })
+    log.log('startup')
+
+    expect(existsSync(`${filePath}.1`)).toBe(true)
+    expect(existsSync(lockPath)).toBe(false)
+  })
+
+  it('suspends after a write failure and resumes once the backoff passes', () => {
+    const logsDir = join(dir, 'logs')
+    const filePath = join(logsDir, 'daemon.log')
+    let clock = 1_000_000
+    const log = createDaemonFileLog(filePath, { now: () => clock })
+    log.log('before')
+    // A directory where the file should be makes the append fail (EISDIR).
+    rmSync(logsDir, { recursive: true, force: true })
+    mkdirSync(filePath, { recursive: true })
+    log.log('while-broken')
+    rmSync(logsDir, { recursive: true, force: true })
+
+    log.log('during-backoff')
+    expect(existsSync(filePath)).toBe(false)
+
+    clock += DAEMON_LOG_FAILURE_BACKOFF_MS
+    log.log('recovered')
+    expect(readLines(filePath).map((line) => line.event)).toEqual(['recovered'])
   })
 })
 
