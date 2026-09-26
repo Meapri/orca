@@ -21,6 +21,8 @@ export const CLI_MAIN_ENTRY_NAMES = [
   'agent-hooks/managed-agent-hook-controls',
   'codex/managed-home-shell-preflight',
   'claude-accounts/keychain',
+  'orcad/orcad-bind-address',
+  'orcad/orcad-doctor-report',
   ...[
     'access',
     'active-location',
