@@ -13,12 +13,14 @@ import { hasPendingTerminalImeComposition } from './terminal-ime-composition-rou
 
 export type TerminalClickToMoveCursorMode = 'shell-prompt' | 'input-line' | 'off'
 
-export const DEFAULT_TERMINAL_CLICK_TO_MOVE_CURSOR: TerminalClickToMoveCursorMode = 'shell-prompt'
+export const DEFAULT_TERMINAL_CLICK_TO_MOVE_CURSOR: TerminalClickToMoveCursorMode = 'input-line'
 
 export function normalizeTerminalClickToMoveCursorMode(
   value: unknown
 ): TerminalClickToMoveCursorMode {
-  return value === 'input-line' || value === 'off' ? value : DEFAULT_TERMINAL_CLICK_TO_MOVE_CURSOR
+  return value === 'shell-prompt' || value === 'input-line' || value === 'off'
+    ? value
+    : DEFAULT_TERMINAL_CLICK_TO_MOVE_CURSOR
 }
 
 // Why: same budgets xterm uses for alt-click and Orca uses for link gestures.

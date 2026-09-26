@@ -235,8 +235,9 @@ describe('isTerminalClickToMoveEligible', () => {
   })
 
   it('normalizes unknown persisted modes to the default', () => {
-    expect(normalizeTerminalClickToMoveCursorMode(undefined)).toBe('shell-prompt')
-    expect(normalizeTerminalClickToMoveCursorMode('bogus')).toBe('shell-prompt')
+    expect(normalizeTerminalClickToMoveCursorMode(undefined)).toBe('input-line')
+    expect(normalizeTerminalClickToMoveCursorMode('bogus')).toBe('input-line')
     expect(normalizeTerminalClickToMoveCursorMode('off')).toBe('off')
+    expect(normalizeTerminalClickToMoveCursorMode('shell-prompt')).toBe('shell-prompt')
   })
 })
