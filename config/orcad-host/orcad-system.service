@@ -1,0 +1,44 @@
+# Managed by orcad-install.sh (service-install renders @...@ placeholders); edit orcad.env instead.
+#
+# orcad as a *system* service running as a dedicated account. Versions under @ORCAD_BASE@
+# are root-owned, so the service cannot rewrite its own binaries or rollback targets.
+# The terminal daemon escapes this unit's cgroup through `systemd-run --user --scope`, which
+# needs the account's user manager, so enable lingering once:
+#   sudo loginctl enable-linger @ORCAD_USER@
+# Reference: docs/reference/headless-linux-server.md, docs/reference/orcad-operations.md
+[Unit]
+Description=Orca headless runtime (orcad)
+Documentation=https://github.com/stablyai/orca/blob/main/docs/reference/headless-linux-server.md
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+# Optional, only once this orcad build speaks sd_notify (not assumed by this unit):
+#Type=notify
+#NotifyAccess=main
+#WatchdogSec=60
+User=@ORCAD_USER@
+WorkingDirectory=~
+Environment=ORCAD_BASE=@ORCAD_BASE@
+Environment=ORCA_USER_DATA=@ORCA_USER_DATA@
+Environment=ORCAD_BIND=127.0.0.1
+Environment=ORCAD_PORT=6768
+Environment=ORCAD_READINESS_FILE=/run/orcad/readiness.json
+EnvironmentFile=-@ORCAD_ENV_FILE@
+RuntimeDirectory=orcad
+ExecStart=/bin/sh @ORCAD_BASE@/orcad-current/deploy/orcad-install.sh run
+Restart=always
+RestartSec=5
+RestartPreventExitStatus=78
+TimeoutStartSec=180
+TimeoutStopSec=30
+# Preservation comes from the daemon's own scope, not from KillMode; see orcad.service.
+KillMode=mixed
+# No UMask=: the daemon and its PTYs inherit it; orcad makes its data root 0700 itself.
+# No NoNewPrivileges=: it is inherited by the daemon's PTYs and would break sudo in terminals.
+
+[Install]
+WantedBy=multi-user.target

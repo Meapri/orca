@@ -12,7 +12,7 @@
  * the process's whole life; redirecting means the deploy can disconnect and the supervisor
  * still owns a running service.
  */
-import { shellEscape } from './ssh-connection-utils'
+import { shellEscape } from './posix-shell-quote'
 import { joinRemotePath, type RemoteHostPlatform } from './ssh-remote-platform'
 import {
   assertPosixOrcadHost as assertPosixHost,

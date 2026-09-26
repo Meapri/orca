@@ -1,5 +1,309 @@
 # Headless Linux Server
 
+Use this guide to run Orca on a Linux machine without a desktop session, such as an
+Ubuntu VPS or a remote build box, and connect to it from other devices.
+
+There are two ways to do it:
+
+- **orcad (recommended).** The Orca runtime served from a bundled Bun runtime. No
+  Electron, no Xvfb, no GTK or X11 libraries. It is packaged as a versioned install
+  directory with an on-host installer, systemd units and a container image, and the
+  service contract it follows is [Running orcad](./orcad-operations.md).
+- **Electron `orca serve` (legacy).** The desktop AppImage started without a window. It
+  still needs Xvfb and the Electron shared libraries; see
+  [Legacy: Electron AppImage with Xvfb](#legacy-electron-appimage-with-xvfb).
+
+## orcad on a Linux host
+
+### What it needs
+
+- Linux on x86-64 or arm64. `glibc` builds cover Ubuntu 20.04+ and current Debian stable
+  (glibc 2.31 floor, see [Linux glibc compatibility](./linux-glibc-compatibility.md));
+  `musl` builds exist for Alpine-style hosts.
+- `git`, `ca-certificates`, `tar`, `gzip`, and one of `sha256sum`, `shasum` or `openssl`.
+- For terminals that survive a service restart: systemd as PID 1, `systemd-run` on
+  `PATH`, and a running user manager for the service account (`loginctl enable-linger`).
+  Without them orcad still runs, but every service stop ends live terminals — see
+  [Terminal survival](#terminal-survival).
+
+Nothing else: the release carries its own runtime, file watcher and ripgrep.
+
+### Get a release
+
+A release is three files per target plus the installer:
+
+| File                                          | What it is                                                       |
+| --------------------------------------------- | ---------------------------------------------------------------- |
+| `orcad-<version>-<target>.tar.gz`             | one `orcad-<version>/` install directory (the SSH deploy's own)  |
+| `orcad-<version>-<target>.tar.gz.sha256`      | its checksum, `sha256sum -c` format                              |
+| `orcad-<version>-<target>.json`               | version, target and both checksums                               |
+| `orcad-install.sh`, `orcad-install.sh.sha256` | the installer, also shipped inside every tarball under `deploy/` |
+
+`<version>` is content-hashed (`0.1.0+5f23baf0c093`), so two different builds never
+share a name. `<target>` is `linux-x64-glibc`, `linux-arm64-glibc`, `linux-x64-musl` or
+`linux-arm64-musl`. Build them from a checkout with:
+
+```bash
+pnpm install
+pnpm pack:orcad-release --target linux-x64-glibc   # writes out/orcad-release/
+```
+
+The release workflow does not publish these assets yet, so copy them to the host
+yourself (for example with `scp out/orcad-release/* vps:`).
+
+Download, then verify, then run. Never pipe the installer into a shell:
+
+```bash
+sha256sum -c orcad-install.sh.sha256
+sh orcad-install.sh install orcad-<version>-linux-x64-glibc.tar.gz
+```
+
+`install` refuses to proceed without a checksum (`--sha256 <hex>`, `--sha256-file <file>`,
+or the `.sha256` file beside the tarball). It compares the checksum before it lists or
+extracts anything, rejects archives with entries outside `orcad-<version>/`, absolute or
+`..` paths, or symlinks, checks the build target against this host, and publishes the
+version with one atomic rename. Installing an installed version is a no-op.
+
+### Install as a user service
+
+This is the recommended setup: the service runs as your own account, and its user
+manager also hosts the terminal daemon's scope.
+
+```bash
+sudo loginctl enable-linger "$USER"      # once: the user manager outlives SSH logins
+sh orcad-install.sh install orcad-<version>-linux-x64-glibc.tar.gz
+sh orcad-install.sh service-install      # writes and enables ~/.config/systemd/user/orcad.service
+sh orcad-install.sh activate <version>   # starts it and gates on its health
+sh orcad-install.sh status
+```
+
+`upgrade <tarball>` is `install` followed by `activate`. The layout it maintains is the
+same one the desktop's SSH deploy uses:
+
+```text
+~/.orca-remote/orcad-<version>/        immutable install, one per version
+~/.orca-remote/orcad-current           symlink the unit starts through
+~/.orca-remote/orcad-active.json       activation record: active, previous, snapshot
+~/.orca-remote/orcad-state-snapshots/  pre-activation copies of the data root
+~/.orca/                               the data root (ORCA_USER_DATA)
+```
+
+`service-install` renders this unit (paths filled in for your home):
+
+```ini
+# ~/.config/systemd/user/orcad.service
+[Unit]
+Description=Orca headless runtime (orcad)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+#Type=notify
+#NotifyAccess=main
+#WatchdogSec=60
+Environment=ORCAD_BASE=/home/me/.orca-remote
+Environment=ORCA_USER_DATA=/home/me/.orca
+Environment=ORCAD_BIND=127.0.0.1
+Environment=ORCAD_PORT=6768
+Environment=ORCAD_READINESS_FILE=%t/orcad/readiness.json
+EnvironmentFile=-/home/me/.config/orcad/orcad.env
+RuntimeDirectory=orcad
+ExecStart=/bin/sh /home/me/.orca-remote/orcad-current/deploy/orcad-install.sh run
+Restart=always
+RestartSec=5
+RestartPreventExitStatus=78
+TimeoutStartSec=180
+TimeoutStopSec=30
+KillMode=mixed
+
+[Install]
+WantedBy=default.target
+```
+
+Why each setting is what it is:
+
+- **`ExecStart` runs `orcad-install.sh run`**, which resolves `orcad-current` to its real
+  versioned directory and `exec`s the bundled runtime. The unit's main PID is orcad itself,
+  and the daemon records the version directory it was forked from, which pruning keeps.
+- **`RestartPreventExitStatus=78`.** 78 is orcad's configuration-fault exit (bind address,
+  data root, instance lock). Restarting cannot fix it.
+- **`Restart=always` with a 5-in-5-minutes start limit.** A crash or a clean exit comes
+  back; a permanent fault stops instead of spinning. `systemctl --user reset-failed orcad`
+  clears a tripped limit, and the installer does that before every start.
+- **`TimeoutStartSec=180`.** The daemon launch retries on a cold host. It only matters once
+  `Type=notify` is enabled.
+- **`TimeoutStopSec=30`.** orcad's own graceful stop gives up after 15 seconds.
+- **`KillMode=mixed`.** `SIGTERM` goes to orcad alone; whatever is left in the unit's cgroup
+  is killed when it exits. Live terminals are **not** preserved by any `KillMode` — they are
+  preserved because the daemon runs in its own `orca-daemon-*.scope`, outside this unit.
+- **`Type=notify` and `WatchdogSec=` are commented out.** Enable them only with an orcad
+  build that sends `sd_notify` readiness and watchdog pings; this unit does not assume one.
+- **No `UMask=`, no `NoNewPrivileges=`.** The daemon and every PTY inherit them, which would
+  make files created in terminals private and break `sudo` inside them. orcad makes its data
+  root `0700` itself.
+- **Readiness goes to `$XDG_RUNTIME_DIR/orcad/readiness.json`**, not the journal. It holds the
+  one `orca_server_ready` line, recreated on every start; stderr diagnostics stay in the
+  journal (`journalctl --user -u orcad`). The line carries a pairing credential: treat the
+  file as a secret.
+
+Listener settings live in `~/.config/orcad/orcad.env` (`ORCAD_BIND`, `ORCAD_PORT`,
+`ORCAD_PAIRING_ADDRESS`), which `service-install --bind/--port/--pairing-address` rewrites.
+
+### Reach it from other devices
+
+orcad binds `127.0.0.1` by default and accepts only literal IPs for `--bind` (see
+[Bind policy](./orcad-operations.md#bind-policy)). Keep it that way on a public VPS and
+choose one of:
+
+- **SSH local forward (default, nothing exposed).** From the client:
+  `ssh -N -L 6768:127.0.0.1:6768 you@vps`, then pair with the URL from
+  `jq -r .pairing.url "$XDG_RUNTIME_DIR/orcad/readiness.json"` on the host. The pairing
+  credential travels over SSH.
+- **Tailscale (or another private overlay).** Bind the overlay address itself, not a
+  wildcard, and advertise it:
+  `sh orcad-install.sh service-install --bind 100.64.1.20 --pairing-address 100.64.1.20`,
+  then `systemctl --user restart orcad`. Only tailnet peers can reach the port.
+
+Never bind `0.0.0.0` on a host with a public interface. orcad logs a warning on every such
+launch.
+
+### Terminal survival
+
+A service stop reaches every process in the unit's cgroup. Terminals survive it only when
+the daemon launched itself through `systemd-run --user --scope` — which requires systemd as
+PID 1, a reachable user bus and `systemd-run` on `PATH` (see
+[Two long-lived processes, not one](./orcad-operations.md#two-long-lived-processes-not-one)).
+`orcad-install.sh status` reads the daemon's own `/proc/<pid>/cgroup` and prints one of:
+
+| Daemon state   | Meaning                                                          |
+| -------------- | ---------------------------------------------------------------- |
+| `isolated`     | every live daemon is in an `orca-daemon-*.scope`; stops are safe |
+| `unscoped`     | a live daemon shares the unit's cgroup; a stop ends its PTYs     |
+| `no-daemon`    | no recorded daemon is alive on this host                         |
+| `unverifiable` | the cgroup could not be read (not Linux, torn record)            |
+
+`health.terminalDaemon.cgroupUnit` in the readiness line reports the same fact.
+
+### Upgrade and roll back
+
+```bash
+sh orcad-install.sh upgrade orcad-<new>-linux-x64-glibc.tar.gz
+sh orcad-install.sh rollback
+```
+
+`activate` (and so `upgrade`) makes the same decisions as the SSH deploy, from the same
+code:
+
+1. **Stop safety.** If the daemon is `isolated`, stopping the unit is non-destructive.
+   Otherwise the installer takes a fresh terminal census and applies the rule in
+   [Running orcad](./orcad-operations.md#process-scoped-and-cgroup-wide-stops): the
+   listing must be untruncated, carry a complete `hostScope`, and list no terminals. A
+   missing, failed or incomplete census is `unverifiable` and the stop is refused.
+   `--force` never overrides this.
+2. **Update policy.** With the daemon preserved, live terminals still defer the update,
+   because the host would run the new orcad against the old daemon until they exit.
+   `--force` accepts that, and the outgoing version stays pinned while its daemon lives.
+3. **Snapshot.** After the outgoing orcad has stopped, the data root's profile state is
+   archived (the daemon's socket, token and PID record are never included).
+4. **Switch and gate.** `orcad-current` is repointed and the unit started. The version is
+   recorded active only after its readiness line proves the expected build hash, the unit's
+   main PID, a bound endpoint, and a live daemon whose PTY self-test passed.
+5. **Rejection.** A candidate that fails the gate is stopped. If it left profile state
+   unchanged, the previous version is restarted; otherwise the service stays stopped with
+   the snapshot retained, because an older build must not read state a newer one migrated.
+
+`rollback` restores that snapshot and switches back to the recorded previous version. It
+refuses when there is no previous version, the snapshot is gone, or terminals are live
+that the snapshot predates.
+
+The census comes from `ORCAD_CENSUS_COMMAND`, else `orca-ide`/`orca` on `PATH`, run as
+`<command> terminal list --json` with `ORCA_USER_DATA_PATH` pointed at the data root so it
+finds this orcad. A host with no Orca CLI has no census: an `isolated` host can still
+upgrade with `--force`; an `unscoped` one cannot be stopped by the installer at all.
+
+Exit codes: `0` done, `1` error, `2` usage, `20` refused by policy (nothing changed), `30`
+the candidate failed its health gate.
+
+Old versions are pruned after a successful activation. The active, previous, `orcad-current`
+target, any version a live daemon was forked from, and incomplete installs are always kept;
+`prune --dry-run` shows the rest.
+
+### System service with a dedicated account
+
+For a shared host, run orcad as its own account with root-owned, read-only versions:
+
+```bash
+sudo useradd --system --create-home --home-dir /var/lib/orca --shell /bin/bash orca
+sudo loginctl enable-linger orca
+export ORCAD_SERVICE=system ORCAD_SERVICE_USER=orca
+sudo -E sh orcad-install.sh install orcad-<version>-linux-x64-glibc.tar.gz
+sudo -E sh orcad-install.sh service-install
+sudo -E sh orcad-install.sh activate <version>
+```
+
+Versions live in `/opt/orcad`, the data root is `/var/lib/orca/.orca`, the unit is
+`/etc/systemd/system/orcad.service` with `User=orca`, and readiness is
+`/run/orcad/readiness.json`. The daemon still escapes the unit through the `orca` account's
+own user manager, which is why lingering is required. The census runs as `orca` via
+`runuser`.
+
+### Containers
+
+`config/orcad-host/Dockerfile` builds an image from a verified release tarball:
+
+```bash
+docker build -f config/orcad-host/Dockerfile \
+  --build-arg ORCAD_TARBALL=out/orcad-release/orcad-<version>-linux-x64-glibc.tar.gz -t orcad .
+docker run -d --name orcad -p 127.0.0.1:6768:6768 -v orcad-data:/home/orca/.orca orcad
+docker logs orcad | grep orca_server_ready
+```
+
+`tini` is PID 1, so exited PTY children are reaped, and `orcad-install.sh supervise`
+restarts a crashed orcad beside the still-running daemon, which re-adopts every PTY.
+Inside the container orcad binds `0.0.0.0` of the container's own network namespace; the
+`-p 127.0.0.1:...` publish keeps it on the host's loopback.
+
+**Daemon-scope caveat.** A container has no systemd user manager, so the daemon cannot get
+its own scope (`cgroupUnit` is `null`). `docker stop`, `docker restart` and an image update
+end the container's PID namespace and every terminal in it. Apply the census rule before
+any of them.
+
+### Remove it
+
+```bash
+sh orcad-install.sh uninstall              # keeps ~/.orca
+sh orcad-install.sh uninstall --purge-data # also deletes the data root
+```
+
+Uninstall retires the daemon too, so it requires an empty census (or no live daemon)
+regardless of scope isolation. It stops and removes the unit, stops the recorded daemon,
+and deletes only orcad's entries under the install base; relay installs are untouched.
+
+### Alongside the desktop's SSH deploy
+
+The installer and the desktop's SSH deploy share the version directories and
+`orcad-active.json`, so neither prunes the other's active or rollback version. They do not
+share supervision: the SSH deploy stops the orcad recorded in a version directory's
+`.orcad-pid`, which a systemd-managed install never writes, so an SSH deploy against a host
+the installer manages refuses (`orcad_outgoing_stop_incomplete`) instead of fighting the
+unit. Manage one account with one of them.
+
+### Soak and chaos testing
+
+`pnpm soak:orcad` (after `pnpm build:orcad && pnpm build:cli`) boots orcad on a throwaway
+data root, runs heartbeat, throughput, full-screen redraw and echo terminals through a
+paired client behind an in-process TCP fault proxy, and injects `kill -9` of orcad, a
+frozen daemon, `SIGTERM` timing, restart under connected clients, link latency, partition
+and reset, daemon death, and a long run that samples RSS and descriptors. It writes a JSON
+report to `out/orcad-soak/`. The `orcad-soak` workflow runs it on Linux on demand.
+
+## Legacy: Electron AppImage with Xvfb
+
+The rest of this guide covers `orca serve` from the desktop AppImage. Prefer orcad for new
+hosts.
 Use this guide when you want to run `orca serve` on a Linux machine without a
 desktop session, such as an Ubuntu VPS or a remote build box.
 
@@ -19,7 +323,7 @@ current Debian stable — anything with glibc 2.31 or newer (see
 [Linux glibc compatibility](./linux-glibc-compatibility.md)). Package names can
 differ on other Debian-derived releases.
 
-## Ubuntu and Debian prerequisites
+### Ubuntu and Debian prerequisites
 
 Install the CLI tools, Xvfb, and the shared libraries Electron links against.
 A minimal server or container image ships none of the Electron libraries, and
@@ -101,7 +405,7 @@ find it later:
 command -v Xvfb
 ```
 
-## Run In The Foreground
+### Run In The Foreground
 
 Start with a foreground run before creating a service:
 
@@ -178,7 +482,7 @@ because its contract requires a pairing URL. Stop a foreground server with
 `device_registry_unavailable`, `e2ee_key_unavailable`, and
 `invalid_advertised_endpoint`.
 
-## Systemd Service
+### Systemd Service
 
 Create a dedicated service user and install directory. Run the service as this
 user instead of root so the AppImage can keep Chromium's sandbox enabled. Keep
@@ -302,7 +606,7 @@ A bounded health check should require that contract within its startup timeout;
 otherwise inspect earlier diagnostics for the precise pairing reason, listener
 error, or missing library.
 
-## Managed Xvfb Service
+### Managed Xvfb Service
 
 If you prefer to own the virtual display lifecycle in systemd, run Xvfb as a
 separate service and set `DISPLAY=:99` for Orca.
@@ -366,7 +670,7 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now orca-xvfb.service orca-serve.service
 ```
 
-## CLI Install Note
+### CLI Install Note
 
 The registered Linux CLI command is `orca-ide`, not `orca`, to avoid shadowing
 the GNOME Orca screen reader. Desktop-managed terminals receive a
@@ -408,7 +712,7 @@ a file Orca does not own already holds that name (ownership is a marker on the
 second line of the file). A host that really does run the screen reader keeps
 its own `orca`.
 
-## Pairing troubleshooting
+### Pairing troubleshooting
 
 - A pairing offer is a capability containing a device credential and E2EE
   material. Share it only with the intended client and do not put it in proxy
@@ -440,7 +744,7 @@ If you later install the desktop CLI from Orca settings, use that CLI for normal
 shell workflows. Keep the AppImage path in systemd so service restarts do not
 depend on an interactive shell profile.
 
-## Upgrade
+### Upgrade
 
 `orca serve` never updates itself. In headless mode Orca wires up no auto-updater
 at all — the built-in updater only runs in the desktop GUI, and no paired mobile
@@ -486,7 +790,7 @@ and the stop; Orca does not yet provide an atomic census-and-stop fence.
 
 Rolling back is the case that needs care — see [Roll back](#roll-back).
 
-### Record the version you deploy
+#### Record the version you deploy
 
 The bundled CLI launcher prints the Orca build with `orca-ide --version`. For an
 extracted deployment, that launcher is
@@ -496,7 +800,7 @@ Electron owns the direct binary's version flags and may report its own runtime
 version. For an AppImage service, choose a release tag explicitly and record it
 next to the binary. The steps below keep that record in `/opt/orca/VERSION`.
 
-### Upgrade steps
+#### Upgrade steps
 
 Never download straight onto `/opt/orca/orca-linux.AppImage`. The AppImage is
 FUSE-mounted, so overwriting it in place while the service runs can crash or
@@ -667,7 +971,7 @@ when present without rewinding unrelated tools under `/home/orca/.config`. The
 profile archive are complete. If you run the managed Xvfb unit, only
 `orca-serve.service` needs restarting — leave `orca-xvfb.service` running.
 
-### Verify
+#### Verify
 
 ```bash
 sudo journalctl -u orca-serve.service -f
@@ -694,7 +998,7 @@ sudo rm -rf -- "$ORCA_ROLLBACK"
 Each `.ready` directory is a self-contained rollback generation; never combine
 files from different bundles.
 
-### Roll back
+#### Roll back
 
 A rollback is **not** binary-only safe. Once a newer build has started, it can
 rewrite `orca-data.json` in the current schema. If an older build then writes
@@ -907,6 +1211,45 @@ deliberately. The post-upgrade binary and version record are retained in
 artifacts and remove them according to your retention policy after the rollback
 is resolved.
 
+### Troubleshooting
+
+- `dlopen(): error loading libfuse.so.2`: install `libfuse2`.
+- `Missing X server or $DISPLAY`: install `xvfb`, or start the managed Xvfb
+  service and set `DISPLAY=:99`.
+- `[serve] Xvfb failed to start` or `[serve] Could not start Xvfb`: confirm
+  `command -v Xvfb` and that it is on the service `PATH`.
+- GPU or DRI warnings on a VPS: keep `LIBGL_ALWAYS_SOFTWARE=1` in the service
+  environment.
+- Chromium sandbox errors: confirm the service is running as the non-root
+  `orca` user and that `/opt/orca` is readable by that user, including
+  `/opt/orca/squashfs-root` if you extracted the AppImage.
+- Clients cannot connect: make sure `--pairing-address` is an address reachable
+  from the client, and make sure firewalls allow the selected `--port`.
+- Journal shows `Another Orca instance is already running for this userData
+profile` and the unit exits `3`: another process already owns the profile, so
+  `RestartPreventExitStatus=3` leaves the unit `failed` on purpose. Find the
+  owner with `systemctl status orca-serve` and `pgrep -af orca`. Stop it (or
+  keep it and leave the unit down), then run
+  `sudo systemctl reset-failed orca-serve && sudo systemctl start orca-serve` —
+  `reset-failed` clears the failed state and any start-limit counter. If no owner
+  exists, the lock is stale (Chromium recorded a pid that
+  has since been reused): remove `SingletonLock` and `SingletonSocket` from the
+  userData directory and start again. If an earlier crash-loop already leaked
+  AppImage mounts, list them with `findmnt -rn -t fuse.orca-linux.AppImage` and
+  release only the ones with no live owner using `fusermount -uz <target>` (or
+  `umount -l <target>`), leaving the running instance's mount alone.
+- Service crash-loops right after an upgrade: use [Roll back](#roll-back) with
+  the pre-upgrade `.ready` bundle. Do not rerun the upgrade first; doing so would
+  make the crashing version the next rollback binary. The loop trips
+  `StartLimitBurst`, so any manual `systemctl start` outside that script needs
+  `sudo systemctl reset-failed orca-serve.service` first.
+- Diagnosing other missing libraries: extract the AppImage without launching it
+  with `./orca-linux.AppImage --appimage-extract`, then run
+  `ldd squashfs-root/orca-ide` to list any shared libraries the host is missing.
+  The Electron binary is `orca-ide`, not `orca`; `ldd` on a path that does not
+  exist prints nothing and exits cleanly, which reads as a clean result in
+  exactly the situation where you are hunting a missing library.
+
 ## Installing Agent Skills Without A Desktop
 
 Orca's agent skills (CLI usage, orchestration, computer use, etc.) are normally
@@ -969,42 +1312,3 @@ wrote anything; read its output to confirm what changed.
 Both commands install onto the machine that runs them. In an Orca SSH workspace
 or the WSL bridge the `orca` shim forwards commands to the Orca host, so they
 refuse to run there and print the command to run on the machine you want.
-
-## Troubleshooting
-
-- `dlopen(): error loading libfuse.so.2`: install `libfuse2`.
-- `Missing X server or $DISPLAY`: install `xvfb`, or start the managed Xvfb
-  service and set `DISPLAY=:99`.
-- `[serve] Xvfb failed to start` or `[serve] Could not start Xvfb`: confirm
-  `command -v Xvfb` and that it is on the service `PATH`.
-- GPU or DRI warnings on a VPS: keep `LIBGL_ALWAYS_SOFTWARE=1` in the service
-  environment.
-- Chromium sandbox errors: confirm the service is running as the non-root
-  `orca` user and that `/opt/orca` is readable by that user, including
-  `/opt/orca/squashfs-root` if you extracted the AppImage.
-- Clients cannot connect: make sure `--pairing-address` is an address reachable
-  from the client, and make sure firewalls allow the selected `--port`.
-- Journal shows `Another Orca instance is already running for this userData
-profile` and the unit exits `3`: another process already owns the profile, so
-  `RestartPreventExitStatus=3` leaves the unit `failed` on purpose. Find the
-  owner with `systemctl status orca-serve` and `pgrep -af orca`. Stop it (or
-  keep it and leave the unit down), then run
-  `sudo systemctl reset-failed orca-serve && sudo systemctl start orca-serve` —
-  `reset-failed` clears the failed state and any start-limit counter. If no owner
-  exists, the lock is stale (Chromium recorded a pid that
-  has since been reused): remove `SingletonLock` and `SingletonSocket` from the
-  userData directory and start again. If an earlier crash-loop already leaked
-  AppImage mounts, list them with `findmnt -rn -t fuse.orca-linux.AppImage` and
-  release only the ones with no live owner using `fusermount -uz <target>` (or
-  `umount -l <target>`), leaving the running instance's mount alone.
-- Service crash-loops right after an upgrade: use [Roll back](#roll-back) with
-  the pre-upgrade `.ready` bundle. Do not rerun the upgrade first; doing so would
-  make the crashing version the next rollback binary. The loop trips
-  `StartLimitBurst`, so any manual `systemctl start` outside that script needs
-  `sudo systemctl reset-failed orca-serve.service` first.
-- Diagnosing other missing libraries: extract the AppImage without launching it
-  with `./orca-linux.AppImage --appimage-extract`, then run
-  `ldd squashfs-root/orca-ide` to list any shared libraries the host is missing.
-  The Electron binary is `orca-ide`, not `orca`; `ldd` on a path that does not
-  exist prints nothing and exits cleanly, which reads as a clean result in
-  exactly the situation where you are hunting a missing library.

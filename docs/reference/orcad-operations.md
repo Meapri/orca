@@ -197,6 +197,24 @@ above, stop orcad, then stop the daemon named by `health.terminalDaemon.pid`.
 Only report it `exited` after verification on the execution host; loss of contact is
 `unverifiable`.
 
+### Self-managed hosts
+
+`config/orcad-host/orcad-install.sh` applies this contract on a host that runs orcad under
+its own systemd unit instead of the SSH deploy (setup in
+[Headless Linux Server](./headless-linux-server.md#orcad-on-a-linux-host)). It installs the
+same versioned directories and activation record, and delegates every decision to the SSH
+deploy's own policy code, bundled as `orcad-host-install.js`:
+
+- a unit stop proceeds only when every live daemon's `/proc/<pid>/cgroup` names an
+  `orca-daemon-*.scope`, or the census above is safe and empty; `--force` never waives it;
+- activation is gated on the readiness health payload, including the unit's main PID;
+- rollback restores the pre-activation snapshot and follows `assessOrcadRollback`;
+- uninstall retires the daemon, so it always requires an empty census.
+
+The unit templates it installs set `RestartPreventExitStatus=78`, `TimeoutStopSec` above the
+15s shutdown deadline, and `KillMode=mixed` — which preserves nothing by itself; the daemon's
+scope does.
+
 ## Health
 
 The readiness payload carries a `health` object:
@@ -258,3 +276,8 @@ Named here so nothing reads as implemented that is not:
 - **Reconciling `webClientUrl` with reachability** under the loopback default.
 - **State-schema rollback rules.**
 - **Daemon log rotation.** `<data-root>/logs/daemon.log` grows unbounded.
+- **A census without the Orca CLI.** The self-managed installer reads live terminals through
+  `terminal list --json` from an Orca CLI. A host with no CLI can prove a stop safe only
+  through daemon scope isolation; an unscoped daemon there cannot be stopped by the installer.
+- **Published standalone release assets.** `pnpm pack:orcad-release` builds the tarball and
+  installer, but the release workflow does not publish them.
