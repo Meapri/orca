@@ -18005,6 +18005,10 @@
             "spaces": "공백"
           }
         }
+      },
+      "TerminalRendering": {
+        "imePreeditInGrid": "IME 조합 중인 글자를 터미널 셀에 그리기",
+        "imePreeditInGridDescription": "입력기(한국어, 일본어, 중국어)로 조합 중인 글자를 커서 위치의 터미널 셀로 렌더링합니다. 끄면 떠 있는 오버레이를 사용합니다."
       }
     }
   },

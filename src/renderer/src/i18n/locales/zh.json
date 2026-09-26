@@ -18005,6 +18005,10 @@
             "spaces": "空间"
           }
         }
+      },
+      "TerminalRendering": {
+        "imePreeditInGrid": "在终端单元格中绘制输入法组字",
+        "imePreeditInGridDescription": "将使用输入法（韩语、日语、中文）正在组字的文本渲染为光标处的终端单元格。关闭后改用浮动叠加层。"
       }
     }
   },
