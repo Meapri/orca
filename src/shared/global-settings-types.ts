@@ -139,6 +139,8 @@ export type GlobalSettings = {
   /** One-shot migration guard for moving inherited cursor defaults to block. */
   terminalCursorStyleDefaultedToBlock?: boolean
   terminalCursorBlink: boolean
+  /** GPU cursor glide and blink fade (WebGL renderer only). Undefined means on. */
+  terminalCursorAnimation?: boolean
   terminalThemeDark: string
   terminalCustomThemes?: TerminalCustomTheme[]
   terminalDividerColorDark: string

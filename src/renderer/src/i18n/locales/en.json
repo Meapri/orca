@@ -8746,7 +8746,9 @@
           "e90afcc44f": "off",
           "16c471ee03": "on",
           "typographyAdvanced": "Typography",
-          "dimUnfocusedPanes": "Dim unfocused panes."
+          "dimUnfocusedPanes": "Dim unfocused panes.",
+          "0739c1f2b6": "Cursor Animation",
+          "ebde1c981e": "Glides the cursor as you type and fades its blink. Requires GPU rendering."
         },
         "TerminalAdvancedTypographyControls": {
           "f5fa1a08f1": "Bold Font Weight",
@@ -10793,7 +10795,12 @@
               "statusline": "statusline",
               "dim": "dim",
               "colors": "colors"
-            }
+            },
+            "9226c75396": "Cursor Animation",
+            "3ac3ea1cac": "Glides the cursor as you type and fades its blink. Requires GPU rendering.",
+            "e2b79d0578": "animation",
+            "da61b65178": "smooth",
+            "45087d1a4d": "glide"
           },
           "windows": {
             "search": {
