@@ -642,4 +642,67 @@ describe('terminal mouse wheel multiplier', () => {
     await Promise.resolve()
     expect(dispatched).toHaveLength(6)
   })
+
+  it('drops replayed reports whose pointer coordinates are not finite', async () => {
+    vi.stubGlobal('WheelEvent', TestWheelEvent)
+    const handlers: ((event: WheelEvent) => boolean)[] = []
+    const target = Object.assign(new EventTarget(), {
+      classList: {
+        contains: (className: string) => className === 'enable-mouse-events'
+      }
+    }) as unknown as EventTarget & HTMLElement
+    const dispatched: WheelEvent[] = []
+    target.addEventListener('wheel', (event) => dispatched.push(event as WheelEvent))
+    attachTerminalMouseWheelMultiplier({
+      attachCustomWheelEventHandler: (handler) => {
+        handlers.push(handler)
+      },
+      element: target,
+      modes: { mouseTrackingMode: 'any' },
+      rows: 24
+    })
+    const tick = (clientX: number): WheelEvent =>
+      new TestWheelEvent('wheel', { clientX, deltaMode: DOM_DELTA_LINE, deltaY: 1 }) as WheelEvent
+
+    expect(handlers[0]?.(tick(Number.NaN))).toBe(false)
+    await Promise.resolve()
+    expect(dispatched).toHaveLength(0)
+
+    expect(handlers[0]?.(tick(10))).toBe(false)
+    await Promise.resolve()
+    expect(dispatched).toHaveLength(1)
+  })
+
+  it('drops replayed reports once the terminal element is detached', async () => {
+    vi.stubGlobal('WheelEvent', TestWheelEvent)
+    class TestNode extends EventTarget {
+      isConnected = true
+      classList = { contains: (className: string) => className === 'enable-mouse-events' }
+    }
+    vi.stubGlobal('Node', TestNode)
+    const handlers: ((event: WheelEvent) => boolean)[] = []
+    const target = new TestNode()
+    const dispatched: WheelEvent[] = []
+    target.addEventListener('wheel', (event) => dispatched.push(event as WheelEvent))
+    attachTerminalMouseWheelMultiplier({
+      attachCustomWheelEventHandler: (handler) => {
+        handlers.push(handler)
+      },
+      element: target as unknown as HTMLElement,
+      modes: { mouseTrackingMode: 'any' },
+      rows: 24
+    })
+    const tick = (): WheelEvent =>
+      new TestWheelEvent('wheel', { deltaMode: DOM_DELTA_LINE, deltaY: 1 }) as WheelEvent
+
+    expect(handlers[0]?.(tick())).toBe(false)
+    target.isConnected = false
+    await Promise.resolve()
+    expect(dispatched).toHaveLength(0)
+
+    target.isConnected = true
+    expect(handlers[0]?.(tick())).toBe(false)
+    await Promise.resolve()
+    expect(dispatched).toHaveLength(1)
+  })
 })
