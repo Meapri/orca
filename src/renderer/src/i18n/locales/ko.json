@@ -17966,7 +17966,11 @@
       "TerminalContextMenu": {
         "copySessionId": "세션 ID 복사",
         "copySessionIdSuccess": "세션 ID를 복사했습니다",
-        "copySessionIdError": "세션 ID를 복사하지 못했습니다"
+        "copySessionIdError": "세션 ID를 복사하지 못했습니다",
+        "copyRaw": "원본 복사"
+      },
+      "copyFeedback": {
+        "copied": "클립보드에 복사했습니다"
       }
     },
     "jiraUserPicker": {
@@ -17992,7 +17996,7 @@
     "settings": {
       "TerminalInteraction": {
         "copyTrimsGutter": "복사 시 여백 자르기",
-        "copyTrimsGutterDescription": "왼쪽 배수구 에이전트 출력이 뒤에 그려지므로 복사된 텍스트가 들여쓰기되지 않습니다. 선택한 모든 줄 공유의 들여쓰기만 제거됩니다."
+        "copyTrimsGutterDescription": "에이전트·TUI 출력의 왼쪽 여백, 상자 테두리, 줄 번호, 끝 공백을 빼고 상자 안에서 줄바꿈된 줄을 다시 잇습니다. 선택한 모든 줄이 공유하는 들여쓰기만 제거되며, 화면 그대로 복사하려면 우클릭 › 원본 복사를 사용하세요."
       },
       "terminal": {
         "clipboard": {

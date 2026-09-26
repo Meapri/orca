@@ -44,6 +44,7 @@ type TerminalContextMenuProps = {
   canExpandPane: boolean
   menuPaneIsExpanded: boolean
   onCopy: () => void
+  onCopyRaw: () => void
   onSelectAll: () => void
   onPaste: () => void
   onSplitRight: () => void
@@ -135,6 +136,7 @@ function TerminalContextMenuItems({
   canExpandPane,
   menuPaneIsExpanded,
   onCopy,
+  onCopyRaw,
   onSelectAll,
   onPaste,
   onSplitRight,
@@ -192,6 +194,10 @@ function TerminalContextMenuItems({
         <Copy />
         {translate('auto.components.terminal.pane.TerminalContextMenu.f3eeb1de13', 'Copy')}
         <DropdownMenuShortcut>{shortcuts.copy}</DropdownMenuShortcut>
+      </DropdownMenuItem>
+      <DropdownMenuItem onSelect={onCopyRaw}>
+        <Copy />
+        {translate('components.terminalPane.TerminalContextMenu.copyRaw', 'Copy Raw')}
       </DropdownMenuItem>
       <DropdownMenuItem onSelect={onSelectAll}>
         <TextSelect />

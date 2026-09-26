@@ -58,6 +58,7 @@ type TerminalMenuState = {
   onContextMenuCapture: (event: React.MouseEvent<HTMLDivElement>) => void
   onPaneTitleContextMenu: (event: React.MouseEvent<HTMLElement>, paneId: number) => void
   onCopy: () => Promise<void>
+  onCopyRaw: () => Promise<void>
   onSelectAll: () => void
   onCopyTerminalId: () => Promise<void>
   onCopyPaneId: () => Promise<void>
@@ -160,6 +161,8 @@ export function useTerminalPaneContextMenu({
   }
 
   const onCopy = async (): Promise<void> => copyTerminalPaneMenuSelection(resolveMenuPane())
+  const onCopyRaw = async (): Promise<void> =>
+    copyTerminalPaneMenuSelection(resolveMenuPane(), 'raw')
 
   const onSelectAll = (): void => {
     const pane = resolveMenuPane()
@@ -285,6 +288,7 @@ export function useTerminalPaneContextMenu({
     onContextMenuCapture,
     onPaneTitleContextMenu,
     onCopy,
+    onCopyRaw,
     onSelectAll,
     onCopyTerminalId,
     onCopyPaneId,

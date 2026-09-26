@@ -17966,7 +17966,11 @@
       "TerminalContextMenu": {
         "copySessionId": "セッション ID をコピー",
         "copySessionIdSuccess": "セッション ID をコピーしました",
-        "copySessionIdError": "セッション ID のコピーに失敗しました"
+        "copySessionIdError": "セッション ID のコピーに失敗しました",
+        "copyRaw": "そのままコピー"
+      },
+      "copyFeedback": {
+        "copied": "クリップボードにコピーしました"
       }
     },
     "jiraUserPicker": {

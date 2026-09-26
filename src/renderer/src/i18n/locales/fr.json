@@ -18085,7 +18085,11 @@
       "TerminalContextMenu": {
         "copySessionId": "Copier l'ID de session",
         "copySessionIdSuccess": "ID de session copié",
-        "copySessionIdError": "Impossible de copier l'ID de session"
+        "copySessionIdError": "Impossible de copier l'ID de session",
+        "copyRaw": "Copier le texte brut"
+      },
+      "copyFeedback": {
+        "copied": "Copié dans le presse-papiers"
       }
     },
     "settings": {

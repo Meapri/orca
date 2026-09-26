@@ -18102,13 +18102,17 @@
       "TerminalContextMenu": {
         "copySessionId": "Copy Session ID",
         "copySessionIdSuccess": "Session ID copied",
-        "copySessionIdError": "Unable to copy session ID"
+        "copySessionIdError": "Unable to copy session ID",
+        "copyRaw": "Copy Raw"
+      },
+      "copyFeedback": {
+        "copied": "Copied to clipboard"
       }
     },
     "settings": {
       "TerminalInteraction": {
         "copyTrimsGutter": "Trim Gutter on Copy",
-        "copyTrimsGutterDescription": "Drop the left gutter agent output is painted behind, so copied text is not indented. Only the indent every selected line shares is removed."
+        "copyTrimsGutterDescription": "Drop the gutter, box borders, line numbers and trailing padding agent and TUI output is painted with, and rejoin lines a boxed TUI wrapped. Only the indent every selected line shares is removed; right-click › Copy Raw keeps the screen cells as-is."
       },
       "terminal": {
         "clipboard": {
