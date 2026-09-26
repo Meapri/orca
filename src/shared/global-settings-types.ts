@@ -195,6 +195,10 @@ export type GlobalSettings = {
   terminalClipboardOnSelect: boolean
   /** Drops the left gutter agent CLIs paint their output behind when copying a terminal selection; default on. */
   terminalCopyTrimsGutter: boolean
+  /** Plain click on the input line moves the cursor via arrow keys; 'shell-prompt' needs OSC 133 prompt marks. Optional for older profiles. */
+  terminalClickToMoveCursor?: 'shell-prompt' | 'input-line' | 'off'
+  /** Terminal composer: press Enter after pasting the composed text. Optional for older profiles; default on. */
+  terminalComposerSubmitOnSend?: boolean
   /** Enables OSC 52 clipboard writes for TUIs (tmux/Zellij/nvim, incl. over SSH); default on. Clipboard *queries* stay blocked and payload size is capped, so this is write-only exposure. */
   terminalAllowOsc52Clipboard: boolean
   /** One-shot stamp: profiles saved under the old off default get flipped on once, after which an explicit opt-out sticks. */

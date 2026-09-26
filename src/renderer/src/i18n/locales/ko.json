@@ -17992,7 +17992,17 @@
     "settings": {
       "TerminalInteraction": {
         "copyTrimsGutter": "복사 시 여백 자르기",
-        "copyTrimsGutterDescription": "왼쪽 배수구 에이전트 출력이 뒤에 그려지므로 복사된 텍스트가 들여쓰기되지 않습니다. 선택한 모든 줄 공유의 들여쓰기만 제거됩니다."
+        "copyTrimsGutterDescription": "왼쪽 배수구 에이전트 출력이 뒤에 그려지므로 복사된 텍스트가 들여쓰기되지 않습니다. 선택한 모든 줄 공유의 들여쓰기만 제거됩니다.",
+        "clickToMoveCursor": "클릭으로 커서 이동",
+        "clickToMoveCursorDescription": "입력 중인 줄을 클릭하면 커서가 그 위치로 이동합니다. \"프롬프트에서\"는 셸 통합이 필요하고, \"모든 입력 줄\"은 에이전트 CLI와 REPL에서도 동작합니다.",
+        "clickToMoveOff": "끄기",
+        "clickToMoveShellPrompt": "프롬프트에서",
+        "clickToMoveInputLine": "모든 입력 줄",
+        "search": {
+          "click": "클릭",
+          "cursor": "커서",
+          "caret": "캐럿"
+        }
       },
       "terminal": {
         "clipboard": {
@@ -18006,6 +18016,13 @@
           }
         }
       }
+    },
+    "terminalComposer": {
+      "send": "보내기",
+      "label": "터미널 작성기",
+      "placeholder": "터미널에 보낼 입력을 작성하세요. Enter는 줄을 추가합니다.",
+      "submitOnSend": "보낸 뒤 Enter 누르기",
+      "cancel": "취소"
     }
   },
   "dashboardPopout": {

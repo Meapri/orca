@@ -15105,6 +15105,27 @@
         "copySessionIdSuccess": "ID de sesión copiado",
         "copySessionIdError": "No se pudo copiar el ID de sesión"
       }
+    },
+    "settings": {
+      "TerminalInteraction": {
+        "clickToMoveCursor": "Clic para mover el cursor",
+        "clickToMoveCursorDescription": "Haz clic en la línea que estás escribiendo para mover el cursor allí. \"En prompts\" requiere integración con el shell; \"Cualquier línea de entrada\" también funciona en CLI de agentes y REPL.",
+        "clickToMoveOff": "Desactivado",
+        "clickToMoveShellPrompt": "En prompts",
+        "clickToMoveInputLine": "Cualquier línea de entrada",
+        "search": {
+          "click": "clic",
+          "cursor": "cursor",
+          "caret": "cursor de texto"
+        }
+      }
+    },
+    "terminalComposer": {
+      "send": "Enviar",
+      "label": "Compositor de terminal",
+      "placeholder": "Escribe la entrada para la terminal. Enter añade una línea.",
+      "submitOnSend": "Pulsar Enter después de enviar",
+      "cancel": "Cancelar"
     }
   },
   "dashboardPopout": {
