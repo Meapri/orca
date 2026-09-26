@@ -2,6 +2,17 @@ export const TERMINAL_UNAVAILABLE_ERROR_CODE = 'terminal_unavailable' as const
 
 export const TERMINAL_PTY_DEGRADATION_CAPABILITY = 'terminal.pty.v1' as const
 
+/** Operator-configured terminal cgroup limits that are not in force; terminals still work. */
+export const TERMINAL_RESOURCE_LIMITS_UNAVAILABLE_CODE =
+  'terminal_resource_limits_unavailable' as const
+export const TERMINAL_RESOURCE_LIMITS_DEGRADATION_CAPABILITY =
+  'terminal.resource-limits.v1' as const
+
+export type RuntimeTerminalResourceLimitsReason =
+  | 'systemd_scope_unavailable'
+  | 'scope_properties_rejected'
+  | 'set_property_failed'
+
 export type RuntimeBrowserUnavailableReason =
   | 'unconfigured'
   | 'driver_missing'
@@ -35,10 +46,19 @@ export type RuntimeDegradation = {
    * Open vocabulary. New codes ship without a protocol bump, so clients must render
    * `message` and must not switch exhaustively on this or the `reason` field.
    */
-  code: 'browser_unavailable' | typeof TERMINAL_UNAVAILABLE_ERROR_CODE
-  capability: 'browser.headless.v1' | typeof TERMINAL_PTY_DEGRADATION_CAPABILITY
+  code:
+    | 'browser_unavailable'
+    | typeof TERMINAL_UNAVAILABLE_ERROR_CODE
+    | typeof TERMINAL_RESOURCE_LIMITS_UNAVAILABLE_CODE
+  capability:
+    | 'browser.headless.v1'
+    | typeof TERMINAL_PTY_DEGRADATION_CAPABILITY
+    | typeof TERMINAL_RESOURCE_LIMITS_DEGRADATION_CAPABILITY
   message: string
-  reason?: RuntimeBrowserUnavailableReason | RuntimeTerminalUnavailableReason
+  reason?:
+    | RuntimeBrowserUnavailableReason
+    | RuntimeTerminalUnavailableReason
+    | RuntimeTerminalResourceLimitsReason
   /** Underlying error text when the host has one. Diagnostic only; never load-bearing. */
   detail?: string
 }

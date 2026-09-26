@@ -17,6 +17,7 @@ import {
   initDaemonPtyProvider,
   readDaemonPidRecord
 } from '../daemon/daemon-init'
+import { applyTerminalResourceLimitsToLiveDaemon } from './orcad-terminal-resource-limits'
 import {
   cancelExitedTerminalHistoryRetention,
   scheduleExitedTerminalHistoryRetention
@@ -50,6 +51,9 @@ export async function startOrcadDaemon(): Promise<OrcadDaemonStartup> {
   }
   // Why only with a daemon: its adapters are the writers the sweep must never race.
   scheduleExitedTerminalHistoryRetention()
+  await applyTerminalResourceLimitsToLiveDaemon({
+    readCgroupUnit: () => readDaemonPidRecord()?.cgroupUnit ?? null
+  })
   if (!daemonOwnsFreshPersistentPtys()) {
     const reason = 'daemon adopted in degraded mode; fresh terminals run on the local provider'
     console.warn(
