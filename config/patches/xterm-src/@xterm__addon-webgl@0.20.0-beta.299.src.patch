@@ -1,3 +1,268 @@
+diff --git a/src/CursorMotionAnimator.ts b/src/CursorMotionAnimator.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..ec4e32efbe809753f2a9974a1ec1f282351351f0
+--- /dev/null
++++ b/src/CursorMotionAnimator.ts
+@@ -0,0 +1,259 @@
++/**
++ * Copyright (c) 2026 The xterm.js authors. All rights reserved.
++ * @license MIT
++ */
++
++// Orca: GPU cursor glide and blink fade for the WebGL renderer. Import-free and limited to erasable
++// TypeScript so Orca can unit test it straight from the installed package.
++
++/** Glide length; short enough that typing never feels laggy. */
++export const CURSOR_MOTION_DURATION_MS = 100;
++/** Blink fade length; must stay well under the 600ms blink interval. */
++export const CURSOR_BLINK_FADE_DURATION_MS = 150;
++/** Only moves this soon after local input glide, so output-driven moves snap. Covers SSH echo. */
++export const CURSOR_MOTION_INPUT_WINDOW_MS = 500;
++/** Glides allowed per input; further moves inside the window are TUI redraw churn. */
++export const CURSOR_MOTION_MOVES_PER_INPUT = 2;
++/** Larger row jumps are redraws or output, never typing. */
++export const CURSOR_MOTION_MAX_ROW_DELTA = 1;
++
++export interface ICursorMotionLines {
++  get(index: number): object | undefined;
++}
++
++export interface ICursorMotionSample {
++  x: number;
++  /** Absolute buffer row, so a glide stays anchored to content while output scrolls it. */
++  row: number;
++  width: number;
++  /** Cursor style; only compared, a change always snaps. */
++  style: string;
++  /** The active buffer's lines; a different list is an alt-screen switch. */
++  lines: ICursorMotionLines;
++}
++
++export interface ICursorMotionFrame {
++  /** False means draw exactly as upstream: settled cell, in-model block inversion, hard blink. */
++  isAnimating: boolean;
++  x: number;
++  row: number;
++  width: number;
++  opacity: number;
++}
++
++export class CursorMotionAnimator {
++  private _enabled = false;
++  private _reducedMotion = false;
++  private _lastInputTime = Number.NEGATIVE_INFINITY;
++  private _movesSinceInput = 0;
++
++  private _hasTarget = false;
++  private _targetX = 0;
++  private _targetRow = 0;
++  private _targetWidth = 1;
++  private _targetStyle = '';
++  private _targetLines: ICursorMotionLines | undefined;
++  private _targetLine: object | undefined;
++
++  private _inMotion = false;
++  private _motionStart = 0;
++  private _fromX = 0;
++  private _fromRow = 0;
++  private _fromWidth = 1;
++
++  private _blinkOn = true;
++  private _fading = false;
++  private _fadeStart = 0;
++  private _fadeDuration = 0;
++  private _fadeFrom = 1;
++  private _fadeTo = 1;
++
++  private readonly _frame: ICursorMotionFrame = { isAnimating: false, x: 0, row: 0, width: 1, opacity: 1 };
++
++  private readonly _now: () => number;
++
++  constructor(now: () => number) {
++    this._now = now;
++  }
++
++  /** Whether the last update produced an in-between frame, i.e. another frame is needed. */
++  public get isAnimating(): boolean {
++    return this._frame.isAnimating;
++  }
++
++  public setEnabled(enabled: boolean): void {
++    if (this._enabled !== enabled) {
++      this._enabled = enabled;
++      this.reset();
++    }
++  }
++
++  public setReducedMotion(reduced: boolean): void {
++    if (this._reducedMotion !== reduced) {
++      this._reducedMotion = reduced;
++      this.reset();
++    }
++  }
++
++  public notifyUserInput(): void {
++    this._lastInputTime = this._now();
++    this._movesSinceInput = 0;
++  }
++
++  /** Forgets the drawn position so the next update snaps. */
++  public reset(): void {
++    this._hasTarget = false;
++    this._targetLines = undefined;
++    this._targetLine = undefined;
++    this._inMotion = false;
++    this._fading = false;
++    this._frame.isAnimating = false;
++  }
++
++  /**
++   * Advances the animation for one rendered frame. `sample` is undefined while the cursor is hidden
++   * or outside the viewport. The returned frame is reused across calls.
++   */
++  public update(sample: ICursorMotionSample | undefined, blinkOn: boolean, isFocused: boolean): ICursorMotionFrame {
++    const isActive = this._enabled && !this._reducedMotion && isFocused;
++    if (!isActive || !sample) {
++      if (isActive) {
++        // Keep the last visible position: TUIs hide the cursor while redrawing, then show it again.
++        this._inMotion = false;
++        this._fading = false;
++      } else {
++        this.reset();
++      }
++      this._blinkOn = blinkOn;
++      return this._writeSettledFrame(sample, blinkOn);
++    }
++    const now = this._now();
++    if (!this._hasTarget || this._isTargetChange(sample)) {
++      this._retarget(sample, now);
++    } else if (blinkOn !== this._blinkOn) {
++      this._startFade(blinkOn ? 1 : 0, now);
++    }
++    this._blinkOn = blinkOn;
++    return this._writeFrame(now, blinkOn);
++  }
++
++  private _isTargetChange(sample: ICursorMotionSample): boolean {
++    return sample.x !== this._targetX ||
++      sample.row !== this._targetRow ||
++      sample.width !== this._targetWidth ||
++      sample.style !== this._targetStyle ||
++      sample.lines !== this._targetLines;
++  }
++
++  private _retarget(sample: ICursorMotionSample, now: number): void {
++    if (this._hasTarget && this._qualifiesForGlide(sample, now)) {
++      // Glide on from wherever the cursor is drawn now so quick successive moves stay continuous.
++      this._writeMotionPosition(now);
++      this._fromX = this._frame.x;
++      this._fromRow = this._frame.row;
++      this._fromWidth = this._frame.width;
++      this._motionStart = now;
++      this._inMotion = true;
++    } else {
++      this._inMotion = false;
++    }
++    // Blink restarts visible on every move; fading in at a new position would read as lag.
++    this._fading = false;
++    this._hasTarget = true;
++    this._targetX = sample.x;
++    this._targetRow = sample.row;
++    this._targetWidth = sample.width;
++    this._targetStyle = sample.style;
++    this._targetLines = sample.lines;
++    this._targetLine = sample.lines.get(sample.row);
++  }
++
++  private _qualifiesForGlide(sample: ICursorMotionSample, now: number): boolean {
++    const moveIndex = ++this._movesSinceInput;
++    return sample.lines === this._targetLines &&
++      sample.style === this._targetStyle &&
++      // Another line object under the old row means content shifted (scrollback trim, reflow).
++      sample.lines.get(this._targetRow) === this._targetLine &&
++      Math.abs(sample.row - this._targetRow) <= CURSOR_MOTION_MAX_ROW_DELTA &&
++      now - this._lastInputTime <= CURSOR_MOTION_INPUT_WINDOW_MS &&
++      moveIndex <= CURSOR_MOTION_MOVES_PER_INPUT;
++  }
++
++  private _startFade(to: number, now: number): void {
++    const from = this._fading ? this._fadeOpacityAt(now) : (this._blinkOn ? 1 : 0);
++    this._fadeFrom = from;
++    this._fadeTo = to;
++    this._fadeStart = now;
++    this._fadeDuration = CURSOR_BLINK_FADE_DURATION_MS * Math.abs(to - from);
++    this._fading = this._fadeDuration > 0;
++  }
++
++  private _fadeOpacityAt(now: number): number {
++    const t = Math.min(Math.max((now - this._fadeStart) / this._fadeDuration, 0), 1);
++    return this._fadeFrom + (this._fadeTo - this._fadeFrom) * t * t * (3 - 2 * t);
++  }
++
++  /** Writes the drawn position into the frame; returns whether the glide is still in flight. */
++  private _writeMotionPosition(now: number): boolean {
++    const frame = this._frame;
++    frame.x = this._targetX;
++    frame.row = this._targetRow;
++    frame.width = this._targetWidth;
++    if (!this._inMotion) {
++      return false;
++    }
++    const t = (now - this._motionStart) / CURSOR_MOTION_DURATION_MS;
++    if (t >= 1) {
++      this._inMotion = false;
++      return false;
++    }
++    const remaining = 1 - Math.max(t, 0);
++    const eased = 1 - remaining * remaining * remaining;
++    frame.x = this._fromX + (this._targetX - this._fromX) * eased;
++    frame.row = this._fromRow + (this._targetRow - this._fromRow) * eased;
++    frame.width = this._fromWidth + (this._targetWidth - this._fromWidth) * eased;
++    return true;
++  }
++
++  private _writeFrame(now: number, blinkOn: boolean): ICursorMotionFrame {
++    const frame = this._frame;
++    let isAnimating = this._writeMotionPosition(now);
++    frame.opacity = blinkOn ? 1 : 0;
++    if (this._fading) {
++      if (now - this._fadeStart >= this._fadeDuration) {
++        this._fading = false;
++      } else {
++        frame.opacity = this._fadeOpacityAt(now);
++        isAnimating = true;
++      }
++    }
++    frame.isAnimating = isAnimating;
++    return frame;
++  }
++
++  private _writeSettledFrame(sample: ICursorMotionSample | undefined, blinkOn: boolean): ICursorMotionFrame {
++    const frame = this._frame;
++    frame.isAnimating = false;
++    frame.x = sample?.x ?? 0;
++    frame.row = sample?.row ?? 0;
++    frame.width = sample?.width ?? 1;
++    frame.opacity = blinkOn ? 1 : 0;
++    return frame;
++  }
++}
++
++/** Reports `prefers-reduced-motion` now and on every change. */
++export function watchPrefersReducedMotion(
++  win: { matchMedia?: (query: string) => MediaQueryList },
++  onChange: (reduced: boolean) => void
++): { dispose(): void } {
++  const query = typeof win.matchMedia === 'function' ? win.matchMedia('(prefers-reduced-motion: reduce)') : undefined;
++  if (!query) {
++    onChange(false);
++    return { dispose: () => {} };
++  }
++  const listener = (event: MediaQueryListEvent): void => onChange(event.matches);
++  onChange(query.matches);
++  query.addEventListener('change', listener);
++  return { dispose: () => query.removeEventListener('change', listener) };
++}
 diff --git a/src/GlyphRenderer.ts b/src/GlyphRenderer.ts
 index 742f0879ff4f04509e4a07c8efdf0d5743fe8ee5..885a206a394fff783737a412c0b75bf935dd0eca 100644
 --- a/src/GlyphRenderer.ts
@@ -20,6 +285,100 @@ index 742f0879ff4f04509e4a07c8efdf0d5743fe8ee5..885a206a394fff783737a412c0b75bf9
  }`);
  }
  
+diff --git a/src/RectangleRenderer.ts b/src/RectangleRenderer.ts
+index eebfda3b3df9b4c8cefcc6a64692053ed5eaeefa..ef2ec9c85a04394e34a9143546e7583995365b54 100644
+--- a/src/RectangleRenderer.ts
++++ b/src/RectangleRenderer.ts
+@@ -82,6 +82,7 @@ export class RectangleRenderer extends Disposable {
+   private _projectionLocation: WebGLUniformLocation;
+   private _bgFloat!: Float32Array;
+   private _cursorFloat!: Float32Array;
++  private _animatedCursorFloat = new Float32Array(4);
+ 
+   private _vertices: Vertices = new Vertices();
+   private _verticesCursor: Vertices = new Vertices();
+@@ -248,13 +249,28 @@ export class RectangleRenderer extends Disposable {
+   public updateCursor(model: IRenderModel): void {
+     const vertices = this._verticesCursor;
+     const cursor = model.cursor;
+-    if (!cursor || cursor.style === 'block') {
++    // A settled block cursor is drawn by inverting its cell in the model; an animating one is not.
++    if (!cursor || (cursor.style === 'block' && cursor.opacity === undefined)) {
+       vertices.count = 0;
+       return;
+     }
+ 
+     let offset: number;
+     let rectangleCount = 0;
++    const color = this._resolveCursorColor(cursor.opacity);
++
++    if (cursor.style === 'block') {
++      offset = rectangleCount++ * INDICES_PER_RECTANGLE;
++      this._addRectangleFloat(
++        vertices.attributes,
++        offset,
++        cursor.x * this._dimensions.device.cell.width,
++        cursor.y * this._dimensions.device.cell.height,
++        cursor.width * this._dimensions.device.cell.width,
++        this._dimensions.device.cell.height,
++        color
++      );
++    }
+ 
+     if (cursor.style === 'bar' || cursor.style === 'outline') {
+       // Left edge
+@@ -266,7 +282,7 @@ export class RectangleRenderer extends Disposable {
+         cursor.y * this._dimensions.device.cell.height,
+         cursor.style === 'bar' ? cursor.dpr * cursor.cursorWidth : cursor.dpr,
+         this._dimensions.device.cell.height,
+-        this._cursorFloat
++        color
+       );
+     }
+     if (cursor.style === 'underline' || cursor.style === 'outline') {
+@@ -279,7 +295,7 @@ export class RectangleRenderer extends Disposable {
+         (cursor.y + 1) * this._dimensions.device.cell.height - cursor.dpr,
+         cursor.width * this._dimensions.device.cell.width,
+         cursor.dpr,
+-        this._cursorFloat
++        color
+       );
+     }
+     if (cursor.style === 'outline') {
+@@ -292,7 +308,7 @@ export class RectangleRenderer extends Disposable {
+         cursor.y * this._dimensions.device.cell.height,
+         cursor.width * this._dimensions.device.cell.width,
+         cursor.dpr,
+-        this._cursorFloat
++        color
+       );
+       // Right edge
+       offset = rectangleCount++ * INDICES_PER_RECTANGLE;
+@@ -303,7 +319,7 @@ export class RectangleRenderer extends Disposable {
+         cursor.y * this._dimensions.device.cell.height,
+         cursor.dpr,
+         this._dimensions.device.cell.height,
+-        this._cursorFloat
++        color
+       );
+     }
+ 
+@@ -375,6 +391,15 @@ export class RectangleRenderer extends Disposable {
+     array[offset + 7] = color[3];
+   }
+ 
++  private _resolveCursorColor(opacity: number | undefined): Float32Array {
++    if (opacity === undefined) {
++      return this._cursorFloat;
++    }
++    this._animatedCursorFloat.set(this._cursorFloat);
++    this._animatedCursorFloat[3] *= opacity;
++    return this._animatedCursorFloat;
++  }
++
+   private _colorToFloat32Array(color: IColor): Float32Array {
+     return new Float32Array([
+       ((color.rgba >> 24) & 0xFF) / 255,
 diff --git a/src/TextureAtlas.ts b/src/TextureAtlas.ts
 index 4977ad741065e26bbfd35bc50e7558a033b13340..f55805ddc3f266415f7f8e81e5b8c318e7db194c 100644
 --- a/src/TextureAtlas.ts
@@ -113,11 +472,104 @@ index 4977ad741065e26bbfd35bc50e7558a033b13340..f55805ddc3f266415f7f8e81e5b8c318
      this._tmpCtx.textBaseline = TEXT_BASELINE;
  
      const powerlineGlyph = chars.length === 1 && isPowerlineGlyph(chars.charCodeAt(0));
+diff --git a/src/Types.ts b/src/Types.ts
+index bfd6fd76cebe8f55dce7bfad5406d4f7cd184320..ae15121e28a49e8e3e9da01ac2608f5eeb00e821 100644
+--- a/src/Types.ts
++++ b/src/Types.ts
+@@ -23,6 +23,8 @@ export interface ICursorRenderModel {
+   style: CursorStyle | CursorInactiveStyle;
+   cursorWidth: number;
+   dpr: number;
++  /** Set only while the cursor animates; the block is then a rectangle instead of cell inversion. */
++  opacity?: number;
+ }
+ 
+ export interface IWebGL2RenderingContext extends WebGLRenderingContext {
+diff --git a/src/WebglAddon.ts b/src/WebglAddon.ts
+index f61206b13824e6925efebd041261a2d125d0f527..053cfa47ae44b9b3b690521e20edd333e192da89 100644
+--- a/src/WebglAddon.ts
++++ b/src/WebglAddon.ts
+@@ -29,6 +29,7 @@ export class WebglAddon extends Disposable implements ITerminalAddon, IWebglApi
+ 
+   private readonly _customGlyphs: boolean;
+   private readonly _preserveDrawingBuffer?: boolean;
++  private _cursorAnimation = false;
+ 
+   constructor(options?: IWebglAddonOptions) {
+     if (isSafari && getSafariVersion() < 16) {
+@@ -81,6 +82,7 @@ export class WebglAddon extends Disposable implements ITerminalAddon, IWebglApi
+       this._customGlyphs,
+       this._preserveDrawingBuffer
+     ));
++    this._renderer.setCursorAnimation(this._cursorAnimation);
+     this._register(EventUtils.forward(this._renderer.onContextLoss, this._onContextLoss));
+     this._register(EventUtils.forward(this._renderer.onChangeTextureAtlas, this._onChangeTextureAtlas));
+     this._register(EventUtils.forward(this._renderer.onAddTextureAtlasCanvas, this._onAddTextureAtlasCanvas));
+@@ -104,4 +106,10 @@ export class WebglAddon extends Disposable implements ITerminalAddon, IWebglApi
+   public clearTextureAtlas(): void {
+     this._renderer?.clearTextureAtlas();
+   }
++
++  /** Orca: GPU cursor glide and blink fade; off by default so upstream rendering is unchanged. */
++  public setCursorAnimation(enabled: boolean): void {
++    this._cursorAnimation = enabled;
++    this._renderer?.setCursorAnimation(enabled);
++  }
+ }
 diff --git a/src/WebglRenderer.ts b/src/WebglRenderer.ts
-index a951efba5c75e82735cd39b6b22c4b5d5fad5928..e7f80c3a8c14dd65a16a97f1d17e3da1d65ed8bf 100644
+index a951efba5c75e82735cd39b6b22c4b5d5fad5928..d155e608cfaa5a9c53c80a450fb6ec946104a652 100644
 --- a/src/WebglRenderer.ts
 +++ b/src/WebglRenderer.ts
-@@ -386,7 +386,10 @@ export class WebglRenderer extends Disposable implements IRenderer {
+@@ -7,6 +7,7 @@ import { ITerminal } from 'browser/Types';
+ import { CellColorResolver } from './CellColorResolver';
+ import { acquireTextureAtlas, removeTerminalFromCache } from './CharAtlasCache';
+ import { CursorBlinkStateManager } from './CursorBlinkStateManager';
++import { CursorMotionAnimator, ICursorMotionFrame, ICursorMotionSample, watchPrefersReducedMotion } from './CursorMotionAnimator';
+ import { observeDevicePixelDimensions } from './DevicePixelObserver';
+ import { IRenderDimensions, IRenderer, IRequestRedrawEvent } from 'browser/renderer/shared/Types';
+ import { ICharSizeService, ICharacterJoinerService, ICoreBrowserService, IThemeService } from 'browser/services/Services';
+@@ -16,6 +17,7 @@ import { CellData } from 'common/buffer/CellData';
+ import { Attributes, Content, FgFlags, NULL_CELL_CHAR, NULL_CELL_CODE } from 'common/buffer/Constants';
+ import { TextBlinkStateManager } from 'browser/renderer/shared/TextBlinkStateManager';
+ import { ICoreService, IDecorationService, ILogService, IOptionsService } from 'common/services/Services';
++import { CursorStyle } from 'common/Types';
+ import { Terminal } from '@xterm/xterm';
+ import { GlyphRenderer } from './GlyphRenderer';
+ import { RectangleRenderer } from './RectangleRenderer';
+@@ -36,6 +38,8 @@ export class WebglRenderer extends Disposable implements IRenderer {
+   private _renderLayers: IRenderLayer[];
+   private _cursorBlinkStateManager: MutableDisposable<CursorBlinkStateManager> = this._register(new MutableDisposable());
+   private _textBlinkStateManager: TextBlinkStateManager;
++  private readonly _cursorMotion = new CursorMotionAnimator(() => performance.now());
++  private _cursorMotionSample: ICursorMotionSample | undefined;
+   private _charAtlasDisposable = this._register(new MutableDisposable());
+   private _charAtlas: ITextureAtlas | undefined;
+   private _devicePixelRatio: number;
+@@ -151,6 +155,7 @@ export class WebglRenderer extends Disposable implements IRenderer {
+     }));
+ 
+     this._register(addDisposableListener(this._coreBrowserService.mainDocument, 'mousedown', () => this._cursorBlinkStateManager.value?.restartBlinkAnimation()));
++    this._registerCursorMotionSignals();
+ 
+     this._core.screenElement!.appendChild(this._canvas);
+ 
+@@ -190,6 +195,7 @@ export class WebglRenderer extends Disposable implements IRenderer {
+   }
+ 
+   public handleResize(cols: number, rows: number): void {
++    this._cursorMotion.reset();
+     // Update character and canvas dimensions
+     this._updateDimensions();
+ 
+@@ -339,6 +345,7 @@ export class WebglRenderer extends Disposable implements IRenderer {
+   }
+ 
+   public clear(): void {
++    this._cursorMotion.reset();
+     this._clearModel(true);
+     for (const l of this._renderLayers) {
+       l.reset(this._terminal);
+@@ -386,7 +393,10 @@ export class WebglRenderer extends Disposable implements IRenderer {
      // page's version, so re-run the update and force a full texture rebind.
      let merged = false;
      let mergeRetries = 0;
@@ -129,3 +581,100 @@ index a951efba5c75e82735cd39b6b22c4b5d5fad5928..e7f80c3a8c14dd65a16a97f1d17e3da1
        merged = true;
        this._clearModel(true);
        this._updateModel(0, this._terminal.rows - 1);
+@@ -397,10 +407,60 @@ export class WebglRenderer extends Disposable implements IRenderer {
+ 
+     // Render
+     this._rectangleRenderer.value.renderBackgrounds();
++    // An animating block sits under the text so the glyphs it passes over stay readable.
++    const isAnimatingBlock = this._cursorMotion.isAnimating && this._model.cursor?.style === 'block';
++    if (isAnimatingBlock) {
++      this._rectangleRenderer.value.renderCursor();
++    }
+     this._glyphRenderer.value.render(this._model);
+-    if (!this._cursorBlinkStateManager.value || this._cursorBlinkStateManager.value.isCursorVisible) {
++    if (!isAnimatingBlock && (this._cursorMotion.isAnimating || !this._cursorBlinkStateManager.value || this._cursorBlinkStateManager.value.isCursorVisible)) {
+       this._rectangleRenderer.value.renderCursor();
+     }
++    if (this._cursorMotion.isAnimating) {
++      this._requestCursorMotionFrame();
++    }
++  }
++
++  /** Orca: toggles GPU cursor glide and blink fade. */
++  public setCursorAnimation(enabled: boolean): void {
++    this._cursorMotion.setEnabled(enabled);
++    this._requestRedrawViewport();
++  }
++
++  private _registerCursorMotionSignals(): void {
++    // Glides are armed only by local input, so output-driven cursor moves snap.
++    const notifyInput = (): void => this._cursorMotion.notifyUserInput();
++    this._register(this._coreService.onUserInput(notifyInput));
++    if (this._core.textarea) {
++      // Also covers keys the embedder handles itself instead of through onData.
++      this._register(addDisposableListener(this._core.textarea, 'keydown', notifyInput));
++    }
++    this._register(addDisposableListener(this._core.screenElement!, 'mousedown', notifyInput));
++    this._register(watchPrefersReducedMotion(this._coreBrowserService.window, reduced => this._cursorMotion.setReducedMotion(reduced)));
++  }
++
++  private _updateCursorMotion(cursorX: number, cursorY: number, cursorStyle: CursorStyle): ICursorMotionFrame {
++    const buffer = this._core.buffer;
++    const viewportY = cursorY - buffer.ydisp;
++    const isDrawable = this._coreService.isCursorInitialized && !this._coreService.isCursorHidden &&
++      viewportY >= 0 && viewportY < this._terminal.rows;
++    let sample: ICursorMotionSample | undefined;
++    if (isDrawable) {
++      sample = this._cursorMotionSample ??= { x: 0, row: 0, width: 1, style: cursorStyle, lines: buffer.lines };
++      sample.x = cursorX;
++      sample.row = cursorY;
++      sample.width = Math.max(buffer.lines.get(cursorY)?.getWidth(cursorX) ?? 1, 1);
++      sample.style = cursorStyle;
++      sample.lines = buffer.lines;
++    }
++    const blinkOn = !this._cursorBlinkStateManager.value || this._cursorBlinkStateManager.value.isCursorVisible;
++    return this._cursorMotion.update(sample, blinkOn, this._coreBrowserService.isFocused);
++  }
++
++  private _requestCursorMotionFrame(): void {
++    const buffer = this._core.buffer;
++    const viewportY = clamp(buffer.ybase + buffer.y - buffer.ydisp, this._terminal.rows - 1, 0);
++    this._onRequestRedraw.fire({ start: viewportY, end: viewportY });
+   }
+ 
+   private _updateCursorBlink(): void {
+@@ -451,6 +511,7 @@ export class WebglRenderer extends Disposable implements IRenderer {
+       this._coreService.isCursorInitialized &&
+       !this._coreService.isCursorHidden &&
+       (!this._cursorBlinkStateManager.value || this._cursorBlinkStateManager.value.isCursorVisible);
++    const cursorMotion = this._updateCursorMotion(cursorX, cursorY, cursorStyle);
+     this._model.cursor = undefined;
+     let modelUpdated = false;
+ 
+@@ -546,7 +607,7 @@ export class WebglRenderer extends Disposable implements IRenderer {
+             };
+             lastCursorX = cursorX + cell.getWidth() - 1;
+           }
+-          if (x >= cursorX && x <= lastCursorX &&
++          if (x >= cursorX && x <= lastCursorX && !cursorMotion.isAnimating &&
+               ((this._coreBrowserService.isFocused &&
+               cursorStyle === 'block') ||
+               (this._coreBrowserService.isFocused === false &&
+@@ -610,6 +671,17 @@ export class WebglRenderer extends Disposable implements IRenderer {
+     if (modelUpdated) {
+       this._rectangleRenderer.value!.updateBackgrounds(this._model);
+     }
++    if (cursorMotion.isAnimating) {
++      this._model.cursor = {
++        x: cursorMotion.x,
++        y: cursorMotion.row - terminal.buffer.ydisp,
++        width: cursorMotion.width,
++        style: cursorStyle,
++        cursorWidth: terminal.options.cursorWidth,
++        dpr: this._devicePixelRatio,
++        opacity: cursorMotion.opacity
++      };
++    }
+     this._rectangleRenderer.value!.updateCursor(this._model);
+     this._updateTextBlinkState();
+   }
