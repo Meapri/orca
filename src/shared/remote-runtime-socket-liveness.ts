@@ -13,6 +13,14 @@ export const REMOTE_RUNTIME_SOCKET_PING_INTERVAL_MS = 10_000
 // detected on a similar horizon to the server's own ping/terminate reaper.
 export const REMOTE_RUNTIME_SOCKET_LIVENESS_TIMEOUT_MS = 25_000
 
+// Why: an empty ping makes the peer auto-pong an empty payload, and an empty write fails with
+// EFAULT on Electron/Linux ARM64 hosts (39-bit VA, e.g. Raspberry Pi), dropping the socket every
+// heartbeat (#20673). A non-empty payload is echoed verbatim, so even an unpatched peer never
+// writes an empty frame in answer to our probes. RFC 6455 permits up to 125 bytes on any peer.
+export const REMOTE_RUNTIME_SOCKET_PING_PAYLOAD: Uint8Array = new Uint8Array([
+  0x6f, 0x72, 0x63, 0x61
+])
+
 export type RemoteRuntimeSocketLivenessOptions = {
   pingIntervalMs?: number
   livenessTimeoutMs?: number
