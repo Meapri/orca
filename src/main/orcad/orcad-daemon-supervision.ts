@@ -40,7 +40,12 @@ export async function startOrcadDaemon(): Promise<OrcadDaemonStartup> {
   try {
     // Why no login-session watch: that retires the daemon when the spawning macOS GUI login
     // session dies. An orcad daemon must survive its SSH session ending — that is the point.
-    await initDaemonPtyProvider(undefined, { macosLoginSessionWatch: false })
+    // Why retire: no pane remounts here to cold-restore, so a shell verifiably gone with a killed
+    // daemon must read `exited`, not a stale `running` (ssh-execution-boundary.md).
+    await initDaemonPtyProvider(undefined, {
+      macosLoginSessionWatch: false,
+      retireSessionsLostWithDaemon: true
+    })
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error)
     console.error(

@@ -46,7 +46,7 @@ function logDaemonMilestone(event: string, details: Record<string, unknown> = {}
 
 export async function initDaemonPtyProvider(
   signal?: AbortSignal,
-  options: { macosLoginSessionWatch?: boolean } = {}
+  options: { macosLoginSessionWatch?: boolean; retireSessionsLostWithDaemon?: boolean } = {}
 ): Promise<void> {
   logDaemonMilestone('daemon-init-start')
   // Why: e2e coverage for the startup PTY gate (#5232) needs a daemon init that deterministically outlasts the first-window timeout.
@@ -89,6 +89,7 @@ export async function initDaemonPtyProvider(
     runtimeDir,
     packagedAppVersion: resolvePackagedDarwinAppVersion(),
     historyPath: getHistoryDir(),
+    ...(options.retireSessionsLostWithDaemon ? { retireSessionsLostWithDaemon: true } : {}),
     // Why: on daemon death, ensureConnected() detects the dead socket and calls this to fork a replacement before retrying.
     respawn: async (reason: DaemonRespawnReason) => {
       // Why: attribute rather than emit — the launcher below is the one that completes the

@@ -58,6 +58,11 @@ export type DaemonPtyAdapterOptions = {
   runtimeDir?: string
   packagedAppVersion?: string | null
   respawn?: (reason: DaemonRespawnReason) => Promise<void | (() => void)>
+  /**
+   * Headless hosts: exit a session the inventory lost once its shell PID is gone on this host.
+   * The desktop leaves it to the pane's remount, which cold-restores the scrollback.
+   */
+  retireSessionsLostWithDaemon?: boolean
 }
 
 export type DaemonRespawnReason =
@@ -112,6 +117,10 @@ export abstract class DaemonPtyRuntimeState {
   protected getSizeUnsupported = false
   protected sessionsAwaitingDaemonRecovery = new Set<string>()
   protected sessionIncarnations = new Map<string, string>()
+  // Shell PIDs the daemon reported, kept to prove an unobserved exit on this same host.
+  protected sessionShellPids = new Map<string, number>()
+  protected lostSessionShellPids = new Map<string, { pid: number; incarnationId?: string }>()
+  protected readonly retireSessionsLostWithDaemon: boolean
   protected pendingSpawnOperationsBySessionId = new Map<string, Set<PendingDaemonSpawnOperation>>()
   protected pendingClaimSpawnOperations = new Set<PendingDaemonSpawnOperation>()
   protected historySpawnLocks = new Map<string, Promise<void>>()
@@ -186,6 +195,8 @@ export abstract class DaemonPtyRuntimeState {
     this.initialCwds.delete(sessionId)
     this.wslDistrosBySessionId.delete(sessionId)
     this.sessionIncarnations.delete(sessionId)
+    this.sessionShellPids.delete(sessionId)
+    this.lostSessionShellPids.delete(sessionId)
   }
 
   constructor(opts: DaemonPtyAdapterOptions) {
@@ -210,6 +221,7 @@ export abstract class DaemonPtyRuntimeState {
     this.historyManager = opts.historyPath ? new HistoryManager(opts.historyPath) : null
     this.historyReader = opts.historyPath ? new HistoryReader(opts.historyPath) : null
     this.respawnFn = opts.respawn ?? null
+    this.retireSessionsLostWithDaemon = opts.retireSessionsLostWithDaemon === true
     this.runtimeDir = opts.runtimeDir ?? opts.profileScope ?? null
     this.packagedAppVersion = opts.packagedAppVersion ?? null
     this.supportsCheckpoints = this.protocolVersion >= 4
