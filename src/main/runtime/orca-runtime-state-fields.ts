@@ -41,6 +41,10 @@ import { createEphemeralAgentSessionClaimSigner } from './agent-session-claim-id
 import { registerConptyDa1OverrideInstaller } from './terminal-model-query-authority'
 import { registerTerminalViewAttributesApplier } from './terminal-view-attribute-store'
 import { RuntimeMachineName } from './runtime-machine-name'
+import {
+  ClosedTerminalSurfaceLedger,
+  type ClosedTerminalSurfaceLedgerStorage
+} from './closed-terminal-surface-ledger'
 
 export class OrcaRuntimeWithStateFields extends OrcaRuntimeWithLinearCommands {
   protected readonly prepareClaudeAuth?: PrepareClaudeAuth
@@ -115,9 +119,16 @@ export class OrcaRuntimeWithStateFields extends OrcaRuntimeWithLinearCommands {
       // it is installed after construction, so the closure has to resolve it at call time.
       applySessionSearchSettings?: SessionSearchSettingsApply
       orchestrationEnvironmentTransport?: OrchestrationEnvironmentTransport
+      /** Durable storage for closed-surface tombstones; absent keeps them in memory (tests). */
+      closedTerminalSurfaceLedgerStorage?: ClosedTerminalSurfaceLedgerStorage
     }
   ) {
     super()
+    if (deps?.closedTerminalSurfaceLedgerStorage) {
+      this.closedTerminalSurfaceLedger = new ClosedTerminalSurfaceLedger(
+        deps.closedTerminalSurfaceLedgerStorage
+      )
+    }
     this.store = store
     this.machineName.start()
     this.prepareClaudeAuth = deps?.prepareClaudeAuth

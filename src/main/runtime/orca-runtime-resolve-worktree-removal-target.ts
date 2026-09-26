@@ -9,6 +9,7 @@ import { runtimeWorktreeIdsEqual } from './runtime-worktree-path-identity'
 import { hasWorktreeRemovalRepoOwnerOnOtherHost } from '../worktree-removal-repo-owner'
 import { advertisedUrlWatcher } from '../ports/advertised-url-watcher'
 import { deleteWorktreeHistoryDir } from '../terminal-history-deletion'
+import { collectWorkspaceTerminalTabIds } from './closed-terminal-surface-recording'
 import { closeClientHostedBrowserPagesForWorktree } from './worktree-browser-client-page-close'
 import type { ForceDeleteWorktreeBranchResult } from '../../shared/worktree/create-types'
 import type { RuntimeTerminalRename } from '../../shared/runtime-types'
@@ -75,6 +76,16 @@ export class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRuntimeWith
       this.removedMobileSessionWorktreeIds.set(
         worktreeId,
         removedPublicationEpoch ? { removedPublicationEpoch } : {}
+      )
+      // Why durable: the in-memory fence above dies with this process; a stale client does not.
+      this.closedTerminalSurfaceLedger.recordClosedTabs(
+        worktreeId,
+        collectWorkspaceTerminalTabIds(
+          worktreeId,
+          storedSnapshot,
+          this.getWorkspaceSessionForWorktree(worktreeId)
+        ),
+        'workspace-removed'
       )
       this.mobileSessionTabsByWorktree.delete(worktreeId)
       this.mobileSessionTabsAgentStatusHeartbeat.removeWorktree(worktreeId)
