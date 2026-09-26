@@ -14,6 +14,7 @@ export type RpcDispatchStreamingOptions = {
   pairing?: PairingRpcContext
   sendBinary?: (bytes: Uint8Array<ArrayBufferLike>) => boolean | void
   outboundBacklogBytes?: () => number
+  awaitOutboundDelivery?: (onDelivered: () => void) => () => void
   registerBinaryStreamHandler?: (
     streamId: number,
     handler: (frame: TerminalStreamFrame) => void

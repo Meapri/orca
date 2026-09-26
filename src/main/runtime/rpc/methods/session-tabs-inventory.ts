@@ -127,7 +127,8 @@ export async function subscribeSessionTabsInventory(
     emit({ type: 'updated', ...withProofDelta(projected) })
   const updatePublisher = createBackpressuredLatestStatePublisher<SessionTabsChange>({
     send: emitUpdated,
-    backlogBytes: context.outboundBacklogBytes
+    backlogBytes: context.outboundBacklogBytes,
+    awaitDelivery: context.awaitOutboundDelivery
   })
   const projectChange = (snapshot: SessionTabsChange): SessionTabsChange =>
     projectSessionTabsForClient(

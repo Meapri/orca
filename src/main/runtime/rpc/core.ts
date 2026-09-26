@@ -115,6 +115,8 @@ export type RpcContext = {
   sendBinary?: (bytes: Uint8Array<ArrayBufferLike>) => boolean | void
   // Why: state streams send only their latest frame while this connection's writes are backlogged.
   outboundBacklogBytes?: () => number
+  // Why: resolves once the peer has received everything sent before the call, kernel queues included.
+  awaitOutboundDelivery?: (onDelivered: () => void) => () => void
   // Why: binary terminal frames arrive outside JSON-RPC once a stream is established; handlers register only the stream IDs they created.
   registerBinaryStreamHandler?: (
     streamId: number,

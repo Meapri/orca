@@ -1,9 +1,10 @@
 // Why: a state stream (e.g. session.tabs) re-sends the whole snapshot on every change, and on a
-// thin link each frame lands behind the previous ones in the socket buffer. Interactive replies
-// on the same socket then wait behind seconds of snapshots that the client will discard anyway,
-// since it only keeps the newest version per key (#22151). While the connection is backlogged,
-// this parks only the latest frame per key and sends it once the backlog drains, so the link
-// carries what it can and every key still converges on its final state.
+// thin link each frame lands behind the previous ones in the socket and kernel buffers.
+// Interactive replies on the same socket then wait behind seconds of snapshots that the client
+// discards anyway, since it keeps only the newest version per key (#22151). This keeps at most
+// one state frame in flight: while the previous one is undelivered, or the local buffer is
+// backlogged, only the latest frame per key is parked and sent when the link catches up. The
+// link then carries what it can and every key still converges on its final state.
 
 export const STATE_PUBLICATION_BACKLOG_THRESHOLD_BYTES = 64 * 1024
 const STATE_PUBLICATION_DRAIN_POLL_MS = 25
@@ -21,6 +22,8 @@ export function createBackpressuredLatestStatePublisher<TFrame>(options: {
   send: (frame: TFrame) => void
   /** Bytes this connection has accepted but not yet written; undefined means no backlog signal. */
   backlogBytes: (() => number) | undefined
+  /** Calls back once the peer received everything sent so far; undefined disables pacing. */
+  awaitDelivery?: ((onDelivered: () => void) => () => void) | undefined
   thresholdBytes?: number
   pollMs?: number
   setTimer?: (callback: () => void, ms: number) => ReturnType<typeof setTimeout>
@@ -33,6 +36,8 @@ export function createBackpressuredLatestStatePublisher<TFrame>(options: {
   // Insertion order is the order keys last changed, so a drain replays changes in causal order.
   const parked = new Map<string, TFrame>()
   let timer: ReturnType<typeof setTimeout> | null = null
+  let cancelDeliveryWait: (() => void) | null = null
+  let awaitingDelivery = false
   let disposed = false
 
   const backlogged = (): boolean => {
@@ -48,25 +53,45 @@ export function createBackpressuredLatestStatePublisher<TFrame>(options: {
     }
   }
 
-  const arm = (): void => {
-    if (timer !== null || disposed || parked.size === 0) {
+  const blocked = (): boolean => awaitingDelivery || backlogged()
+
+  const sendAndPace = (frame: TFrame): void => {
+    options.send(frame)
+    if (!options.awaitDelivery || disposed) {
       return
     }
-    timer = setTimer(drain, pollMs)
+    awaitingDelivery = true
+    cancelDeliveryWait = options.awaitDelivery(() => {
+      cancelDeliveryWait = null
+      awaitingDelivery = false
+      drain()
+    })
+  }
+
+  const arm = (): void => {
+    // Why: a delivery wait re-drains on its own callback; the poll only covers a local backlog.
+    if (timer !== null || disposed || awaitingDelivery || parked.size === 0) {
+      return
+    }
+    timer = setTimer(onTimer, pollMs)
     // Why: a parked frame must never keep a shutting-down process alive.
     timer.unref?.()
   }
 
-  const drain = (): void => {
+  const onTimer = (): void => {
     timer = null
-    while (!disposed && parked.size > 0 && !backlogged()) {
+    drain()
+  }
+
+  const drain = (): void => {
+    while (!disposed && parked.size > 0 && !blocked()) {
       const next = parked.entries().next()
       if (next.done) {
         break
       }
       const [key, frame] = next.value
       parked.delete(key)
-      options.send(frame)
+      sendAndPace(frame)
     }
     arm()
   }
@@ -76,8 +101,8 @@ export function createBackpressuredLatestStatePublisher<TFrame>(options: {
       if (disposed) {
         return
       }
-      if (parked.size === 0 && !backlogged()) {
-        options.send(frame)
+      if (parked.size === 0 && !blocked()) {
+        sendAndPace(frame)
         return
       }
       // Why delete-then-set: the key moves to the tail, so a drain never sends a newer state for
@@ -93,6 +118,8 @@ export function createBackpressuredLatestStatePublisher<TFrame>(options: {
     dispose: () => {
       disposed = true
       parked.clear()
+      cancelDeliveryWait?.()
+      cancelDeliveryWait = null
       if (timer !== null) {
         clearTimer(timer)
         timer = null

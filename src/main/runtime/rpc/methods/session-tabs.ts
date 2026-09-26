@@ -109,7 +109,8 @@ export const SESSION_TAB_METHODS = [
         pairedDeviceId,
         clientKind,
         clientCapabilities,
-        outboundBacklogBytes
+        outboundBacklogBytes,
+        awaitOutboundDelivery
       },
       emit
     ) => {
@@ -176,7 +177,8 @@ export const SESSION_TAB_METHODS = [
         })
       const publisher = createBackpressuredLatestStatePublisher<RuntimeMobileSessionTabsResult>({
         send: sendUpdated,
-        backlogBytes: outboundBacklogBytes
+        backlogBytes: outboundBacklogBytes,
+        awaitDelivery: awaitOutboundDelivery
       })
       updatePublisher = publisher
       unsubscribe = runtime.onMobileSessionTabsChanged((snapshot) => {
