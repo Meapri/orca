@@ -27,6 +27,10 @@ export function buildNotificationOptions(args: NotificationDispatchRequest): {
   silent?: boolean
   sound?: string
 } {
+  if (args.source === 'terminal-bell' && args.terminalNotification?.body) {
+    return buildTerminalProgramNotificationOptions(args, args.terminalNotification)
+  }
+
   if (args.source === 'terminal-bell') {
     return {
       title: `Bell in ${args.worktreeLabel ?? 'workspace'}`,
@@ -47,6 +51,24 @@ export function buildNotificationOptions(args: NotificationDispatchRequest): {
   }
 
   return buildAgentTaskCompleteFallbackNotificationOptions(args)
+}
+
+// Why: the program picks the words, Orca keeps the workspace context so the banner stays attributable.
+function buildTerminalProgramNotificationOptions(
+  args: NotificationDispatchRequest,
+  notification: { title: string | null; body: string }
+): { title: string; body: string } {
+  const programTitle = normalizeNotificationText(
+    notification.title,
+    NOTIFICATION_TITLE_CONTEXT_MAX_LENGTH
+  )
+  const worktreeContext = formatNotificationWorktreeContext(args)
+  return {
+    title: programTitle ? `${worktreeContext} - ${programTitle}` : worktreeContext,
+    body:
+      normalizeNotificationText(notification.body, NOTIFICATION_BODY_PREVIEW_MAX_LENGTH) ||
+      'Attention requested'
+  }
 }
 
 function buildAgentTaskCompleteNotificationOptions(

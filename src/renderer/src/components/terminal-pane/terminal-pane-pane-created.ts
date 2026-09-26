@@ -32,6 +32,7 @@ import { installTerminalPaneLinkHandling } from './terminal-pane-pane-links'
 import { scheduleRuntimeGraphSync } from '@/runtime/sync-runtime-graph'
 import { installTerminalPaneMarks } from './terminal-marks/terminal-pane-marks'
 import { getTerminalBufferPositionForMouseEvent } from './terminal-mouse-buffer-position'
+import { installTerminalPaneOscNotifications } from './terminal-osc-notify/terminal-pane-osc-notifications'
 
 export type PaneCreatedSetupContext = TerminalPaneManagerOptionsContext
 
@@ -154,6 +155,22 @@ export function createTerminalPaneCreatedHandler(
         decorationsEnabled: () => settingsRef.current?.terminalCommandMarks !== false
       })
     )
+    refs.oscNotificationDisposablesRef.current.set(
+      pane.id,
+      installTerminalPaneOscNotifications({
+        terminal: pane.terminal,
+        container: pane.container,
+        worktreeId: deps.worktreeId,
+        tabId: deps.tabId,
+        paneKey,
+        isReplaying: () => isPaneReplaying(replayingPanesRef, pane.id),
+        dispatchNotification: deps.dispatchNotification,
+        markWorktreeUnread: deps.markWorktreeUnread,
+        markTerminalTabUnread: deps.markTerminalTabUnread,
+        markTerminalPaneUnread: deps.markTerminalPaneUnread
+      })
+    )
+
     installTerminalPaneInputHandling({
       pane,
       managerRef,

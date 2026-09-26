@@ -124,6 +124,7 @@ export type PtyConnectionDeps = {
     source: 'terminal-bell' | 'agent-task-complete'
     terminalTitle?: string
     paneKey?: string
+    terminalNotification?: { title: string | null; body: string }
     agentStatusSnapshot?: AgentCompletionStatusSnapshot
   }) => void
   setCacheTimerStartedAt: (key: string, ts: number | null) => void
