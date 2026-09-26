@@ -247,6 +247,13 @@ An external supervisor (systemd, launchd, a process manager). orcad conforms to 
   live sessions. Replacing a healthy daemon kills its PTYs, so code freshness always defers
   to live work.
 - **Restart.** The adapter respawns the daemon on death, transparently to callers.
+- **Sessions lost with a killed daemon.** A daemon that dies takes its PTYs' exit events with
+  it. orcad's adapter records each session's shell PID; when the respawned daemon's inventory no
+  longer lists a session and that PID is gone from this host's process table, the session exits
+  (`terminal read` reports `exited`). That check runs right after the respawn and twice more 5 s
+  apart, then on every later inventory. A PID that still exists or cannot be queried is not
+  proof of either verdict and is left for the next check. The desktop app does not opt in: its
+  panes remount and cold-restore instead.
 - **Crash-loop containment.** At most **5 launches per 60s rolling window** per orcad run;
   past that, launches are refused with `daemon_crash_loop` and terminals fail with that
   message instead of the process forking forever. The window slides, so a repaired host
@@ -282,7 +289,18 @@ deploy's own policy code, bundled as `orcad-host-install.js`:
 
 The unit templates it installs set `RestartPreventExitStatus=78`, `TimeoutStopSec` above the
 15s shutdown deadline, and `KillMode=mixed` — which preserves nothing by itself; the daemon's
-scope does.
+scope does. They carry, commented out, the optional [systemd notify](#who-supervises-orcad)
+lines exactly as orcad implements them (`Type=notify`, `NotifyAccess=all`, `WatchdogSec=60`),
+[resource-limit](#resource-governance) examples as `Environment=` lines, and `Nice=` with the
+`LimitNICE=` it needs. Further orcad flags — `--limit key=value`, `--pairing-expires`, extra
+`--pairing-address` values — go in `ORCAD_EXTRA_ARGS` in `orcad.env`.
+
+The readiness line (it carries the startup pairing credential) goes to
+`$XDG_RUNTIME_DIR/orcad/readiness.json` (`/run/orcad/readiness.json` for the system unit). The
+units set `RuntimeDirectoryMode=0700`, and `orcad-install.sh run` creates the file `0600` under a
+subshell `umask 077` before orcad writes to it, tightening a directory it owns that an older
+install left permissive. The umask never reaches orcad itself, because its daemon and every PTY
+inherit orcad's.
 
 ## Health
 
@@ -466,9 +484,9 @@ full picture: `state`, `live`, `boundEndpoint`, `checkedAt`, the `health` object
 Only orcad registers `server.*`. The desktop app, and orcad builds from before this surface,
 answer `method_not_found`. Treat that as "not reported", never as "down".
 
-`orca serve status` prints it and exits 1 when the host is not ready, is wedged, or does not
-answer. On the host, it reads the orcad data root (`--data-root`, else `$ORCA_USER_DATA`, else
-`$ORCA_USER_DATA_PATH`, else whichever default root has runtime metadata). With
+`orca serve status` prints it, one line per degradation as `[severity] component/code (reason):
+message`, and exits 1 when the host is not ready, is wedged, or does not answer. On the host it
+dials the data root every `orca serve` command shares (see [Operator CLI](#operator-cli)). With
 `--environment <id>`, it asks a paired server instead.
 
 ### `degradations[]`
@@ -476,18 +494,26 @@ answer. On the host, it reads the orcad data root (`--data-root`, else `$ORCA_US
 Each entry is `{ code, severity: critical | warning, component, message, reason? }`. `code` is
 an open vocabulary: render `message`, and never switch on `code` exhaustively.
 
-| Code                          | Severity | Meaning                                                                         |
-| ----------------------------- | -------- | ------------------------------------------------------------------------------- |
-| `terminal_daemon_unhealthy`   | critical | The daemon failed its self-test. Its sessions are `unverifiable`, not `exited`. |
-| `terminal_unavailable`        | critical | This host cannot spawn PTYs (from `status.get`).                                |
-| `runtime_unresponsive`        | critical | The self-probe over the runtime's own socket failed three times in a row.       |
-| `threadpool_stalled`          | critical | Filesystem calls stopped completing (a hung mount or a saturated I/O pool).     |
-| `terminal_daemon_absent`      | warning  | No daemon. Terminals run inside orcad and end when it restarts.                 |
-| `terminal_daemon_not_durable` | warning  | The daemon answers, but new terminals are not daemon-owned.                     |
-| `terminal_daemon_unscoped`    | warning  | Under a systemd service on Linux, the daemon shares the service cgroup.         |
-| `event_loop_lagging`          | warning  | The event loop stalled at least 1s within the last minute.                      |
-| `watchdog_probe_unavailable`  | warning  | A self-watchdog probe has never succeeded, so it cannot detect a wedge.         |
-| `browser_unavailable`         | warning  | No browser backend (from `status.get`).                                         |
+| Code                                   | Severity | Meaning                                                                                                                                                                                                         |
+| -------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `terminal_daemon_unhealthy`            | critical | The daemon failed its self-test. Its sessions are `unverifiable`, not `exited`.                                                                                                                                 |
+| `terminal_unavailable`                 | critical | This host cannot spawn PTYs (from `status.get`).                                                                                                                                                                |
+| `runtime_unresponsive`                 | critical | The self-probe over the runtime's own socket failed three times in a row.                                                                                                                                       |
+| `threadpool_stalled`                   | critical | Filesystem calls stopped completing (a hung mount or a saturated I/O pool).                                                                                                                                     |
+| `terminal_daemon_absent`               | warning  | No daemon. Terminals run inside orcad and end when it restarts.                                                                                                                                                 |
+| `terminal_daemon_not_durable`          | warning  | The daemon answers, but new terminals are not daemon-owned.                                                                                                                                                     |
+| `terminal_daemon_unscoped`             | warning  | Under a systemd service on Linux, the daemon shares the service cgroup.                                                                                                                                         |
+| `event_loop_lagging`                   | warning  | The event loop stalled at least 1s within the last minute.                                                                                                                                                      |
+| `watchdog_probe_unavailable`           | warning  | A self-watchdog probe has never succeeded, so it cannot detect a wedge.                                                                                                                                         |
+| `browser_unavailable`                  | warning  | No browser backend (from `status.get`); `reason` says why, e.g. `unconfigured`, `electron_start_failed`, or `provider_unhealthy` for a browser that stopped answering.                                          |
+| `terminal_resource_limits_unavailable` | warning  | Configured [terminal limits](#terminal-and-agent-limits-linux-systemd) are not in force; `reason` is `systemd_scope_unavailable`, `scope_properties_rejected` or `set_property_failed`. Terminals keep working. |
+
+Every entry comes from one registry, `deriveOrcadDegradations` in
+`src/main/orcad/orcad-degradations.ts`: the daemon verdict, the self-watchdog, and whatever
+`status.get` reports (browser, PTY and resource-limit degradations), so the readiness line,
+`/readyz`, `server.health` and `orca serve status` never disagree. A runtime degradation takes
+its `component` from its capability (`terminal.*` or `browser.*`), and only `terminal_unavailable`
+among them is `critical`.
 
 ### Self-watchdog
 
@@ -529,18 +555,26 @@ their open-ended, coalescing offer and never adopt, extend or rotate away a mint
 
 ### Administering a running server
 
-These commands act only on the Orca runtime on the machine they run on, over its owner-only local
-socket (the same `0600` metadata token every local CLI command uses). A paired client of any scope
-is refused, and `--environment` / `--pairing-code` are rejected rather than ignored. The target is
-`ORCA_USER_DATA_PATH` or `ORCA_USER_DATA` when set; otherwise the first data root with a running
-runtime, the desktop profile before orcad's.
+Every command below acts only on the Orca runtime on the machine it runs on, over its owner-only
+local socket (the same `0600` metadata token every local CLI command uses). A paired client of any
+scope is refused, and `--environment` / `--pairing-code` are rejected rather than ignored. See
+[Operator CLI](#operator-cli) for how the target data root is chosen.
 
-| Command                                                                        | Effect                                                                                                         |
-| ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
-| `orca serve devices list [--json]`                                             | ids, scope, pending/paired, last use, offer expiry, open connections and the server key fingerprint; no tokens |
-| `orca serve devices revoke <id>`                                               | removes the grant, closes every socket it authenticated, and refuses it on reconnect, including after restart  |
-| `orca serve devices rotate <id>`                                               | runtime grants only: new token for the same device id, old one refused at once; prints the new URL             |
-| `orca serve pairing new [--mobile\|--runtime] [--pairing-address] [--expires]` | mints a fresh offer against the live server                                                                    |
+| Command                                                                                 | Effect                                                                                                         |
+| --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `orca serve pairing [show] [--rotate]`                                                  | orcad only: reprints the startup offer (below); `--rotate` revokes that unused offer and mints a new one       |
+| `orca serve pairing new [--mobile\|--runtime] [--pairing-address] [--expires] [--name]` | mints an additional offer against the live server; the startup offer is untouched                              |
+| `orca serve devices list [--json]`                                                      | ids, scope, pending/paired, last use, offer expiry, open connections and the server key fingerprint; no tokens |
+| `orca serve devices revoke <id>`                                                        | removes the grant, closes every socket it authenticated, and refuses it on reconnect, including after restart  |
+| `orca serve devices rotate <id>`                                                        | runtime grants only: new token for the same device id, old one refused at once; prints the new URL             |
+
+**The startup offer.** `orca serve pairing` (and its alias `orca serve pairing show`) re-serves
+the exact offer the readiness line printed — same device id, same `expiresAt`, same
+`alternateEndpoints` — while it is unclaimed and unexpired, so reprinting it never mints a
+credential. Once a client claims it or it expires, the next call mints a fresh one with the same
+`--pairing-expires` lifetime. `--rotate` revokes the unused offer first (a `pairing.superseded`
+security event) and refuses to mint a replacement if that revocation could not be persisted; a
+device that already claimed an offer is never touched by a rotation.
 
 Runtime and mobile offers can coexist: pairing scope is chosen per offer, not per process, so a
 server can take a phone and be saved as an environment by a peer host without a restart
@@ -558,6 +592,35 @@ added), `pairing.expired`, `pairing.superseded`, `device.revoked`, `device.rotat
 (E2EE refusals and bad local-socket tokens, at most 20 records a minute) and
 `auth.failed.suppressed` (how many were dropped). Records carry ids, scope, label and fixed reason
 strings, never tokens or pairing URLs. The desktop app does not write this log.
+
+## Operator CLI
+
+One command family administers a server from its own host:
+
+| Command                                                                                 | Answers from                                       |
+| --------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| `orca serve status [--fresh] [--json]`                                                  | `server.health` (orcad); `--environment` allowed   |
+| `orca serve doctor [--bind] [--port] [--json]`                                          | host probes, plus `server.health` when orcad is up |
+| `orca serve pairing [show] [--rotate] [--json]`                                         | `server.pairingOffer` (orcad)                      |
+| `orca serve pairing new [--mobile\|--runtime] [--pairing-address] [--expires] [--name]` | `pairing.create` (any runtime)                     |
+| `orca serve devices list\|revoke <id>\|rotate <id>`                                     | `devices.*` (any runtime)                          |
+
+All of them, except `status --environment`, dial one local data root, resolved the same way:
+`--data-root`, else `$ORCA_USER_DATA` (orcad's own override), else `$ORCA_USER_DATA_PATH` (set
+inside an Orca terminal), else the first default root with runtime metadata — orcad's
+(`$XDG_DATA_HOME/Orca` or `~/.orca`) before the desktop profile — and orcad's root when neither
+has one. Pass `--data-root` when a desktop app and orcad both run on one machine. They run in one
+CLI handler group, and a packaged `orca-ide serve status|doctor|pairing|devices …` is handed to
+the CLI instead of starting a second server against the same profile. `server.*` methods exist
+only on orcad, so against the desktop app `status` and `pairing` say the runtime does not
+publish that surface rather than reporting it down.
+
+`doctor` checks data-root ownership and mode, the Unix socket path length (the CLI cannot dial
+past `sun_path`), the instance lock, whether the listener can bind (a pinned port in use fails,
+because orcad would exit 78), the systemd user bus and linger that keep the daemon's scope alive
+across logouts and service restarts, daemon cgroup isolation, the glibc floor, the Node ABI (from
+the running orcad), and free disk space. Checks that need the running server are skipped when it
+is down. It exits 1 on any failure.
 
 ## Feature parity with `orca serve`
 
@@ -589,6 +652,19 @@ Named here so nothing reads as implemented that is not:
   no mechanism that re-isolates such a daemon after the fact.
 - **libc slot.** There is no honest health value to publish until native libc detection owns
   it.
+- **A fast start beside a stalled desktop app.** orcad resolves its browser provider before it
+  publishes readiness. Where an installed Orca desktop app exists (macOS `/Applications`, Linux
+  `orca-ide`), it is started as a sidecar and waited on for up to 120 s; one that never answers
+  (seen on macOS under a fresh, empty `HOME`) delays readiness by that long and then reports
+  `browser_unavailable` (`electron_start_failed`). There is no switch to skip the sidecar.
+- **An `unverifiable` terminal status.** `terminal read` reports `running`, `exited` or
+  `unknown`; the wire has no `unverifiable`. A session lost with its daemon whose shell PID still
+  exists (an orphan that survived the hangup) or cannot be queried keeps its last status rather
+  than being guessed `exited`. A reused PID is treated as "still exists", since no process start
+  time is recorded per session.
+- **Alternate endpoints on later offers.** Only the startup offer (and its reprints) carries
+  `alternateEndpoints`; `orca serve pairing new` and `devices rotate` encode the one endpoint
+  named by their `--pairing-address`.
 - **Strict single-use pairing offers.** A claimed offer's URL stays the device's bearer
   credential; closing that needs a protocol-level token exchange that old clients do not speak.
 - **Rotating the host E2EE identity** or a mobile pairing in place, and administering credentials

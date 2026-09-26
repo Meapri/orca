@@ -11,6 +11,7 @@
  *
  *   node tests/tools/orcad-soak/orcad-soak.mjs [--duration 60] [--scenarios boot,load,soak]
  *     [--orcad-dir out/orcad] [--report out/orcad-soak/report.json] [--partition-seconds 20]
+ *     [--start-timeout 120]
  */
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { cpus, tmpdir } from 'node:os'
@@ -48,6 +49,9 @@ const options = {
   maxFdGrowth: Number(option('max-fd-growth', '32')),
   maxRssMbPerMin: Number(option('max-rss-mb-per-min', '8')),
   port: Number(option('port', String(20_000 + Math.floor(Math.random() * 20_000)))),
+  // Why: readiness waits on the installed desktop app's browser sidecar, which can take its full
+  // 120s start budget on a host where it cannot start (docs/reference/orcad-operations.md).
+  startTimeoutSeconds: Number(option('start-timeout', '120')),
   scenarios: option('scenarios', SCENARIO_ORDER.join(',')).split(',').filter(Boolean),
   report: resolve(
     option(
@@ -118,7 +122,7 @@ async function main() {
       pairingAddress: `127.0.0.1:${proxy.port}`,
       logPath: join(root, 'orcad.stderr.log')
     })
-    const readiness = await ctx.orcad.start()
+    const readiness = await ctx.orcad.start(ctx.options.startTimeoutSeconds * 1000)
     proxy.retarget(ctx.orcad.boundPort)
     return readiness
   }

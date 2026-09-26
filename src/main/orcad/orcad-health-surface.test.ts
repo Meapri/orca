@@ -2,6 +2,7 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { z } from 'zod'
 import { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { OrcaRuntimeRpcServer } from '../runtime/runtime-rpc'
 import { readRuntimeMetadata } from '../runtime/runtime-metadata'
@@ -134,16 +135,15 @@ describe('orcad health surface', () => {
     if (!registry) {
       throw new Error('device registry unavailable')
     }
-    const field = (offer: unknown, key: string): unknown =>
-      offer && typeof offer === 'object' ? Reflect.get(offer, key) : undefined
-    const deviceIdOf = (offer: unknown): string => String(field(offer, 'deviceId'))
+    const Offer = z.object({ deviceId: z.string(), expiresAt: z.number().nullable().optional() })
+    const deviceIdOf = (offer: unknown): string => Offer.parse(offer).deviceId
 
     const first = await callLocal(userDataPath, 'server.pairingOffer', {})
     const second = await callLocal(userDataPath, 'server.pairingOffer', {})
     const rotated = await callLocal(userDataPath, 'server.pairingOffer', { rotate: true })
 
     expect(first).toMatchObject({ available: true, scope: 'runtime' })
-    expect(field(first, 'expiresAt')).toEqual(expect.any(Number))
+    expect(Offer.parse(first).expiresAt).toEqual(expect.any(Number))
     expect(second).toEqual(first)
     expect(rotated).toMatchObject({ available: true })
     expect(rotated).not.toEqual(first)
