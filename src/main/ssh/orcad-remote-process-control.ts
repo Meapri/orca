@@ -4,7 +4,7 @@
  * SIGTERM starts one bounded durable shutdown. If it outlasts this wait, preserve the
  * current owner; SIGKILL would skip flushing state and releasing the instance lock.
  */
-import { shellEscape } from './ssh-connection-utils'
+import { shellEscape } from './posix-shell-quote'
 import { joinRemotePath, type RemoteHostPlatform } from './ssh-remote-platform'
 import { ORCAD_READINESS_FILENAME } from './orcad-remote-launch'
 import { selectOrcadSlotRuntimeCommand } from './orcad-remote-runtime'
