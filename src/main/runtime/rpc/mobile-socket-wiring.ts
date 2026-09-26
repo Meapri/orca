@@ -31,6 +31,8 @@ export type MobileSocketTransport = {
   ): void
   setClientId(ws: WebSocket, clientId: string): void
   terminateClientConnections(clientId: string): number
+  // Why: optional because a relayed socket's pings end at the relay, proving nothing end to end.
+  requestDeliveryReceipt?(ws: WebSocket, onDelivered: () => void): () => void
 }
 
 export type AuthenticatedMobileSocket = {
@@ -39,6 +41,8 @@ export type AuthenticatedMobileSocket = {
   device: E2EEAuthenticatedDevice
   clientCapabilities: readonly RuntimeCapability[]
   transport: MobileSocketTransportMetadata
+  outboundBacklogBytes: () => number
+  awaitOutboundDelivery?: (onDelivered: () => void) => () => void
 }
 
 type MobileSocketWiringOptions = {
@@ -189,7 +193,16 @@ export class MobileSocketWiring {
             set clientCapabilities(next: readonly RuntimeCapability[]) {
               channel.clientCapabilities = next
             },
-            transport: metadata
+            transport: metadata,
+            // Why: the owner's JS queue only engages past an 8 MiB native buffer, so the native
+            // count alone already reports any backlog a state stream should yield to.
+            outboundBacklogBytes: () => ws.bufferedAmount,
+            ...(transport.requestDeliveryReceipt
+              ? {
+                  awaitOutboundDelivery: (onDelivered: () => void) =>
+                    transport.requestDeliveryReceipt?.(ws, onDelivered) ?? (() => {})
+                }
+              : {})
           }
           this.authenticatedSockets.set(ws, socket)
           transport.setClientId(ws, device.deviceToken)

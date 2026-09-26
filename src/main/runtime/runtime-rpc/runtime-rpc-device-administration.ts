@@ -169,7 +169,8 @@ export class RuntimeRpcDeviceAdministration extends RuntimeRpcMobilePairing {
   /** Re-encodes an unclaimed, unexpired offer so a reprint serves the same credential; null once it is not. */
   reissueUnclaimedPairingOffer(
     deviceId: string,
-    address: string | undefined
+    address: string | undefined,
+    alternateEndpoints?: readonly string[]
   ):
     | ReturnType<RuntimeRpcDeviceAdministration['encodeDeviceOffer']>
     | PairingOfferUnavailable
@@ -181,7 +182,7 @@ export class RuntimeRpcDeviceAdministration extends RuntimeRpcMobilePairing {
     const target = this.resolveOfferTarget(address)
     return 'available' in target
       ? target
-      : this.encodeDeviceOffer(device, target.endpoint, target.publicKeyB64)
+      : this.encodeDeviceOffer(device, target.endpoint, target.publicKeyB64, alternateEndpoints)
   }
 
   /** Invalidates an offer only while no client has used it; a claimed grant is never touched. */

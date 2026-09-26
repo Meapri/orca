@@ -8,6 +8,7 @@ import {
 } from './remote-runtime-request-websocket'
 import { formatSharedControlCloseMessage } from './remote-runtime-shared-control-protocol'
 import {
+  REMOTE_RUNTIME_SOCKET_PING_PAYLOAD,
   startRemoteRuntimeSocketLiveness,
   type RemoteRuntimeSocketLivenessOptions
 } from './remote-runtime-socket-liveness'
@@ -69,7 +70,7 @@ export function openSharedControlSocket(
   const monitor = startRemoteRuntimeSocketLiveness({
     ping: () => {
       if (ws.readyState === 1) {
-        ws.ping()
+        ws.ping(REMOTE_RUNTIME_SOCKET_PING_PAYLOAD)
       }
     },
     onDead: () => {

@@ -42,7 +42,10 @@ export function parseArgs(argv: string[]): OrcadOptions {
       if (!value) {
         throw new Error('--pairing-address expects a value')
       }
-      options.pairingAddress = value
+      // Why repeatable: a VPS is often reachable several ways (tailnet, public DNS, LAN); the
+      // first stays the advertised endpoint and the rest become the offer's alternates.
+      options.pairingAddress ??= value
+      options.pairingAddresses = [...(options.pairingAddresses ?? []), value]
       i += 1
     } else if (arg === '--limit') {
       const [envName, value] = parseOrcadResourceLimit(argv[i + 1] ?? '')

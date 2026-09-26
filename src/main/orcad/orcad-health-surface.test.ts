@@ -52,6 +52,7 @@ async function startServer(options: { noPairing: boolean }): Promise<{
   const pairingOffer = createOrcadPairingOffer({
     noPairing: options.noPairing,
     pairingAddress: undefined,
+    alternateEndpoints: undefined,
     offerLifetimeMs: 15 * 60_000
   })
   surface.attach({

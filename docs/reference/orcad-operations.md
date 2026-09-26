@@ -89,6 +89,44 @@ host does not own), orcad exits 78 and names the port. It never falls back to a 
 OS-assigned port, because every client would then dial a port nothing listens on. Without
 `--port`, orcad tries the default `6768` and keeps the older fallback behavior.
 
+### Pairing endpoints
+
+`--pairing-address` may be given more than once. The first value is the advertised `endpoint`,
+exactly as before. Every other place the listener is reachable goes into the offer's optional
+`alternateEndpoints`, in the order a client should try them:
+
+1. further `--pairing-address` values;
+2. with `--bind 0.0.0.0` / `::`, the host's interface addresses: tailnet (100.64.0.0/10,
+   fd7a:115c:a1e0::/48) first, then IPv4, then IPv6, virtual bridges last;
+3. with a specific-IP bind, that IP.
+
+A loopback bind adds nothing, since only an SSH forward reaches it. At most 8 alternates are
+offered. A desktop client stores each as an endpoint of the same pairing; when a connect to the
+preferred one goes unanswered it prefers the next, and whichever connects stays preferred. Older
+clients ignore the field and dial `endpoint`.
+
+## Transport over the internet
+
+Every frame is E2EE ciphertext, so these behaviours are about the WebSocket carrying it:
+
+- **Keepalive.** The host pings authenticated sockets every 15 s and reaps one only after
+  3 consecutive unanswered probes; clients ping every 10 s and reset after 25 s of silence. Both
+  sides use a 4-byte ping payload: an empty ping makes the peer auto-pong an empty frame, and an
+  empty write fails with `EFAULT` on Electron/Linux ARM64 hosts (39-bit VA, e.g. Raspberry Pi),
+  which was the ~15 s close-1006 cycle. `ws` is also patched to write empty frames in one call.
+- **Compression.** permessage-deflate is negotiated with any client that offers it (desktop and
+  browsers do), Huffman-only and without context takeover. Ciphertext does not compress, so the
+  gain is base64's overhead on text frames, about 25%; binary frames are never deflated.
+- **State streams under a thin link.** `session.tabs` streams keep one frame in flight per
+  subscription: after each frame the host sends a delivery ping, and later changes park as the
+  newest frame per worktree until the pong proves the peer has read it. Interactive replies on
+  the same socket therefore wait behind at most one snapshot instead of the whole backlog. A clear
+  link still carries every change immediately.
+- **Discarded terminal frames** close the socket with 1013 so the client reconnects and
+  resubscribes, rather than leaving it attached to a multiplex that no longer exists.
+- **Resume.** On OS resume or network online the desktop probes every remote-runtime socket with
+  an 8 s deadline and restarts reconnect backoff from 250 ms.
+
 ## Data root and the instance lock
 
 The data root is `$ORCA_USER_DATA`, else `$XDG_DATA_HOME/Orca`, else `~/.orca`.
@@ -562,3 +600,11 @@ Named here so nothing reads as implemented that is not:
   through daemon scope isolation; an unscoped daemon there cannot be stopped by the installer.
 - **Published standalone release assets.** `pnpm pack:orcad-release` builds the tarball and
   installer, but the release workflow does not publish them.
+- **Terminal stream resumption.** A reconnect always re-subscribes and receives a full snapshot;
+  there is no replay from the last acknowledged sequence.
+- **Relay pairing for orcad.** The cloud relay is wired only in the desktop app; orcad offers
+  direct endpoints only.
+- **Endpoint failover and resume probing outside the desktop.** The web client and mobile app do
+  not read `alternateEndpoints`, and the web client has no resume-triggered probe.
+- **Compress-before-encrypt.** JSON state is not compressed before encryption, so the stream
+  itself stays roughly as large as its plaintext.

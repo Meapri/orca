@@ -2,6 +2,8 @@
 import type { Server as HttpsServer } from 'node:https'
 import type { Server as HttpServer } from 'node:http'
 import { WebSocketServer, type WebSocket } from 'ws'
+import { remoteRuntimePerMessageDeflateOptions } from './ws-transport-compression'
+import { WebSocketDeliveryReceiptRegistry } from './ws-delivery-receipts'
 import type { RpcTransport } from './transport'
 import {
   createWebSocketHttpServer,
@@ -74,6 +76,7 @@ export class WebSocketTransport implements RpcTransport {
   private wsClientIds = new Map<WebSocket, string>()
   private heartbeatConnections = new Set<WebSocket>()
   private preAuthTimers = new WeakMap<WebSocket, ReturnType<typeof setTimeout>>()
+  private readonly deliveryReceipts = new WebSocketDeliveryReceiptRegistry()
 
   constructor({
     host,
@@ -120,6 +123,11 @@ export class WebSocketTransport implements RpcTransport {
   setClientId(ws: WebSocket, clientId: string): void {
     this.wsClientIds.set(ws, clientId)
     this.clearPreAuthTimer(ws)
+  }
+
+  // Why: lets a state stream pace itself on end-to-end delivery rather than local buffering.
+  requestDeliveryReceipt(ws: WebSocket, onDelivered: () => void): () => void {
+    return this.deliveryReceipts.request(ws, onDelivered)
   }
 
   terminateClientConnections(clientId: string): number {
@@ -187,7 +195,8 @@ export class WebSocketTransport implements RpcTransport {
 
     const wss = new WebSocketServer({
       server: httpServer,
-      maxPayload: MAX_WS_MESSAGE_BYTES
+      maxPayload: MAX_WS_MESSAGE_BYTES,
+      perMessageDeflate: remoteRuntimePerMessageDeflateOptions()
     })
 
     wss.on('connection', (ws) => {
@@ -243,8 +252,9 @@ export class WebSocketTransport implements RpcTransport {
   // Why: WS connections are long-lived and multiplex many RPCs by `id`; auth and dispatch are delegated to the message handler.
   private handleConnection(ws: WebSocket): void {
     let finalized = false
-    const onPong = (): void => {
+    const onPong = (payload: Buffer): void => {
       this.heartbeat.noteAlive(ws)
+      this.deliveryReceipts.notePong(ws, payload)
     }
     const onMessage = (data: WebSocket.RawData, isBinary: boolean): void => {
       // Why: any inbound frame counts as proof of life, so an actively-talking client isn't reaped mid-request.
@@ -281,6 +291,7 @@ export class WebSocketTransport implements RpcTransport {
       ws.off('close', finalizeConnection)
       ws.off('error', onError)
       this.clearPreAuthTimer(ws)
+      this.deliveryReceipts.release(ws)
       this.heartbeatConnections.delete(ws)
       if (this.heartbeatConnections.size === 0) {
         this.heartbeat.stop()

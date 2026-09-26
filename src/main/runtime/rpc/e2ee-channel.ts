@@ -171,7 +171,7 @@ export class E2EEChannel {
       if (!this.outbound.canSend(response.byteLength + 40)) {
         return false
       }
-      this.ws.send(Buffer.from(encryptBytes(response, this.sharedKey)), { binary: true })
+      this.outbound.sendLegacyBinary(encryptBytes(response, this.sharedKey))
       return true
     }
     this.messageHandler?.(plaintext, encryptedReply, encryptedBinaryReply)

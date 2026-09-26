@@ -95,6 +95,8 @@ export type OrcadOptions = {
   json?: boolean
   noPairing?: boolean
   pairingAddress?: string
+  /** Every --pairing-address in order; the first equals pairingAddress. */
+  pairingAddresses?: string[]
   /** Lifetime of the startup offer; see DEFAULT_PAIRING_OFFER_LIFETIME_MS. */
   pairingExpiresInMs?: number
   /** Literal IP to bind. Defaults to loopback; see orcad-bind-address.ts. */
@@ -141,7 +143,9 @@ async function startOrcadRuntime(
   const { registerHeadlessPtyRuntime, getLocalPtyProvider, getSshPtyProvider } =
     await import('../ipc/pty')
   const { getAppEnvironment } = await import('../../shared/app-environment')
-  const { resolveAdvertisedPairingEndpoint } = await import('../runtime/pairing-endpoint')
+  const { collectPairingEndpointCandidates } =
+    await import('../runtime/pairing-endpoint-candidates')
+  const { getPairingNetworkInterfaces } = await import('../runtime/pairing-network-interfaces')
   const { ServeReadinessPublisher } = await import('../server/serve-readiness')
   const { createOrcadProfileStateStartup } = await import('./orcad-profile-state-startup')
   const { startOrcadDaemon, stopOrcadDaemon } = await import('./orcad-daemon-supervision')
@@ -364,13 +368,21 @@ async function startOrcadRuntime(
   console.error(`[orcad] ${describeOrcadBindExposure(bindHost)}`)
 
   const boundEndpoint = rpc.getWebSocketEndpoint()
-  const advertised = boundEndpoint
-    ? resolveAdvertisedPairingEndpoint(boundEndpoint, options.pairingAddress)
+  const endpointCandidates = boundEndpoint
+    ? collectPairingEndpointCandidates({
+        boundEndpoint,
+        bindHost,
+        configuredAddresses:
+          options.pairingAddresses ?? (options.pairingAddress ? [options.pairingAddress] : []),
+        interfaces: await getPairingNetworkInterfaces()
+      })
     : null
+  const advertised = endpointCandidates?.primary ?? null
   // Why: `orca serve pairing new` mints a fresh offer on demand, so a short window costs nothing.
   const pairingOffer = createOrcadPairingOffer({
     noPairing: options.noPairing === true,
     pairingAddress: options.pairingAddress,
+    alternateEndpoints: endpointCandidates?.alternates,
     offerLifetimeMs: options.pairingExpiresInMs ?? DEFAULT_PAIRING_OFFER_LIFETIME_MS
   })
   const listeningRpc = rpc

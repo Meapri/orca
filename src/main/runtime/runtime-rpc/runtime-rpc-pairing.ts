@@ -145,6 +145,8 @@ export class RuntimeRpcPairing extends RuntimeRpcNetworkExposure {
     reach?: RuntimePairingReach
     // Why: set = a standalone offer that expires unclaimed; unset = the coalescing QR/link credential.
     offerLifetimeMs?: number
+    // Why: other places this listener is reachable, tried in order by clients that know the field.
+    alternateEndpoints?: readonly string[]
   }):
     | PairingOfferUnavailable
     | {
@@ -198,13 +200,14 @@ export class RuntimeRpcPairing extends RuntimeRpcNetworkExposure {
       console.error('[runtime] Failed to persist pairing credential:', error)
       return pairingUnavailable('device_registry_unavailable', DEVICE_REGISTRY_UNAVAILABLE_GUIDANCE)
     }
-    return this.encodeDeviceOffer(device, endpoint, publicKeyB64)
+    return this.encodeDeviceOffer(device, endpoint, publicKeyB64, args.alternateEndpoints)
   }
 
   protected encodeDeviceOffer(
     device: DeviceEntry,
     endpoint: string,
-    publicKeyB64: string
+    publicKeyB64: string,
+    alternateEndpoints?: readonly string[]
   ): {
     available: true
     pairingUrl: string
@@ -219,7 +222,8 @@ export class RuntimeRpcPairing extends RuntimeRpcNetworkExposure {
       deviceToken: device.token,
       publicKeyB64,
       pairedDeviceId: device.deviceId,
-      scope: device.scope
+      scope: device.scope,
+      ...pairingAlternateEndpointsField(endpoint, alternateEndpoints)
     })
     return {
       available: true,
@@ -277,4 +281,12 @@ export class RuntimeRpcPairing extends RuntimeRpcNetworkExposure {
     }
     return true
   }
+}
+
+function pairingAlternateEndpointsField(
+  endpoint: string,
+  alternates: readonly string[] | undefined
+): { alternateEndpoints?: string[] } {
+  const distinct = [...new Set(alternates ?? [])].filter((candidate) => candidate !== endpoint)
+  return distinct.length > 0 ? { alternateEndpoints: distinct } : {}
 }

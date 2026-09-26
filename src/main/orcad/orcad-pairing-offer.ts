@@ -11,6 +11,8 @@ import { DEVICE_REGISTRY_UNAVAILABLE_GUIDANCE } from '../runtime/runtime-rpc/run
 export type OrcadPairingOptions = {
   noPairing: boolean
   pairingAddress: string | undefined
+  /** The listener's other reachable endpoints (repeated --pairing-address, interfaces). */
+  alternateEndpoints: readonly string[] | undefined
   offerLifetimeMs: number
 }
 
@@ -49,6 +51,7 @@ export function createOrcadPairingOffer(options: OrcadPairingOptions) {
       address: options.pairingAddress,
       name: `CLI ${new Date().toLocaleDateString()}`,
       scope: 'runtime',
+      alternateEndpoints: options.alternateEndpoints,
       // Why: this URL lands in a supervisor journal; an unclaimed one must not stay a live credential.
       offerLifetimeMs: options.offerLifetimeMs
     })
@@ -70,7 +73,11 @@ export function createOrcadPairingOffer(options: OrcadPairingOptions) {
         }
       }
       if (currentDeviceId && request.rotate) {
-        const reissued = rpc.reissueUnclaimedPairingOffer(currentDeviceId, options.pairingAddress)
+        const reissued = rpc.reissueUnclaimedPairingOffer(
+          currentDeviceId,
+          options.pairingAddress,
+          options.alternateEndpoints
+        )
         // Why refuse: minting a replacement while the leaked one still authenticates is not a rotation.
         if (reissued && !rpc.supersedeUnclaimedPairingOffer(currentDeviceId)) {
           return {
@@ -81,7 +88,11 @@ export function createOrcadPairingOffer(options: OrcadPairingOptions) {
         }
         currentDeviceId = null
       } else if (currentDeviceId) {
-        const reissued = rpc.reissueUnclaimedPairingOffer(currentDeviceId, options.pairingAddress)
+        const reissued = rpc.reissueUnclaimedPairingOffer(
+          currentDeviceId,
+          options.pairingAddress,
+          options.alternateEndpoints
+        )
         if (reissued) {
           return reissued.available ? toReadiness(reissued) : reissued
         }

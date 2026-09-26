@@ -82,6 +82,9 @@ export class SharedControlReconnectScheduler {
     this.timer = null
     const open = this.pendingOpen
     this.pendingOpen = null
+    // Why: a wake or network change is fresh evidence, so a failure right after it starts again from
+    // the short delays instead of the 5-minute idle cap earned during the outage (#9092).
+    this.attempt = 0
     open()
     return true
   }

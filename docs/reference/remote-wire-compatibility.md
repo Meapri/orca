@@ -247,6 +247,30 @@ The cross-version suite derives the old client's list by removing this capabilit
 baseline's own list, per the rule above, so the downgrade stays exercised after a release ships
 it.
 
+## Worked example: transport changes that need no negotiation
+
+The internet-transport work (#20673, #22151, #20802, #16617) changed what the host sends without
+a new opcode or capability. Each is safe for a stated reason, and the reason is the contract:
+
+- **Ping payloads and delivery pings.** Control frames are RFC 6455: every peer must echo a
+  ping's payload in its pong, and every supported client auto-pongs. The host now pings with a
+  payload (`orca`, and `d:<seq>` after each `session.tabs` frame). A peer that pongs without
+  echoing releases the wait immediately, and one that never answers releases it after 10 s, so an
+  old or non-compliant peer degrades to unpaced sends rather than stalling.
+- **permessage-deflate** is negotiated in the upgrade handshake (RFC 7692). A client that does not
+  offer it gets an uncompressed connection, exactly as before.
+- **Latest-wins `session.tabs` publication** is Rule 3: under backpressure the host stops sending
+  intermediate snapshot versions. That is safe only because every client already drops a
+  same-epoch frame whose `snapshotVersion` is not strictly newer, and the final state per worktree
+  is always sent. Follow-intent frames are never superseded. If a client ever needs every
+  version, this must become capability-gated.
+- **1013 close on a discarded terminal frame** replaces a silent local close. Closing the socket is
+  the one signal every released client already recovers from.
+- **`alternateEndpoints` on the pairing offer** is Rule 1. The shared fixture pins that older
+  decoders strip it, the key is omitted when empty so single-endpoint offers are unchanged, and the
+  new decoder drops malformed or excess entries instead of refusing the offer (Rule 4's intent). A
+  client must keep treating `endpoint` as the primary: the field is advice, not a replacement.
+
 ## Known debt: JSON-RPC errors drop Node's string code
 
 An error raised on an SSH host crosses the relay as JSON-RPC, and

@@ -46,6 +46,34 @@ describe('parseArgs', () => {
     expect(() => parseArgs(['--limit', 'toString=1'])).toThrow('--limit expects')
   })
 
+  it('accepts every orcad flag together: limits, lifetime, repeated addresses, pinned port', () => {
+    expect(
+      parseArgs([
+        '--port',
+        '6768',
+        '--bind',
+        '0.0.0.0',
+        '--limit',
+        'terminal-memory-high=3G',
+        '--pairing-expires',
+        '1h',
+        '--pairing-address',
+        '100.64.1.20',
+        '--pairing-address',
+        'wss://orca.example.com',
+        '--json'
+      ])
+    ).toEqual({
+      port: 6768,
+      bind: '0.0.0.0',
+      resourceLimits: { ORCA_TERMINAL_MEMORY_HIGH: '3G' },
+      pairingExpiresInMs: 3_600_000,
+      pairingAddress: '100.64.1.20',
+      pairingAddresses: ['100.64.1.20', 'wss://orca.example.com'],
+      json: true
+    })
+  })
+
   it('parses --pairing-expires and refuses a lifetime outside the supported window', () => {
     expect(parseArgs(['--pairing-expires', '2h'])).toEqual({ pairingExpiresInMs: 7_200_000 })
     expect(() => parseArgs(['--pairing-expires'])).toThrow('--pairing-expires')
