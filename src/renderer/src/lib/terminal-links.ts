@@ -2,14 +2,18 @@ import { normalizeAbsolutePath } from './terminal-path-normalization'
 import { resolveExplicitFileLinkTarget } from './explicit-file-link-target'
 import { detectBareFilenameLinks } from './terminal-bare-file-link-detection'
 import {
+  buildLineEndingSpacedPathPrefixRanges,
   detectTerminalFileLinkRanges,
   insertTerminalFileLinkClaimedRange,
   mergeTerminalFileLinkRanges,
   terminalFileLinkRangesOverlap,
   toParsedTerminalFileLink,
+  trimTerminalFileLinkRangeEnd,
   type DetectedTerminalFileLinkRange
 } from './terminal-file-link-detection-ranges'
 import { detectTerminalFileUriLinks } from './terminal-file-uri-link'
+import { applyTerminalFileLinkLocationSuffix } from './terminal-file-link-location-suffix'
+import { detectGitDiffHeaderFileLinks } from './terminal-git-diff-header-links'
 
 export type ParsedTerminalFileLink = {
   pathText: string
@@ -59,6 +63,9 @@ const SPACED_LOCAL_PATH_REGEXES = [
 ]
 
 const URI_PREFIX_CHAR_PATTERN = /^[A-Za-z0-9+./:-]$/
+// Why: `app.py:17: Error`, `app.py::test_x FAILED` — a location or pytest node
+// suffix ends the path, so prose after it is not a spaced path segment.
+const LOCATION_TERMINATED_FIRST_TOKEN = /^\S*\.[A-Za-z0-9_+-]+:/
 
 function hasPathSeparator(text: string): boolean {
   return text.includes('/') || text.includes('\\')
@@ -157,35 +164,6 @@ function trimSpacedPathTrailingProse(
   }
 }
 
-function trimTrailingWhitespace(
-  range: DetectedTerminalFileLinkRange
-): DetectedTerminalFileLinkRange {
-  const text = range.text.trimEnd()
-  return {
-    text,
-    startIndex: range.startIndex,
-    endIndex: range.startIndex + text.length
-  }
-}
-
-function buildLineEndingSpacedPathPrefixRanges(
-  range: DetectedTerminalFileLinkRange
-): DetectedTerminalFileLinkRange[] {
-  const ranges: DetectedTerminalFileLinkRange[] = []
-  for (const match of range.text.matchAll(/\s+/g)) {
-    const endIndex = match.index ?? 0
-    const text = range.text.slice(0, endIndex).trimEnd()
-    if (text.includes(' ')) {
-      ranges.push({
-        text,
-        startIndex: range.startIndex,
-        endIndex: range.startIndex + text.length
-      })
-    }
-  }
-  return ranges.toReversed()
-}
-
 // Ported from VSCode's TerminalLocalLinkDetector. Extracts anything that
 // contains a path separator, optionally with a `:line:col` suffix — covers
 // `./src/foo.ts`, `/abs/bar`, `src/foo.ts:12:3`, etc.
@@ -245,6 +223,7 @@ function detectSpacedLocalPathLinks(
         continue
       }
       if (
+        LOCATION_TERMINATED_FIRST_TOKEN.test(range.text) ||
         terminalFileLinkRangesOverlap(range, claimedRanges) ||
         isInsideUriScheme(lineText, range)
       ) {
@@ -257,7 +236,7 @@ function detectSpacedLocalPathLinks(
       const candidateLinks = candidateRanges
         .map((candidateRange) =>
           toParsedTerminalFileLink(
-            trimSpacedPathTrailingProse(trimTrailingWhitespace(candidateRange))
+            trimSpacedPathTrailingProse(trimTerminalFileLinkRangeEnd(candidateRange))
           )
         )
         .filter((link): link is ParsedTerminalFileLink => link !== null)
@@ -280,6 +259,10 @@ function assembleFileLinks(
   lineText: string,
   includeLineEndingPrefixCandidates: boolean
 ): ParsedTerminalFileLink[] {
+  const diffHeaderLinks = detectGitDiffHeaderFileLinks(lineText)
+  if (diffHeaderLinks) {
+    return diffHeaderLinks
+  }
   const uriLinks = detectTerminalFileUriLinks(lineText)
   const pathLinks = detectLocalPathLinks(lineText, includeLineEndingPrefixCandidates)
   const explicitLinks = uriLinks.length > 0 ? [...uriLinks, ...pathLinks] : pathLinks
@@ -290,7 +273,7 @@ function assembleFileLinks(
   for (const link of wordLinks) {
     explicitLinks.push(link)
   }
-  return explicitLinks
+  return explicitLinks.map((link) => applyTerminalFileLinkLocationSuffix(lineText, link))
 }
 
 export function extractTerminalFileLinks(lineText: string): ParsedTerminalFileLink[] {

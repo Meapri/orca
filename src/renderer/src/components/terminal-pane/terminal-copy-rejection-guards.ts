@@ -9,10 +9,12 @@ export async function runTerminalCopy(args: {
   selection: string
   writeClipboardText: (text: string) => Promise<void>
   focus: () => void
+  onCopied?: () => void
 }): Promise<void> {
   try {
     if (args.selection) {
       await args.writeClipboardText(args.selection)
+      args.onCopied?.()
     }
   } catch {
     // Why swallow: matches the shortcut and copy-on-select paths, and a failed

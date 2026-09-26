@@ -17966,7 +17966,15 @@
       "TerminalContextMenu": {
         "copySessionId": "セッション ID をコピー",
         "copySessionIdSuccess": "セッション ID をコピーしました",
-        "copySessionIdError": "セッション ID のコピーに失敗しました"
+        "copySessionIdError": "セッション ID のコピーに失敗しました",
+        "copyRaw": "そのままコピー"
+      },
+      "mouseCaptureSelectionHint": {
+        "mac": "このアプリはマウスを使用しています。テキストを選択するには ⌥ Option を押しながらドラッグしてください。",
+        "other": "このアプリはマウスを使用しています。テキストを選択するには Shift を押しながらドラッグしてください。"
+      },
+      "copyFeedback": {
+        "copied": "クリップボードにコピーしました"
       }
     },
     "jiraUserPicker": {

@@ -2,6 +2,7 @@ import type { ManagedPane, PaneManager } from '@/lib/pane-manager/pane-manager'
 import type { PaneCwdMap } from './resolve-split-cwd'
 import type { PtyTransport } from './pty-transport'
 import { copyTerminalSelection } from './terminal-selection-copy'
+import { showTerminalCopyFeedback } from './terminal-copy-feedback'
 import { splitTerminalPaneWithInheritedCwd } from './terminal-pane-split-with-inherited-cwd'
 import {
   markTerminalFollowOutput,
@@ -89,11 +90,15 @@ export function dispatchTerminalShortcutAction(
     if (!pane || !pane.terminal.getSelection()) {
       return
     }
+    // Why: under kitty release reporting xterm would encode this key's keyup
+    // as user input and scroll to the bottom mid-copy (#17606).
+    armNativeOnlyShortcut(event)
     event.preventDefault()
     event.stopImmediatePropagation()
     void copyTerminalSelection({
       terminal: pane.terminal,
-      writeClipboardText: window.api.ui.writeTerminalClipboardText
+      writeClipboardText: window.api.ui.writeTerminalClipboardText,
+      onCopied: showTerminalCopyFeedback
     }).catch(() => {})
     return
   }
@@ -117,6 +122,7 @@ export function dispatchTerminalShortcutAction(
     return
   }
   if (action.type === 'scrollViewport') {
+    armNativeOnlyShortcut(event)
     event.preventDefault()
     event.stopImmediatePropagation()
     const pane = manager.getActivePane() ?? manager.getPanes()[0]

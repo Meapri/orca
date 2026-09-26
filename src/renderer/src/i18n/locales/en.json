@@ -18115,13 +18115,21 @@
       "TerminalContextMenu": {
         "copySessionId": "Copy Session ID",
         "copySessionIdSuccess": "Session ID copied",
-        "copySessionIdError": "Unable to copy session ID"
+        "copySessionIdError": "Unable to copy session ID",
+        "copyRaw": "Copy Raw"
+      },
+      "mouseCaptureSelectionHint": {
+        "mac": "This app captures the mouse. Hold ⌥ Option while dragging to select text.",
+        "other": "This app captures the mouse. Hold Shift while dragging to select text."
+      },
+      "copyFeedback": {
+        "copied": "Copied to clipboard"
       }
     },
     "settings": {
       "TerminalInteraction": {
         "copyTrimsGutter": "Trim Gutter on Copy",
-        "copyTrimsGutterDescription": "Drop the left gutter agent output is painted behind, so copied text is not indented. Only the indent every selected line shares is removed.",
+        "copyTrimsGutterDescription": "Drop the gutter, box borders, line numbers and trailing padding agent and TUI output is painted with, and rejoin lines a boxed TUI wrapped. Only the indent every selected line shares is removed; right-click › Copy Raw keeps the screen cells as-is.",
         "clickToMoveCursor": "Click to Move Cursor",
         "clickToMoveCursorDescription": "Click on the line you are typing to move the cursor there. \"At prompts\" needs shell integration; \"Any input line\" also works in agent CLIs and REPLs.",
         "clickToMoveOff": "Off",

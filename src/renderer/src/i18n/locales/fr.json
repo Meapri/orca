@@ -18085,7 +18085,15 @@
       "TerminalContextMenu": {
         "copySessionId": "Copier l'ID de session",
         "copySessionIdSuccess": "ID de session copié",
-        "copySessionIdError": "Impossible de copier l'ID de session"
+        "copySessionIdError": "Impossible de copier l'ID de session",
+        "copyRaw": "Copier le texte brut"
+      },
+      "mouseCaptureSelectionHint": {
+        "mac": "Cette application capture la souris. Maintenez ⌥ Option en faisant glisser pour sélectionner du texte.",
+        "other": "Cette application capture la souris. Maintenez Maj en faisant glisser pour sélectionner du texte."
+      },
+      "copyFeedback": {
+        "copied": "Copié dans le presse-papiers"
       }
     },
     "settings": {
