@@ -17,6 +17,13 @@ import {
   resolveTuiAgentLaunchArgs,
   resolveTuiAgentLaunchEnv
 } from '../../shared/tui-agent-launch-defaults'
+import {
+  normalizeAgentProviderSession,
+  type AgentProviderSessionMetadata
+} from '../../shared/agent-session-resume'
+import { findAgentResumePaneHolder, type AgentResumePaneHolder } from './agent-resume-pane-holder'
+import { runtimeWorktreeIdsEqual } from './runtime-worktree-path-identity'
+import type { RuntimeTerminalCreate } from '../../shared/runtime-types'
 
 export class OrcaRuntimeWithGetAgentSessionExecutionNamespace extends OrcaRuntimeWithResolveWorktreeRemovalTarget {
   protected getAgentSessionExecutionNamespace(
@@ -71,6 +78,79 @@ export class OrcaRuntimeWithGetAgentSessionExecutionNamespace extends OrcaRuntim
     }
   }
 
+  /** The pane on this execution host that already runs this agent session, if any. */
+  protected findAgentResumePaneHolder(
+    workspace: TerminalWorkspaceLaunchScope,
+    agent: TuiAgent,
+    providerSession: AgentProviderSessionMetadata,
+    placement?: { tabId?: string; leafId?: string }
+  ): AgentResumePaneHolder {
+    return findAgentResumePaneHolder(
+      {
+        rows: this.getAgentProviderSessionSnapshotFn?.() ?? [],
+        getPtyForPaneKey: (paneKey) => this.getPtyRecordForPaneKey(paneKey),
+        getVerdict: (ptyId) => this.getPtyLivenessVerdict(ptyId),
+        isKnownExited: (ptyId) => this.isPtyKnownExited(ptyId),
+        controllerKnowsLive: (ptyId) => this.controllerKnowsPtyIsLive(ptyId)
+      },
+      {
+        agent,
+        providerSession,
+        connectionId: workspace.connectionId ?? null,
+        excludePaneKey:
+          placement?.tabId && placement.leafId ? `${placement.tabId}:${placement.leafId}` : null
+      }
+    )
+  }
+
+  /** Legacy `terminal.create` carries a resume as a command; true when another pane may hold it. */
+  async isAgentResumeHeldByAnotherPane(
+    worktreeSelector: string | undefined,
+    request: {
+      launchAgent?: TuiAgent
+      resumeProviderSession?: unknown
+      tabId?: string
+      leafId?: string
+    }
+  ): Promise<boolean> {
+    const providerSession = normalizeAgentProviderSession(request.resumeProviderSession)
+    if (!worktreeSelector || !request.launchAgent || !providerSession) {
+      return false
+    }
+    const workspace = await this.resolveTerminalWorkspaceLaunchScope(worktreeSelector)
+    const holder = this.findAgentResumePaneHolder(
+      workspace,
+      request.launchAgent,
+      providerSession,
+      request
+    )
+    if (holder.status !== 'none') {
+      console.warn(
+        `[agent-resume] ${holder.status} pane ${holder.paneKey} already holds this session`
+      )
+    }
+    return holder.status !== 'none'
+  }
+
+  /** Redirect target for a resume whose session already runs: the existing pane, as a create result. */
+  protected describeAgentResumeHolder(
+    holder: Extract<AgentResumePaneHolder, { status: 'live' }>
+  ): RuntimeTerminalCreate {
+    const pty = this.ptysById.get(holder.ptyId)
+    return {
+      handle: this.issuePtyHandle(pty),
+      tabId: holder.tabId,
+      paneKey: holder.paneKey,
+      ptyId: holder.ptyId,
+      worktreeId: holder.worktreeId,
+      title: pty?.title ?? null,
+      ...this.getPtyExecutionHostMetadata(holder.ptyId),
+      surface: 'background',
+      agentSessionDisposition: 'adopted',
+      isReattach: true
+    }
+  }
+
   protected toAgentSessionOptions(
     preferences: AgentLaunchPreferences | undefined
   ): Record<string, string> | undefined {
@@ -107,6 +187,22 @@ export class OrcaRuntimeWithGetAgentSessionExecutionNamespace extends OrcaRuntim
     }
     // Why: nested SSH paths belong to the execution owner, so compatibility selection must happen before local filesystem canonicalization.
     const identity = canonicalizeAgentSessionIdentity(request.agent, request.providerSession)
+    // Why before the claim: fresh-launched panes never enter the claim registry, so it cannot see them.
+    const holder = this.findAgentResumePaneHolder(
+      workspace,
+      request.agent,
+      request.providerSession,
+      request.placement
+    )
+    if (holder.status === 'unverifiable') {
+      throw new Error('agent_session_ownership_unknown')
+    }
+    if (holder.status === 'live') {
+      if (!runtimeWorktreeIdsEqual(holder.worktreeId, workspace.id)) {
+        throw new Error('agent_session_conflict')
+      }
+      return { terminal: this.describeAgentResumeHolder(holder), disposition: 'adopted' }
+    }
     const claim = this.agentSessionClaimSigner.createClaim({
       namespace,
       identity,
