@@ -21,6 +21,7 @@ import { copyTerminalSelection } from './terminal-selection-copy'
 import { readTerminalClipboardSelection } from './terminal-clipboard-selection-text'
 import { installTerminalNativeCopyGutterTrim } from './terminal-native-copy-gutter'
 import { createSettledTerminalCopyFeedback } from './terminal-copy-feedback'
+import { installTerminalMouseCaptureSelectionHint } from './terminal-mouse-capture-selection-hint'
 import { installMouseHideWhileTyping } from './mouse-hide-while-typing'
 import { isPrimarySelectionEnabled, setPrimarySelectionText } from '@/lib/primary-selection'
 import {
@@ -117,10 +118,14 @@ export function installTerminalPaneLinkHandling(context: PaneLinkContext): void 
   )
   seedStartupSessionRestoredBanner(ptyStartup, pane.id, onShowSessionRestoredBanner)
 
-  refs.nativeCopyDisposablesRef.current.set(
-    pane.id,
-    installTerminalNativeCopyGutterTrim(pane.terminal)
-  )
+  const nativeCopy = installTerminalNativeCopyGutterTrim(pane.terminal)
+  const selectionHint = installTerminalMouseCaptureSelectionHint(pane.terminal)
+  refs.nativeCopyDisposablesRef.current.set(pane.id, {
+    dispose: () => {
+      nativeCopy.dispose()
+      selectionHint.dispose()
+    }
+  })
   const copyOnSelectFeedback = createSettledTerminalCopyFeedback()
   refs.selectionDisposablesRef.current.set(
     pane.id,

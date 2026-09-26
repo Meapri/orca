@@ -18105,6 +18105,10 @@
         "copySessionIdError": "Unable to copy session ID",
         "copyRaw": "Copy Raw"
       },
+      "mouseCaptureSelectionHint": {
+        "mac": "This app captures the mouse. Hold ⌥ Option while dragging to select text.",
+        "other": "This app captures the mouse. Hold Shift while dragging to select text."
+      },
       "copyFeedback": {
         "copied": "Copied to clipboard"
       }

@@ -17934,6 +17934,10 @@
         "copySessionIdError": "复制会话 ID 失败",
         "copyRaw": "复制原始文本"
       },
+      "mouseCaptureSelectionHint": {
+        "mac": "此应用正在捕获鼠标。按住 ⌥ Option 拖动即可选择文本。",
+        "other": "此应用正在捕获鼠标。按住 Shift 拖动即可选择文本。"
+      },
       "copyFeedback": {
         "copied": "已复制到剪贴板"
       }
