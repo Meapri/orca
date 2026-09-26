@@ -153,6 +153,11 @@ const CENSUS: readonly CensusRow[] = [
     path: 'main/runtime/orca-runtime-prune-mobile-session-tab-group-layout.ts',
     kind: 'consumes',
     role: 'mobile tab-group pruning and its live agent row, plus the pane identity accessors'
+  },
+  {
+    path: 'main/runtime/orca-runtime-get-agent-session-execution-namespace.ts',
+    kind: 'consumes',
+    role: 'resume dedupe: the live pane already holding a provider session, matched on pane key'
   }
 ]
 
@@ -373,7 +378,6 @@ describe('agent status producer census', () => {
     try {
       installMainWindowAgentStatusListeners({
         window: window as never,
-        maybeAutoRenameBranchOnFirstWork: () => {},
         onRecordAgentState: () => {}
       })
       for (const listener of listeners) {

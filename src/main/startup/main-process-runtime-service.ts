@@ -12,6 +12,10 @@ import { agentHookServer } from '../agent-hooks/server'
 import { browserManager } from '../browser/browser-manager'
 import { loadAgentSessionClaimSigner } from '../runtime/agent-session-claim-identity'
 import { getProfileUserDataPath } from '../orca-profiles/profile-storage-paths'
+import {
+  closedTerminalSurfaceLedgerPath,
+  createClosedTerminalSurfaceLedgerFileStorage
+} from '../runtime/closed-terminal-surface-ledger-file'
 import { prepareCodexAiVaultSessionResume } from '../codex/codex-ai-vault-session-resume'
 import { resolveHostCodexSessionSourceHome } from '../codex/codex-session-source-home'
 import { isAgentStatusHooksEnabled } from '../agent-hooks/managed-agent-hook-controls'
@@ -32,6 +36,8 @@ import {
   AgentStatusObservedPaneIdentities,
   recordObservedAgentStatusPaneIdentity
 } from '../runtime/agent-status-observed-pane-identity'
+import { installFirstWorkRenameSubscription } from '../agent-hooks/first-work-rename-subscription'
+import { firstWorkRenameDeps } from '../agent-hooks/first-work-rename-runtime'
 
 export function getDesktopWindowStatus(): RuntimeDesktopWindowStatus {
   const activation = state.desktopActivationGate
@@ -74,6 +80,9 @@ export function initializeMainProcessRuntime(): OrcaRuntimeService {
   // `orca serve`, which never opens one, and the fleet path runs there too.
   const observedPaneIdentities = new AgentStatusObservedPaneIdentities()
   const runtime = new OrcaRuntimeService(store, stats, {
+    closedTerminalSurfaceLedgerStorage: createClosedTerminalSurfaceLedgerFileStorage(
+      closedTerminalSurfaceLedgerPath(getProfileUserDataPath())
+    ),
     prepareClaudeAuth: (target) => state.claudeRuntimeAuth!.prepareForClaudeLaunch(target),
     agentSessionClaimSigner: loadAgentSessionClaimSigner(
       getProfileUserDataPath(),
@@ -167,6 +176,7 @@ export function initializeMainProcessRuntime(): OrcaRuntimeService {
   agentHookServer.subscribeEnrichedStatus((enriched) =>
     recordObservedAgentStatusPaneIdentity(observedPaneIdentities, enriched.paneKey, runtime)
   )
+  installFirstWorkRenameSubscription(agentHookServer, () => firstWorkRenameDeps(store, runtime))
   // Why before anything can attach: a client host that reattaches to a restarted runtime is only
   // handed its pages back if the runtime found them first.
   runtime.rehydrateClientHostedBrowserPages()

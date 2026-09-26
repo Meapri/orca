@@ -5,6 +5,7 @@ import { SSH_PROVIDER_UNREGISTERED_REASON } from '../../shared/pty-liveness-verd
 import type { RuntimeTerminalClose } from '../../shared/runtime-types'
 import { countTerminalLayoutLeaves } from './headless-terminal-split-layout'
 import type { RuntimePtyTabCloseAuthority } from './runtime-terminal-state-records'
+import { parsePaneKey } from '../../shared/stable-pane-id'
 
 export class OrcaRuntimeWithStopExplicitlyClosedTabPtys extends OrcaRuntimeWithFocusTerminal {
   protected async stopExplicitlyClosedTabPtys(
@@ -155,6 +156,14 @@ export class OrcaRuntimeWithStopExplicitlyClosedTabPtys extends OrcaRuntimeWithF
         return this.describeTerminalClose(handle, tabId, pty.pty.ptyId, ptyKilled)
       }
       const ptyKilled = await this.stopExplicitlyClosedTabPtys([pty.pty.ptyId], pty.pty.ptyId)
+      const closedLeaf = parsePaneKey(pty.pty.paneKey ?? '')
+      if (ptyKilled && siblingCount > 1 && closedLeaf) {
+        this.closedTerminalSurfaceLedger.recordClosedPane(
+          pty.pty.worktreeId,
+          closedLeaf.tabId,
+          closedLeaf.leafId
+        )
+      }
       if (!ptyKilled || siblingCount <= 1) {
         if (surface) {
           // Why: paired viewers keep ended streams mounted until the HUB publishes removal, so explicit close uses the durable host-tab transaction instead of viewer-local exit handling.

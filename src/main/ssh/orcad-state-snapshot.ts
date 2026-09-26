@@ -15,7 +15,7 @@
  * fence that keeps its terminals adoptable — turning a rollback into the exact terminal
  * massacre the daemon exists to prevent.
  */
-import { shellEscape } from './ssh-connection-utils'
+import { shellEscape } from './posix-shell-quote'
 import { joinRemotePath, type RemoteHostPlatform } from './ssh-remote-platform'
 import { assertPosixOrcadHost as assertPosixHost } from './orcad-remote-host-support'
 

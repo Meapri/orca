@@ -1,6 +1,7 @@
 import type { WebSocket } from 'ws'
 import type { WsOutboundBackpressureQueue } from '../../../shared/ws-outbound-backpressure-queue'
 import { createLegacyMobileE2EETextReplyQueue } from './mobile-e2ee-outbound-admission'
+import { BINARY_CIPHERTEXT_SEND } from './ws-transport-compression'
 import {
   createDesktopMobileE2EEV2OutboundQueue,
   type DesktopMobileE2EEV2OutboundItem
@@ -28,6 +29,10 @@ export class MobileE2EEDesktopOutboundOwner {
 
   canSend(bytes: number): boolean {
     return this.socketMemory?.canSend(bytes) === true
+  }
+
+  sendLegacyBinary(ciphertext: Uint8Array): void {
+    this.ws.send(Buffer.from(ciphertext), BINARY_CIPHERTEXT_SEND)
   }
 
   sendLegacyFrame(frame: string, onOverflow: () => void): boolean {

@@ -35,7 +35,8 @@ function shouldIgnoreRemoteSelection(commandPath: string[]): boolean {
     // answer (paired servers) is read from this machine's own pairing store and cannot be routed,
     // so routing the other half produced one listing describing two machines at once.
     commandPath.join(' ') === 'host list' ||
-    commandPath[0] === 'serve' ||
+    // Why `serve status` routes: it only reads health, so asking a paired server is useful.
+    (commandPath[0] === 'serve' && commandPath[1] !== 'status') ||
     commandPath[0] === 'agent' ||
     commandPath[0] === 'vm' ||
     commandPath[0] === 'agent-context' ||

@@ -127,6 +127,7 @@ docs/**
 !docs/reference/ime-regression-checklist.md
 !docs/reference/linux-glibc-compatibility.md
 !docs/reference/macos-press-and-hold.md
+!docs/reference/orcad-feature-parity.md
 !docs/reference/orcad-operations.md
 !docs/reference/pnpm-install-policy.md
 !docs/reference/relay-grace-time-reconfiguration.md
@@ -137,6 +138,7 @@ docs/**
 !docs/reference/windows-process-enumeration.md
 !docs/reference/wsl-runner-verification.md
 !docs/reference/remote-wire-compatibility.md
+!docs/reference/multi-client-state-authority.md
 !docs/reference/renderer-agent-status-performance.md
 !docs/reference/ssh-execution-boundary.md
 !docs/reference/ssh-host-key-verification.md

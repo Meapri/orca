@@ -2,6 +2,7 @@ import { OrcadBindAddressError } from './orcad-bind-address'
 import { OrcadBundledRuntimeError } from './orcad-bundled-runtime'
 import { OrcadInstanceLockError } from './orcad-instance-lock'
 import { ProfileStateAccessError } from '../persistence/profile-state/profile-state-access'
+import { WebSocketPinnedPortUnavailableError } from '../runtime/rpc/ws-transport-port-binding'
 
 export const ORCAD_EXIT_OK = 0
 export const ORCAD_EXIT_FAILED = 1
@@ -12,7 +13,8 @@ export function resolveOrcadExitCode(error: unknown): number {
   return error instanceof OrcadInstanceLockError ||
     error instanceof OrcadBindAddressError ||
     error instanceof OrcadBundledRuntimeError ||
-    error instanceof ProfileStateAccessError
+    error instanceof ProfileStateAccessError ||
+    error instanceof WebSocketPinnedPortUnavailableError
     ? ORCAD_EXIT_CONFIGURATION
     : ORCAD_EXIT_FAILED
 }

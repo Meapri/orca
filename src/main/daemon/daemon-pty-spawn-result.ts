@@ -173,6 +173,7 @@ export abstract class DaemonPtySpawnResult extends DaemonPtySpawnRequest {
 
     const wasAlreadyManaged = this.activeSessionIds.has(sessionId)
     this.activeSessionIds.add(sessionId)
+    this.recordSessionShellPid(sessionId, pid)
     const providerSequence = providerSequenceFromCreateOrAttach(result)
 
     // Cold restore: daemon made a new session but disk history shows an unclean shutdown → return saved scrollback.

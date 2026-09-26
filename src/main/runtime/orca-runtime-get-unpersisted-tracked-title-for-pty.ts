@@ -30,9 +30,21 @@ export class OrcaRuntimeWithGetUnpersistedTrackedTitleForPty extends OrcaRuntime
   ): T {
     const tracked = this.getTrackedDisplayTitleForPty(ptyId)
     if (!tracked) {
+      this.seedTitleFromSurvivingPtySnapshot(ptyId, snapshot.lastTitle)
       return snapshot
     }
     return { ...snapshot, lastTitle: tracked }
+  }
+
+  /** After a host restart the daemon kept a title this process never observed (#22809). */
+  protected seedTitleFromSurvivingPtySnapshot(ptyId: string, lastTitle: string | undefined): void {
+    const pty = this.ptysById.get(ptyId)
+    // Why the guards: a live or manual title outranks the provider's, and a seed happens once.
+    if (!lastTitle || !pty || pty.lastOscTitle !== null || pty.title !== null) {
+      return
+    }
+    this.applySeededAgentStatus(ptyId, lastTitle)
+    this.touchMobileSessionSnapshotsForPty(ptyId)
   }
 
   /** Decorative comparison key: only recognized agent titles fold leading spinner frames. */

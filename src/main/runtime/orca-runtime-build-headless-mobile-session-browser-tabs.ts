@@ -151,6 +151,7 @@ export class OrcaRuntimeWithBuildHeadlessMobileSessionBrowserTabs extends OrcaRu
     if (committed instanceof Error) {
       throw committed
     }
+    this.closedTerminalSurfaceLedger.recordClosedTabs(worktreeId, [parentTabId])
     return committed
   }
 

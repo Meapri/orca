@@ -2,6 +2,8 @@ import { getOrcaPushGatewayUrl } from '../orca-profiles/profile-cloud-auth-confi
 import { DesktopPushService } from '../runtime/push/desktop-push-service'
 import type { OrcaRuntimeService } from '../runtime/orca-runtime'
 import type { OrcaRuntimeRpcServer } from '../runtime/runtime-rpc'
+import { agentHookServer } from '../agent-hooks/server'
+import { installHostAgentNotifications } from '../notifications/headless-agent-notification-host'
 import { mainProcessState as state } from './main-process-state'
 
 // Why: deliberately not gated on cloud sign-in like the relay is — the push gateway
@@ -29,4 +31,20 @@ export function startDesktopPushService(runtimeRpc: OrcaRuntimeRpcServer): void 
       error instanceof Error ? error.message : String(error)
     )
   }
+}
+
+/** Headless serve has no renderer to decide when an agent finished; see headless-agent-notifications.ts. */
+export function startServeAgentNotifications(): void {
+  const runtime = state.runtime
+  const store = state.store
+  if (!runtime || !store) {
+    return
+  }
+  installHostAgentNotifications({
+    server: agentHookServer,
+    store,
+    runtime,
+    // Why: a serve host promoted to desktop gets a renderer, which then owns dispatch.
+    isRendererAttached: () => Boolean(state.mainWindow && !state.mainWindow.isDestroyed())
+  })
 }

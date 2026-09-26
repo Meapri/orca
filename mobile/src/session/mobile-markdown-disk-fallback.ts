@@ -1,12 +1,8 @@
 import type { RpcFailure } from '../transport/types'
-
-const RENDERER_UNAVAILABLE = 'renderer_unavailable'
+import { isRendererUnavailableRefusal } from '../transport/renderer-unavailable-refusal'
 
 export function shouldReadMarkdownFromDiskAfterReadTabFailure(response: RpcFailure): boolean {
-  return (
-    response.error.code === RENDERER_UNAVAILABLE ||
-    (response.error.code === 'runtime_error' && response.error.message === RENDERER_UNAVAILABLE)
-  )
+  return isRendererUnavailableRefusal(response)
 }
 
 // `truncated` is optional because the preview reader salvages it: an absent flag reads as not

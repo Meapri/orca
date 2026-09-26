@@ -17,6 +17,11 @@ import {
   initDaemonPtyProvider,
   readDaemonPidRecord
 } from '../daemon/daemon-init'
+import { applyTerminalResourceLimitsToLiveDaemon } from './orcad-terminal-resource-limits'
+import {
+  cancelExitedTerminalHistoryRetention,
+  scheduleExitedTerminalHistoryRetention
+} from '../daemon/terminal-history-exited-retention-schedule'
 
 export type OrcadDaemonStartup =
   | { state: 'live'; pid: number | null }
@@ -35,7 +40,12 @@ export async function startOrcadDaemon(): Promise<OrcadDaemonStartup> {
   try {
     // Why no login-session watch: that retires the daemon when the spawning macOS GUI login
     // session dies. An orcad daemon must survive its SSH session ending — that is the point.
-    await initDaemonPtyProvider(undefined, { macosLoginSessionWatch: false })
+    // Why retire: no pane remounts here to cold-restore, so a shell verifiably gone with a killed
+    // daemon must read `exited`, not a stale `running` (ssh-execution-boundary.md).
+    await initDaemonPtyProvider(undefined, {
+      macosLoginSessionWatch: false,
+      retireSessionsLostWithDaemon: true
+    })
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error)
     console.error(
@@ -44,6 +54,11 @@ export async function startOrcadDaemon(): Promise<OrcadDaemonStartup> {
     )
     return { state: 'unavailable', reason }
   }
+  // Why only with a daemon: its adapters are the writers the sweep must never race.
+  scheduleExitedTerminalHistoryRetention()
+  await applyTerminalResourceLimitsToLiveDaemon({
+    readCgroupUnit: () => readDaemonPidRecord()?.cgroupUnit ?? null
+  })
   if (!daemonOwnsFreshPersistentPtys()) {
     const reason = 'daemon adopted in degraded mode; fresh terminals run on the local provider'
     console.warn(
@@ -63,5 +78,6 @@ export async function startOrcadDaemon(): Promise<OrcadDaemonStartup> {
  * the exact property this whole item exists to buy.
  */
 export async function stopOrcadDaemon(): Promise<void> {
+  cancelExitedTerminalHistoryRetention()
   await disconnectDaemon()
 }

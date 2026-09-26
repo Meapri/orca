@@ -112,12 +112,14 @@ export class OrcaRuntimeWithCloseMobileSessionTab extends OrcaRuntimeWithRefuseU
       }
     }
     let closedSelectionTabIds = [tab.id]
-    const finishCommittedClose = (): MobileSessionTabCloseOutcome =>
-      committedMobileSessionTabClose(
+    const finishCommittedClose = (): MobileSessionTabCloseOutcome => {
+      this.closedTerminalSurfaceLedger.recordSessionTabClose(worktreeId, tab, closedSelectionTabIds)
+      return committedMobileSessionTabClose(
         this.clientSessionTabSelections,
         worktreeId,
         closedSelectionTabIds
       )
+    }
     if (tab.type === 'terminal') {
       const parentLeafCount = snapshot.tabs.filter(
         (candidate) => candidate.type === 'terminal' && candidate.parentTabId === tab.parentTabId

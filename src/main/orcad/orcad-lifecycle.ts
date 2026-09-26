@@ -11,6 +11,11 @@ import {
 const bundledLauncherChannel = process.env[ORCAD_BUNDLED_LAUNCHER_ENV] === '1'
 delete process.env[ORCAD_BUNDLED_LAUNCHER_ENV]
 
+/** True when a bundled launcher forked this runtime, making the launcher systemd's main PID. */
+export function isOrcadBundledLauncherChild(): boolean {
+  return bundledLauncherChannel
+}
+
 function createIdempotentOrcadCleanup(cleanup: () => Promise<void>): () => Promise<void> {
   let completion: Promise<void> | null = null
   return () => {

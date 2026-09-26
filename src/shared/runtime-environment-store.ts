@@ -205,6 +205,37 @@ export function markEnvironmentUsed(
   writeEnvironmentStore(userDataPath, { version: 1, environments: next })
 }
 
+/**
+ * Moves the preferred endpoint to the next alternate after `failedEndpoint` could not be reached,
+ * so the next connection tries it; the one that connects stays preferred (the last good one).
+ * No-op unless the failure was against the currently preferred entry of a multi-endpoint pairing.
+ */
+export function preferNextEnvironmentEndpointAfterUnreachable(
+  userDataPath: string,
+  selector: string,
+  failedEndpoint: string
+): boolean {
+  const store = readEnvironmentStore(userDataPath)
+  const environment = resolveEnvironmentFromStore(store, selector)
+  const index = environment.endpoints.findIndex(
+    (entry) => entry.id === environment.preferredEndpointId
+  )
+  if (
+    environment.endpoints.length < 2 ||
+    environment.endpoints[index]?.endpoint !== failedEndpoint
+  ) {
+    return false
+  }
+  const next = environment.endpoints[(index + 1) % environment.endpoints.length]!
+  writeEnvironmentStore(userDataPath, {
+    version: 1,
+    environments: store.environments.map((entry) =>
+      entry.id === environment.id ? { ...entry, preferredEndpointId: next.id } : entry
+    )
+  })
+  return true
+}
+
 function resolveEnvironmentFromStore(
   store: RuntimeEnvironmentStore,
   selector: string

@@ -120,7 +120,8 @@ export class RpcDispatcher {
           updateClientCapabilities: options?.updateClientCapabilities,
           orchestrationCapability: request.orchestrationCapability,
           authenticatedCallerFingerprint: options?.authenticatedCallerFingerprint,
-          orchestrationCaller: resolved.caller
+          orchestrationCaller: resolved.caller,
+          deviceAdministration: options?.deviceAdministration
         },
         orchestrationMutations: this.orchestrationMutations,
         legacyOrchestration: this.legacyOrchestration

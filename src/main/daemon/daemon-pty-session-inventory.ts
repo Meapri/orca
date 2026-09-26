@@ -10,17 +10,23 @@ import { cloneAgentSessionOwnerBinding } from '../../shared/claimed-agent-pty-ow
 import { recordAuthenticatedInventory } from './daemon-audit-classifier'
 import { isMissingWindowsNamedPipeError } from './daemon-endpoint-errors'
 import { DaemonPtyProcessInspection } from './daemon-pty-process-inspection'
+import { inspectProcessSignal } from './daemon-process-inspection'
 import { remainingDaemonRequestTimeoutMs } from './daemon-request-deadline'
 import { parsePtySessionId } from './pty-session-id'
 import type { ListSessionsResult, SessionInfo } from './types'
 import { PtyProcessListAdmission } from '../providers/pty-process-list-admission'
 import type { PtyProcessInfo } from '../providers/types'
 
+const MAX_LOST_SESSION_SHELL_PIDS = 1024
+
 export abstract class DaemonPtySessionInventory extends DaemonPtyProcessInspection {
   async listProcesses(opts?: { deadlineMs?: number }): Promise<PtyProcessInfo[]> {
     // Why: snapshotted before the request so ids spawned mid-flight can never
     // be reconciled away below.
     const preRequestActiveIds = new Set(this.activeSessionIds)
+    // Why the recorded PIDs too: an adopted daemon's headless sessions are known only from
+    // inventories, never re-attached, so they are absent from activeSessionIds.
+    const preRequestShellIds = new Set(this.sessionShellPids.keys())
     try {
       // Why retry: this inventory is what destructive teardown consults, and a
       // dead host pipe surfaced as `connect ENOENT \\?\\pipe\\orca-terminal-host-...`
@@ -51,6 +57,7 @@ export abstract class DaemonPtySessionInventory extends DaemonPtyProcessInspecti
           continue
         }
         aliveSessionIds.add(session.sessionId)
+        this.recordSessionShellPid(session.sessionId, session.pid, session.incarnationId)
         const { worktreeId } = parsePtySessionId(session.sessionId)
         processes.push(
           admission.admit({
@@ -74,6 +81,14 @@ export abstract class DaemonPtySessionInventory extends DaemonPtyProcessInspecti
         if (!aliveSessionIds.has(id)) {
           this.activeSessionIds.delete(id)
         }
+      }
+      if (this.retireSessionsLostWithDaemon) {
+        for (const id of preRequestShellIds) {
+          if (!aliveSessionIds.has(id)) {
+            this.markSessionLostFromInventory(id)
+          }
+        }
+        this.retireLostSessionsVerifiedGone(aliveSessionIds)
       }
       this.publishAuditObservation(
         recordAuthenticatedInventory(this.auditContext, this.exactDaemonIncarnation)
@@ -134,6 +149,37 @@ export abstract class DaemonPtySessionInventory extends DaemonPtyProcessInspecti
     return [...this.activeSessionIds]
   }
 
+  protected markSessionLostFromInventory(sessionId: string): void {
+    const identity = this.sessionShellPids.get(sessionId)
+    this.sessionShellPids.delete(sessionId)
+    if (identity && this.lostSessionShellPids.size < MAX_LOST_SESSION_SHELL_PIDS) {
+      this.lostSessionShellPids.set(sessionId, identity)
+    }
+  }
+
+  /**
+   * A session the authoritative inventory stopped listing died unobserved — its daemon was killed,
+   * or the exit was lost while disconnected. Its shell PID being gone on this host is positive
+   * evidence of absence, so it exits. A PID still present (or unqueryable) proves nothing and is
+   * re-checked on the next inventory instead of being guessed at.
+   */
+  protected retireLostSessionsVerifiedGone(aliveSessionIds: ReadonlySet<string>): void {
+    for (const [id, lost] of this.lostSessionShellPids) {
+      const current = this.sessionIncarnations.get(id)
+      if (aliveSessionIds.has(id) || (current !== undefined && current !== lost.incarnationId)) {
+        this.lostSessionShellPids.delete(id)
+        continue
+      }
+      if (inspectProcessSignal(lost.pid) !== 'missing') {
+        continue
+      }
+      this.clearExitedSessionState(id, -1, current)
+      emitPtyListeners(this.exitListeners, (listener) =>
+        listener(createPtyExitPayload(id, { code: -1, incarnationId: lost.incarnationId }))
+      )
+    }
+  }
+
   // Why: the daemon's kill-all-and-shutdown path suppresses onExit fanout (session.ts:246-252), so synthesize pty:exit
   // for every live session before teardown or renderer panes black-hole writes to a disposed adapter forever.
   fanoutSyntheticExits(code: number): void {
@@ -152,6 +198,8 @@ export abstract class DaemonPtySessionInventory extends DaemonPtyProcessInspecti
     this.pausedProducerSessionIds.clear()
     this.producerResumesOwedOnReconnect.clear()
     this.stopCheckpointTimer()
+    this.sessionShellPids.clear()
+    this.lostSessionShellPids.clear()
     for (const id of ids) {
       this.coldRestoreCache.delete(id)
       // Why: don't catch listener throws — matches the natural onExit fanout so synthetic exits keep the same error semantics.

@@ -1,4 +1,6 @@
 import type { OrcadOptions } from './orcad-entry'
+import { parseOrcadResourceLimit } from './orcad-resource-limit-flags'
+import { parsePairingOfferLifetime } from '../../shared/pairing-offer-lifetime'
 
 /**
  * orcad's flags. A value-taking flag consumes the next token whatever it looks
@@ -28,12 +30,26 @@ export function parseArgs(argv: string[]): OrcadOptions {
       }
       options.bind = value
       i += 1
+    } else if (arg === '--pairing-expires') {
+      const parsed = parsePairingOfferLifetime(argv[i + 1] ?? '')
+      if (!parsed.ok) {
+        throw new Error(`--pairing-expires: ${parsed.message}`)
+      }
+      options.pairingExpiresInMs = parsed.ms
+      i += 1
     } else if (arg === '--pairing-address') {
       const value = argv[i + 1]
       if (!value) {
         throw new Error('--pairing-address expects a value')
       }
-      options.pairingAddress = value
+      // Why repeatable: a VPS is often reachable several ways (tailnet, public DNS, LAN); the
+      // first stays the advertised endpoint and the rest become the offer's alternates.
+      options.pairingAddress ??= value
+      options.pairingAddresses = [...(options.pairingAddresses ?? []), value]
+      i += 1
+    } else if (arg === '--limit') {
+      const [envName, value] = parseOrcadResourceLimit(argv[i + 1] ?? '')
+      options.resourceLimits = { ...options.resourceLimits, [envName]: value }
       i += 1
     } else {
       throw new Error(`Unknown argument: ${arg}`)

@@ -148,6 +148,12 @@ export const SESSION_TABS_SPLIT_GROUP_PLACEMENT_RUNTIME_CAPABILITY =
 // repeating the host's whole bounded list on every title tick.
 export const SESSION_TABS_RETIREMENT_PROOF_DELTA_RUNTIME_CAPABILITY =
   'session-tabs.retirement-proof-delta.v1' as const
+// Why: names the host-authority contract in docs/reference/multi-client-state-authority.md — this
+// host durably refuses creates/adoptions at tab or leaf ids a committed close retired (answering
+// `TERMINAL_SURFACE_RETIRED_ERROR`, which older clients read as terminal-gone) and will not spawn a
+// second resume of an agent session that already has a live pane.
+export const TERMINAL_CLOSED_SURFACE_LEDGER_RUNTIME_CAPABILITY =
+  'terminal.closed-surface-ledger.v1' as const
 export const AGENT_SESSION_BOUNDARY_RUNTIME_CAPABILITY =
   'agent-session.session-boundary.v1' as const
 export { REMOTE_SERVER_UPDATE_CAPABILITY } from './remote-server-update'
@@ -365,6 +371,7 @@ export const RUNTIME_CAPABILITIES = [
   SESSION_TAB_CLOSE_INTENT_RUNTIME_CAPABILITY,
   SESSION_TABS_AUTHORITATIVE_INVENTORY_RUNTIME_CAPABILITY,
   SESSION_TABS_SPLIT_GROUP_PLACEMENT_RUNTIME_CAPABILITY,
+  TERMINAL_CLOSED_SURFACE_LEDGER_RUNTIME_CAPABILITY,
   AGENT_SESSION_BOUNDARY_RUNTIME_CAPABILITY,
   REMOTE_SERVER_UPDATE_CAPABILITY,
   AGENT_SESSION_HOST_AUTHORITY_RUNTIME_CAPABILITY,

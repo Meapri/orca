@@ -105,6 +105,7 @@ export {
 export type {
   RuntimeBrowserUnavailableReason,
   RuntimeDegradation,
+  RuntimeTerminalResourceLimitsReason,
   RuntimeTerminalUnavailableReason
 } from './runtime-capability-degradation'
 export type {

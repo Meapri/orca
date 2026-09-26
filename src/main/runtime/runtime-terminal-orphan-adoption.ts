@@ -24,6 +24,8 @@ type RuntimeTerminalOrphanAdoptionPorts = {
   /** Names a pane this adoption just wrote, ahead of the graph statement that will carry it. */
   recordAdoptedSurface: (pty: RuntimePtyWorktreeRecord, tabId: string, paneKey: string) => void
   getMobileSnapshots: () => Iterable<RuntimeMobileSessionTabsSnapshot>
+  /** Host tombstones outlive the one-shot session ones; a closed pane is never re-adoptable. */
+  isSurfaceRetired?: (tabId: string, leafId: string) => boolean
   getSession: (worktreeId: string) => WorkspaceSessionState | null
   setSession: (worktreeId: string, session: WorkspaceSessionState) => void
   flushSession: () => Promise<void>
@@ -185,7 +187,10 @@ export async function adoptRuntimeTerminalOrphansFromInventory(args: {
     ) {
       throw new Error('terminal_orphan_surface_occupied')
     }
-    if (session.terminalSurfaceTombstonesByPaneKey?.[paneKey]) {
+    if (
+      session.terminalSurfaceTombstonesByPaneKey?.[paneKey] ||
+      ports.isSurfaceRetired?.(claim.tabId, claim.leafId)
+    ) {
       throw new Error('terminal_orphan_surface_retired')
     }
     for (const snapshot of ports.getMobileSnapshots()) {

@@ -153,6 +153,30 @@ describe('ServeReadinessPublisher', () => {
     // An operator reading the ready block must not have to infer this from a missing line.
     expect(human).toContain('PTY self-test FAILED')
     expect(human).toContain('terminals survive an orcad restart: NO')
+    expect(human).not.toContain('Degraded (')
+  })
+
+  it('lists published degradations in the human block and the JSON contract', () => {
+    const degraded: ServeReadiness = {
+      ...ready,
+      health: {
+        ...health,
+        degradations: [
+          {
+            code: 'terminal_daemon_unscoped',
+            severity: 'warning',
+            component: 'terminal-daemon',
+            message: 'The terminal daemon shares the service cgroup.'
+          }
+        ]
+      }
+    }
+    expect(renderServeReadiness(degraded, { mode: 'human' })).toContain(
+      'Degraded (warning): The terminal daemon shares the service cgroup.'
+    )
+    expect(
+      JSON.parse(renderServeReadiness(degraded, { mode: 'json' })).health.degradations[0].code
+    ).toBe('terminal_daemon_unscoped')
   })
 
   it('rejects concurrent and later duplicate publications', async () => {
