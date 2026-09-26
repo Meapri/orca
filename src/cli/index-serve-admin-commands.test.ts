@@ -137,8 +137,8 @@ describe('orca serve status | doctor | pairing', () => {
   })
 
   it('shows resource-limit and browser-provider warnings without failing a ready host', async () => {
-    const ready = serverHealth('ready')
-    ready.health.degradations = [
+    const base = serverHealth('ready')
+    const degradations = [
       {
         code: 'terminal_resource_limits_unavailable',
         severity: 'warning',
@@ -154,6 +154,7 @@ describe('orca serve status | doctor | pairing', () => {
         reason: 'provider_unhealthy'
       }
     ]
+    const ready = { ...base, health: { ...base.health, degradations } }
     callMock.mockResolvedValueOnce(okFixture('req_health', ready))
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
 
