@@ -755,6 +755,9 @@ test.describe('Terminal Shortcuts', () => {
     // Alt+Backspace → Esc+DEL (readline backward-kill-word).
     await pressAndExpectWrite(orcaPage, electronApp, 'Alt+Backspace', '\x1b\x7f')
 
+    // Alt+Delete → Esc+d (readline kill-word) instead of the unbound CSI 3;3~ (#21491).
+    await pressAndExpectWrite(orcaPage, electronApp, 'Alt+Delete', '\x1bd')
+
     // Ctrl+Backspace → \x17 (unix-word-rubout).
     await pressAndExpectWrite(orcaPage, electronApp, 'Control+Backspace', '\x17')
 

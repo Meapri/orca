@@ -11,6 +11,15 @@ export const KEYBINDING_DEFINITION_CORE_4: readonly KeybindingDefinition[] = [
     defaultBindings: platformBindings([])
   },
   {
+    id: 'terminal.openComposer',
+    title: 'Open composer',
+    group: 'Terminal Panes',
+    scope: 'terminal',
+    searchKeywords: ['shortcut', 'terminal', 'composer', 'compose', 'multi-line', 'input', 'draft'],
+    // Why: iTerm2's Composer chord; Mod+Shift+E is already Show Explorer.
+    defaultBindings: platformBindings(['Mod+Shift+Period'])
+  },
+  {
     id: 'terminal.closePane',
     title: 'Close active pane',
     group: 'Terminal Panes',

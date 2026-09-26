@@ -56,6 +56,7 @@ export type TerminalShortcutAction =
   | { type: 'toggleExpandActivePane' }
   | { type: 'setTitle' }
   | { type: 'clearPaneTitle' }
+  | { type: 'openComposer' }
   | { type: 'closeActivePane' }
   | { type: 'splitActivePane'; direction: 'vertical' | 'horizontal' }
   | { type: 'scrollViewport'; position: 'top' | 'bottom' }
@@ -142,6 +143,10 @@ export function resolveTerminalShortcutAction(
 
     if (keybindingMatchesAction('terminal.clearPaneTitle', event, platform, keybindings)) {
       return { type: 'clearPaneTitle' }
+    }
+
+    if (keybindingMatchesAction('terminal.openComposer', event, platform, keybindings)) {
+      return { type: 'openComposer' }
     }
 
     // Why: recognize the active tab.close binding as a pane-close alias too, so a user who remaps
