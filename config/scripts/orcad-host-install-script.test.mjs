@@ -11,6 +11,7 @@ import {
   readFileSync,
   readlinkSync,
   rmSync,
+  statSync,
   writeFileSync
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -179,8 +180,18 @@ describe.skipIf(process.platform === 'win32')('orcad-install.sh', () => {
     expect(readFileSync(join(env.XDG_CONFIG_HOME, 'orcad/orcad.env'), 'utf8')).toContain(
       'ORCAD_BIND=127.0.0.1\nORCAD_PORT=6799'
     )
+    // A readiness dir left permissive by an older install is tightened before the line is written.
+    mkdirSync(dirname(env.ORCAD_READINESS_FILE), { recursive: true, mode: 0o755 })
+    chmodSync(dirname(env.ORCAD_READINESS_FILE), 0o755)
+    writeFileSync(env.ORCAD_READINESS_FILE, 'stale', { mode: 0o644 })
     const activated = install('activate', '9.0.0+a1')
     expect(activated.output).toContain('is active')
+    // The readiness line carries a pairing credential.
+    expect(statSync(dirname(env.ORCAD_READINESS_FILE)).mode & 0o777).toBe(0o700)
+    expect(statSync(env.ORCAD_READINESS_FILE).mode & 0o777).toBe(0o600)
+    expect(readFileSync(env.ORCAD_READINESS_FILE, 'utf8')).toContain('orca_server_ready')
+    expect(unit).toMatch(/^RuntimeDirectoryMode=0700$/m)
+    expect(unit).toMatch(/^#NotifyAccess=all$/m)
     expect(record()).toMatchObject({ active: '9.0.0+a1', previous: null })
     expect(current()).toBe('orcad-9.0.0+a1')
   }, 60_000)

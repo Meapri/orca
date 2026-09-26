@@ -59,7 +59,10 @@ export function formatServeStatus(status: OrcadServerHealth): string {
   } else {
     lines.push('Degradations:')
     for (const degradation of degradations) {
-      lines.push(`  [${degradation.severity}] ${degradation.code}: ${degradation.message}`)
+      const reason = degradation.reason ? ` (${degradation.reason})` : ''
+      lines.push(
+        `  [${degradation.severity}] ${degradation.component}/${degradation.code}${reason}: ${degradation.message}`
+      )
     }
   }
   return lines.join('\n')

@@ -132,8 +132,39 @@ describe('orca serve status | doctor | pairing', () => {
 
     await main(['serve', 'status'], '/tmp/repo')
 
-    expect(String(log.mock.calls[0]?.[0])).toContain('[critical] runtime_unresponsive')
+    expect(String(log.mock.calls[0]?.[0])).toContain('[critical] runtime/runtime_unresponsive')
     expect(process.exitCode).toBe(1)
+  })
+
+  it('shows resource-limit and browser-provider warnings without failing a ready host', async () => {
+    const ready = serverHealth('ready')
+    ready.health.degradations = [
+      {
+        code: 'terminal_resource_limits_unavailable',
+        severity: 'warning',
+        component: 'terminal',
+        message: 'Terminal resource limits are configured but not enforced.',
+        reason: 'systemd_scope_unavailable'
+      },
+      {
+        code: 'browser_unavailable',
+        severity: 'warning',
+        component: 'browser',
+        message: 'The browser provider is no longer answering.',
+        reason: 'provider_unhealthy'
+      }
+    ]
+    callMock.mockResolvedValueOnce(okFixture('req_health', ready))
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await main(['serve', 'status'], '/tmp/repo')
+
+    const printed = String(log.mock.calls[0]?.[0])
+    expect(printed).toContain(
+      '[warning] terminal/terminal_resource_limits_unavailable (systemd_scope_unavailable)'
+    )
+    expect(printed).toContain('[warning] browser/browser_unavailable (provider_unhealthy)')
+    expect(process.exitCode).toBeUndefined()
   })
 
   it('explains an older runtime instead of calling it down', async () => {

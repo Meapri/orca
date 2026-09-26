@@ -102,15 +102,19 @@ StartLimitBurst=5
 [Service]
 Type=simple
 #Type=notify
-#NotifyAccess=main
+#NotifyAccess=all
 #WatchdogSec=60
 Environment=ORCAD_BASE=/home/me/.orca-remote
 Environment=ORCA_USER_DATA=/home/me/.orca
 Environment=ORCAD_BIND=127.0.0.1
 Environment=ORCAD_PORT=6768
 Environment=ORCAD_READINESS_FILE=%t/orcad/readiness.json
+#Environment=ORCA_TERMINAL_MEMORY_HIGH=3G
+#Nice=10
+#LimitNICE=20
 EnvironmentFile=-/home/me/.config/orcad/orcad.env
 RuntimeDirectory=orcad
+RuntimeDirectoryMode=0700
 ExecStart=/bin/sh /home/me/.orca-remote/orcad-current/deploy/orcad-install.sh run
 Restart=always
 RestartSec=5
@@ -139,15 +143,25 @@ Why each setting is what it is:
 - **`KillMode=mixed`.** `SIGTERM` goes to orcad alone; whatever is left in the unit's cgroup
   is killed when it exits. Live terminals are **not** preserved by any `KillMode` — they are
   preserved because the daemon runs in its own `orca-daemon-*.scope`, outside this unit.
-- **`Type=notify` and `WatchdogSec=` are commented out.** Enable them only with an orcad
-  build that sends `sd_notify` readiness and watchdog pings; this unit does not assume one.
+- **`Type=notify`, `NotifyAccess=all` and `WatchdogSec=` are commented out.** orcad sends
+  `READY=1` and `WATCHDOG=1` through the `systemd-notify` binary from its own PID, so the unit
+  needs `NotifyAccess=all` (see [systemd notify](./orcad-operations.md#who-supervises-orcad)).
+  They stay optional because that path has not been exercised against a real systemd manager in
+  CI; if the unit never leaves `activating`, keep `Type=simple` and probe `/readyz`.
+- **Resource limits** are commented examples. Set them as `Environment=` lines, in `orcad.env`,
+  or as `--limit <key>=<value>` in `ORCAD_EXTRA_ARGS` (see
+  [Resource governance](./orcad-operations.md#resource-governance)). `Nice=` needs `LimitNICE=`
+  so the daemon can reset each new terminal to nice 0.
+- **`ORCAD_EXTRA_ARGS`** in `orcad.env` carries further orcad flags, split on whitespace — for
+  example more `--pairing-address` values or `--pairing-expires 1h`.
 - **No `UMask=`, no `NoNewPrivileges=`.** The daemon and every PTY inherit them, which would
   make files created in terminals private and break `sudo` inside them. orcad makes its data
   root `0700` itself.
 - **Readiness goes to `$XDG_RUNTIME_DIR/orcad/readiness.json`**, not the journal. It holds the
   one `orca_server_ready` line, recreated on every start; stderr diagnostics stay in the
-  journal (`journalctl --user -u orcad`). The line carries a pairing credential: treat the
-  file as a secret.
+  journal (`journalctl --user -u orcad`). The line carries a pairing credential, so the
+  directory is `0700` (`RuntimeDirectoryMode=0700`) and `orcad-install.sh run` creates the file
+  `0600` before orcad writes to it.
 
 Listener settings live in `~/.config/orcad/orcad.env` (`ORCAD_BIND`, `ORCAD_PORT`,
 `ORCAD_PAIRING_ADDRESS`), which `service-install --bind/--port/--pairing-address` rewrites.

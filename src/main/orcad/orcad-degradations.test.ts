@@ -163,16 +163,32 @@ describe('deriveOrcadDegradations', () => {
           reason: 'unconfigured'
         },
         {
+          code: 'browser_unavailable',
+          capability: 'browser.headless.v1',
+          message: 'browser stopped answering',
+          reason: 'provider_unhealthy'
+        },
+        {
           code: 'terminal_unavailable',
           capability: 'terminal.pty.v1',
           message: 'no pty',
           reason: 'abi_mismatch'
+        },
+        {
+          code: 'terminal_resource_limits_unavailable',
+          capability: 'terminal.resource-limits.v1',
+          message: 'limits not enforced',
+          reason: 'systemd_scope_unavailable'
         }
       ]
     })
-    expect(found.map((entry) => [entry.code, entry.severity, entry.component])).toEqual([
-      ['browser_unavailable', 'warning', 'browser'],
-      ['terminal_unavailable', 'critical', 'terminal']
+    expect(
+      found.map((entry) => [entry.code, entry.severity, entry.component, entry.reason])
+    ).toEqual([
+      ['browser_unavailable', 'warning', 'browser', 'unconfigured'],
+      ['browser_unavailable', 'warning', 'browser', 'provider_unhealthy'],
+      ['terminal_unavailable', 'critical', 'terminal', 'abi_mismatch'],
+      ['terminal_resource_limits_unavailable', 'warning', 'terminal', 'systemd_scope_unavailable']
     ])
   })
 })

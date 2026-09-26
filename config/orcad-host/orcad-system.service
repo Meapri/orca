@@ -16,9 +16,12 @@ StartLimitBurst=5
 
 [Service]
 Type=simple
-# Optional, only once this orcad build speaks sd_notify (not assumed by this unit):
+# Optional systemd readiness and watchdog. orcad sends READY=1 after its readiness line and
+# WATCHDOG=1 while its self-watchdog reports the runtime live, through the systemd-notify binary
+# from its own PID, hence NotifyAccess=all. If the unit never leaves `activating` (an older
+# systemd-notify), keep Type=simple and probe http://<bind>:<port>/readyz instead.
 #Type=notify
-#NotifyAccess=main
+#NotifyAccess=all
 #WatchdogSec=60
 User=@ORCAD_USER@
 WorkingDirectory=~
@@ -27,8 +30,23 @@ Environment=ORCA_USER_DATA=@ORCA_USER_DATA@
 Environment=ORCAD_BIND=127.0.0.1
 Environment=ORCAD_PORT=6768
 Environment=ORCAD_READINESS_FILE=/run/orcad/readiness.json
+# Resource governance (docs/reference/orcad-operations.md#resource-governance). Each knob is an
+# environment variable here or in orcad.env, or the same setting as `--limit <key>=<value>` in
+# ORCAD_EXTRA_ARGS. The cgroup limits bound all terminal and agent work together, in the
+# daemon's orca-daemon-*.scope, and apply only where that scope exists:
+#Environment=ORCA_TERMINAL_MEMORY_HIGH=3G
+#Environment=ORCA_TERMINAL_MEMORY_MAX=4G
+#Environment=ORCA_TERMINAL_TASKS_MAX=4096
+#Environment=ORCA_TERMINAL_HISTORY_RETENTION_DAYS=7
+#Environment=ORCA_BROWSER_MAX_TABS=4
+# Run orcad niced while terminals run at 0: the daemon resets each new PTY to nice 0, which
+# needs RLIMIT_NICE; without LimitNICE= the reset is refused and terminals stay niced.
+#Nice=10
+#LimitNICE=20
 EnvironmentFile=-@ORCAD_ENV_FILE@
 RuntimeDirectory=orcad
+# The readiness file in it carries a pairing credential.
+RuntimeDirectoryMode=0700
 ExecStart=/bin/sh @ORCAD_BASE@/orcad-current/deploy/orcad-install.sh run
 Restart=always
 RestartSec=5

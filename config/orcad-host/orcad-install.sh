@@ -613,6 +613,8 @@ cmd_service_install() {
       echo "ORCAD_BIND=${bind:-127.0.0.1}"
       echo "ORCAD_PORT=${port:-6768}"
       echo "ORCAD_PAIRING_ADDRESS=$pairing"
+      echo '# Extra orcad flags, e.g. --limit terminal-memory-high=3G --pairing-expires 1h'
+      echo 'ORCAD_EXTRA_ARGS='
     } >"$env_path.partial"
     mv "$env_path.partial" "$env_path"
   fi
@@ -703,11 +705,32 @@ cmd_run() {
   export ORCA_VERSION ORCA_USER_DATA
   set -- "$dir/bun-runtime" "$dir/orcad.js" --json --bind "${ORCAD_BIND:-127.0.0.1}" --port "${ORCAD_PORT:-6768}"
   if [ -n "${ORCAD_PAIRING_ADDRESS:-}" ]; then set -- "$@" --pairing-address "$ORCAD_PAIRING_ADDRESS"; fi
+  # Further orcad flags, split on whitespace: `--limit k=v`, `--pairing-expires 1h`, more
+  # `--pairing-address` values. Globbing is off so a value is never expanded against the cwd.
+  if [ -n "${ORCAD_EXTRA_ARGS:-}" ]; then
+    set -f
+    # shellcheck disable=SC2086 # deliberate word splitting of the operator's flag list
+    set -- "$@" $ORCAD_EXTRA_ARGS
+    set +f
+  fi
   if [ -n "${ORCAD_READINESS_FILE:-}" ]; then
-    mkdir -p "$(dirname "$ORCAD_READINESS_FILE")"
+    prepare_readiness_file "$ORCAD_READINESS_FILE"
     exec "$@" >"$ORCAD_READINESS_FILE"
   fi
   exec "$@"
+}
+
+# The readiness line carries a pairing credential, so the file is born 0600 in a 0700 directory
+# before orcad writes it. The umask stays in a subshell: orcad, its daemon and PTYs inherit ours.
+prepare_readiness_file() {
+  readiness_dir=$(dirname "$1")
+  (umask 077 && mkdir -p "$readiness_dir") || die "could not create $readiness_dir"
+  # Tighten only a directory this account owns and that is not shared (sticky, like /tmp).
+  if [ -O "$readiness_dir" ] && [ ! -k "$readiness_dir" ]; then
+    chmod 700 "$readiness_dir" || die "could not make $readiness_dir private"
+  fi
+  rm -f "$1"
+  (umask 077 && : >"$1") || die "could not create $1"
 }
 
 # Container PID-1 child: restart orcad in place so its crash does not end the container,

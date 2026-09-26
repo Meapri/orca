@@ -134,9 +134,10 @@ function runtimeStatusDegradations(
 ): OrcadDegradation[] {
   return degradations.map((degradation) => ({
     code: degradation.code,
-    // Why terminals are critical and browsers not: a host that cannot spawn a PTY cannot run work.
+    // Why only a PTY outage is critical: a host that cannot spawn one cannot run work, while
+    // unenforced resource limits or a missing browser leave terminals working.
     severity: degradation.code === 'terminal_unavailable' ? 'critical' : 'warning',
-    component: degradation.code === 'terminal_unavailable' ? 'terminal' : 'browser',
+    component: degradation.capability.startsWith('terminal.') ? 'terminal' : 'browser',
     message: degradation.message,
     ...(degradation.reason ? { reason: degradation.reason } : {})
   }))
