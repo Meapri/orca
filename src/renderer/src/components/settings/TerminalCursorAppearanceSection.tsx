@@ -9,6 +9,7 @@ import {
 import { SearchableSetting } from './SearchableSetting'
 import { clampNumber } from '@/lib/terminal-theme'
 import { translate } from '@/i18n/i18n'
+import { resolveTerminalCursorAnimationEnabled } from '../../../../shared/terminal-cursor-animation-settings'
 
 type TerminalCursorAppearanceSectionProps = {
   settings: GlobalSettings
@@ -100,6 +101,37 @@ export function TerminalCursorAppearanceSection({
             )}
             checked={settings.terminalCursorBlink}
             onChange={() => updateSettings({ terminalCursorBlink: !settings.terminalCursorBlink })}
+          />
+        </SearchableSetting>
+
+        <SearchableSetting
+          title={translate(
+            'auto.components.settings.TerminalAppearanceSection.0739c1f2b6',
+            'Cursor Animation'
+          )}
+          description={translate(
+            'auto.components.settings.TerminalAppearanceSection.ebde1c981e',
+            'Glides the cursor as you type and fades its blink. Requires GPU rendering.'
+          )}
+          keywords={['terminal', 'cursor', 'animation', 'smooth', 'glide', 'motion', 'fade']}
+        >
+          <SettingsSwitchRow
+            label={translate(
+              'auto.components.settings.TerminalAppearanceSection.0739c1f2b6',
+              'Cursor Animation'
+            )}
+            description={translate(
+              'auto.components.settings.TerminalAppearanceSection.ebde1c981e',
+              'Glides the cursor as you type and fades its blink. Requires GPU rendering.'
+            )}
+            checked={resolveTerminalCursorAnimationEnabled(settings.terminalCursorAnimation)}
+            onChange={() =>
+              updateSettings({
+                terminalCursorAnimation: !resolveTerminalCursorAnimationEnabled(
+                  settings.terminalCursorAnimation
+                )
+              })
+            }
           />
         </SearchableSetting>
 

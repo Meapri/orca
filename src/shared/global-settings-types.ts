@@ -144,6 +144,8 @@ export type GlobalSettings = {
   /** Draw the IME preedit as terminal cells instead of xterm's DOM overlay; undefined means on.
    *  Off restores the overlay path, kept as the instant fallback. */
   terminalImePreeditInGrid?: boolean
+  /** GPU cursor glide and blink fade (WebGL renderer only). Undefined means on. */
+  terminalCursorAnimation?: boolean
   terminalThemeDark: string
   terminalCustomThemes?: TerminalCustomTheme[]
   terminalDividerColorDark: string

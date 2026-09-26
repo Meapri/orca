@@ -245,6 +245,20 @@ export const getTerminalCursorSearchEntries = createLocalizedCatalog(() => [
     ]
   },
   {
+    title: translate('auto.components.settings.terminal.search.9226c75396', 'Cursor Animation'),
+    description: translate(
+      'auto.components.settings.terminal.search.3ac3ea1cac',
+      'Glides the cursor as you type and fades its blink. Requires GPU rendering.'
+    ),
+    keywords: [
+      ...translateSearchKeyword('auto.components.settings.terminal.search.f66a7cf715', 'terminal'),
+      ...translateSearchKeyword('auto.components.settings.terminal.search.6eaf7ee0e4', 'cursor'),
+      ...translateSearchKeyword('auto.components.settings.terminal.search.e2b79d0578', 'animation'),
+      ...translateSearchKeyword('auto.components.settings.terminal.search.da61b65178', 'smooth'),
+      ...translateSearchKeyword('auto.components.settings.terminal.search.45087d1a4d', 'glide')
+    ]
+  },
+  {
     title: translate('auto.components.settings.terminal.search.7f1e356a54', 'Cursor Opacity'),
     description: translate(
       'auto.components.settings.terminal.search.d4f7d1ce5c',
