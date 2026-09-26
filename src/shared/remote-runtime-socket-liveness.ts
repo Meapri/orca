@@ -39,6 +39,18 @@ export type RemoteRuntimeSocketLivenessMonitor = {
 
 const activeMonitors = new Set<RemoteRuntimeSocketLivenessMonitor>()
 
+// Why: mobile typechecks shared code with DOM timer types, where a timer is a number with no unref.
+function unrefTimer(timer: unknown): void {
+  if (
+    typeof timer === 'object' &&
+    timer !== null &&
+    'unref' in timer &&
+    typeof timer.unref === 'function'
+  ) {
+    timer.unref()
+  }
+}
+
 /** Probe every live remote-runtime socket in this process, e.g. on OS resume or network change. */
 export function probeAllRemoteRuntimeSocketsNow(
   deadlineMs = REMOTE_RUNTIME_SOCKET_RESUME_PROBE_DEADLINE_MS
@@ -121,9 +133,7 @@ export function startRemoteRuntimeSocketLiveness(args: {
         args.onDead()
       }
     }, deadlineMs)
-    // Why: mobile typechecks shared code with DOM timer types where unref is absent.
-    const unrefableProbe = resumeProbeTimer as unknown as { unref?: () => void }
-    unrefableProbe.unref?.()
+    unrefTimer(resumeProbeTimer)
   }
 
   function tryPing(): void {

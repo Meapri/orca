@@ -65,7 +65,6 @@ describe('remote runtime resubscribe failing after the recovery deadline', () =>
     const runtimeCall = vi.fn(async (request: { method: string; params?: unknown }) => {
       if (request.method === 'terminal.resolvePane') {
         resolvePaneCalls += 1
-        const params = request.params as { paneKey: string; worktreeId: string }
         if (holdResolvePane === null && resolvePaneCalls > 1) {
           // Why: the post-deadline attempt hangs so the test observes that it was issued.
           return new Promise<never>((_resolve, reject) => {
@@ -79,7 +78,7 @@ describe('remote runtime resubscribe failing after the recovery deadline', () =>
               handle: FIRST_HANDLE,
               tabId: 'tab-1',
               leafId: 'pane:1',
-              worktreeId: params.worktreeId
+              worktreeId: 'wt-1'
             }
           }
         }

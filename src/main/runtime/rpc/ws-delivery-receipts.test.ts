@@ -5,16 +5,14 @@ import { WebSocketTransport } from './ws-transport'
 
 function fakeSocket() {
   const pings: string[] = []
-  return {
-    pings,
-    socket: {
-      OPEN: 1 as const,
-      readyState: 1 as WebSocket['readyState'],
-      ping: (data?: unknown) => {
-        pings.push(Buffer.isBuffer(data) ? data.toString('latin1') : '')
-      }
+  const socket: { OPEN: 1; readyState: WebSocket['readyState']; ping: (data?: unknown) => void } = {
+    OPEN: 1,
+    readyState: 1,
+    ping: (data) => {
+      pings.push(Buffer.isBuffer(data) ? data.toString('latin1') : '')
     }
   }
+  return { pings, socket }
 }
 
 describe('createWebSocketDeliveryReceipts', () => {
