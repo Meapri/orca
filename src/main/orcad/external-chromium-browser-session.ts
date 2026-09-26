@@ -32,6 +32,14 @@ const AgentBrowserEnvelope = z.object({
 
 export type AgentBrowserTab = z.infer<typeof AgentBrowserTab>
 
+/** The driver itself failed (crashed, killed, unlaunchable) rather than a command inside a live
+ *  browser. Same wire code as before; the subclass only lets the provider count them. */
+export class AgentBrowserDriverError extends BrowserError {
+  constructor(message: string) {
+    super('browser_error', message)
+  }
+}
+
 function classifyAgentBrowserError(message: string): string {
   if (/unknown ref|ref not found|element not found: @e/i.test(message)) {
     return 'browser_stale_ref'
@@ -180,7 +188,7 @@ export class ExternalChromiumBrowserSession {
       envelope = AgentBrowserEnvelope.parse(JSON.parse(result.stdout))
     } catch {
       const detail = result.stderr.trim() || `exit ${String(result.code)}`
-      throw new BrowserError('browser_error', `Browser command failed: ${detail.slice(0, 1000)}`)
+      throw new AgentBrowserDriverError(`Browser command failed: ${detail.slice(0, 1000)}`)
     }
     if (!envelope.success) {
       const message = envelope.error ?? (result.stderr.trim() || 'Unknown browser error.')
