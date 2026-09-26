@@ -1732,10 +1732,20 @@ export function createRemoteRuntimePtyTransport(
       return false
     }
     if (recovery.currentPhase === 'disconnected') {
+      parkResubscribeAfterDeadline(targetHandle)
       return true
     }
     scheduleResubscribeAfterTransportClose()
     return true
+  }
+
+  // Why: a recoverable failure that lands after the auto-recovery deadline latched has no live epoch
+  // to join; without a parked retry, resume/online have nothing to fire and the pane stays
+  // disconnected until the user clicks Reconnect (#9092). Mirrors the connect path's park.
+  function parkResubscribeAfterDeadline(targetHandle: string): void {
+    recovery.parkRetryAfterDeadline((nextEpoch) =>
+      scheduleResubscribeAfterTransportClose(getRecoveryReplacementPolicy(targetHandle), nextEpoch)
+    )
   }
 
   // Why: after a transport drop the host may have re-minted this handle; re-derive from the snapshot so we don't mirror/type into whatever PTY now sits behind the stale one (#7718).
@@ -1894,6 +1904,17 @@ export function createRemoteRuntimePtyTransport(
     let retryScheduled = false
     void resubscribeAfterTransportClose(resubscribeHandle, replacementPolicy, recoveryEpoch)
       .catch((error) => {
+        if (
+          !destroyed &&
+          connected &&
+          handle &&
+          recovery.currentPhase === 'disconnected' &&
+          recovery.ownsEpoch(recoveryEpoch) &&
+          isRecoverableRemoteRuntimeConnectionError(toRemoteRuntimeClientErrorLike(error))
+        ) {
+          parkResubscribeAfterDeadline(handle)
+          return
+        }
         if (!destroyed && connected && handle && recovery.isCurrent(recoveryEpoch)) {
           clearPendingViewportClaim()
           const clientError = toRemoteRuntimeClientErrorLike(error)
