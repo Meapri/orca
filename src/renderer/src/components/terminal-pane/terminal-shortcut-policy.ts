@@ -12,6 +12,7 @@ import {
 } from './terminal-option-shortcut-policy'
 import type { OptionKeyLocationState } from '../../lib/keyboard-layout/option-key-location-state'
 import type { TerminalOptionKittyRelease } from './terminal-option-kitty-release'
+import { resolveTerminalLineEditingChord } from './terminal-line-editing-chords'
 
 export type { MacOptionAsAlt } from './terminal-option-shortcut-policy'
 
@@ -197,30 +198,16 @@ export function resolveTerminalShortcutAction(
     }
   }
 
-  if (
-    event.ctrlKey &&
-    !event.metaKey &&
-    !event.altKey &&
-    !event.shiftKey &&
-    event.key === 'Backspace'
-  ) {
-    return { type: 'sendInput', data: '\x17' }
+  const lineEditingChord = resolveTerminalLineEditingChord(event, {
+    isMac,
+    getKittyKeyboardFlags: () => getKittyKeyboardFlagsActivePane?.() ?? 0,
+    isLocalWindowsConptyPane
+  })
+  if (lineEditingChord) {
+    return lineEditingChord.type === 'yield' ? null : lineEditingChord
   }
 
   if (isMac && event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey) {
-    if (event.key === 'Backspace') {
-      return { type: 'sendInput', data: '\x15' }
-    }
-    if (event.key === 'Delete') {
-      return { type: 'sendInput', data: '\x0b' }
-    }
-    // Why: xterm.js has no Cmd+Arrow mapping; translate Cmd+←/→ to readline Ctrl+A/Ctrl+E for line start/end (iTerm2/Ghostty).
-    if (event.key === 'ArrowLeft') {
-      return { type: 'sendInput', data: '\x01' }
-    }
-    if (event.key === 'ArrowRight') {
-      return { type: 'sendInput', data: '\x05' }
-    }
     // Why: macOS users expect Cmd+↑/↓ to scroll scrollback, not write escape bytes to the shell.
     if (event.key === 'ArrowUp') {
       return { type: 'scrollViewport', position: 'top' }
@@ -228,52 +215,6 @@ export function resolveTerminalShortcutAction(
     if (event.key === 'ArrowDown') {
       return { type: 'scrollViewport', position: 'bottom' }
     }
-  }
-
-  if (
-    !event.metaKey &&
-    !event.ctrlKey &&
-    event.altKey &&
-    !event.shiftKey &&
-    event.key === 'Backspace'
-  ) {
-    // Why: a kitty-protocol TUI binds the CSI 127;3u xterm emits natively; the legacy \x1b\x7f fallback would bypass it.
-    if ((getKittyKeyboardFlagsActivePane?.() ?? 0) > 0) {
-      return null
-    }
-    return { type: 'sendInput', data: '\x1b\x7f' }
-  }
-
-  if (
-    !event.metaKey &&
-    !event.ctrlKey &&
-    event.altKey &&
-    !event.shiftKey &&
-    event.code?.startsWith('Numpad') !== true &&
-    (event.key === 'ArrowLeft' || event.key === 'ArrowRight')
-  ) {
-    // Why: a kitty-protocol TUI binds alt+arrow via xterm's native CSI 1;3D/C; \eb/\ef would reach it as alt+b/f.
-    if ((getKittyKeyboardFlagsActivePane?.() ?? 0) > 0) {
-      return null
-    }
-    // Why: readline doesn't bind xterm's \e[1;3D/C for alt+←/→, so translate to \eb/\ef for word-nav (iTerm2 "Esc+" behavior).
-    return { type: 'sendInput', data: event.key === 'ArrowLeft' ? '\x1bb' : '\x1bf' }
-  }
-
-  if (
-    !isMac &&
-    !event.metaKey &&
-    event.ctrlKey &&
-    !event.altKey &&
-    !event.shiftKey &&
-    (event.key === 'ArrowLeft' || event.key === 'ArrowRight')
-  ) {
-    // Why: local Windows ConPTY (PSReadLine) binds Ctrl+←/→ itself; sending \eb/\ef prints stray b/f. Remote/WSL run readline.
-    if (isLocalWindowsConptyPane?.()) {
-      return null
-    }
-    // Why: readline ignores xterm's \e[1;5D/C, so translate Ctrl+←/→ to \eb/\ef for word-nav; !isMac since Mac reserves Ctrl+Arrow.
-    return { type: 'sendInput', data: event.key === 'ArrowLeft' ? '\x1bb' : '\x1bf' }
   }
 
   const optionAction = resolveTerminalOptionShortcutAction(event, {
