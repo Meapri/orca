@@ -14,6 +14,13 @@ are the build output those sources produce (`lib/xterm.js`, `lib/xterm.mjs`,
 and both sourcemaps). The bundle half is 7.3 MB of minified code. It is
 generated, and this document exists so nobody edits it by hand.
 
+The core patch also carries the in-grid IME preedit (`imePreeditInGrid`, the
+`IImePreedit` surface on `ITerminal`, and its use in the DOM renderer). The
+WebGL addon reads that surface too, but each package is built from a checkout
+with only its own source patch applied, so the addon declares the shape it reads
+locally instead of importing the core type; importing it fails the addon build.
+New files are not picked up either: the checkout diff only sees tracked files.
+
 The two halves are the same edits diffed two ways, so the generator requires
 them to match byte for byte on every source file. A hunk the shipped patch
 cannot name — upstream's `.npmignore` strips `src/**/*.test.ts` — would be
