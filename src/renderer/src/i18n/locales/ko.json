@@ -8635,6 +8635,10 @@
             "fastDescription": "수정 키로 스크롤할 때 적용되는 추가 배율.",
             "tui": "TUI",
             "tuiDescription": "전체 화면 터미널 앱을 위한 개별 휠 보고."
+          },
+          "smoothScroll": {
+            "title": "부드러운 스크롤",
+            "description": "마우스 휠, Shift+Page Up/Down, 최신으로 이동 스크롤에 애니메이션을 적용합니다. 트랙패드는 이미 연속으로 스크롤되며, 동작 줄이기 설정이 켜져 있으면 꺼집니다."
           }
         },
         "TerminalSettingsPreview": {
@@ -10578,7 +10582,13 @@
               "statusline": "상태 표시줄",
               "dim": "어둑한",
               "colors": "그림 물감"
-            }
+            },
+            "smoothScroll": {
+              "title": "부드러운 스크롤",
+              "description": "터미널 스크롤백에서 마우스 휠, Shift+Page Up/Down, 최신으로 이동 스크롤에 애니메이션을 적용합니다."
+            },
+            "smooth": "부드러운",
+            "animation": "애니메이션"
           },
           "windows": {
             "search": {
@@ -18005,6 +18015,12 @@
             "spaces": "공백"
           }
         }
+      }
+    },
+    "terminal-pane": {
+      "jumpToLatest": {
+        "newOutput": "새 출력",
+        "label": "최신으로 이동"
       }
     }
   },

@@ -53,6 +53,22 @@ export const getTerminalPaneInteractionSearchEntries = createLocalizedCatalog(()
   },
   {
     title: translate(
+      'auto.components.settings.terminal.search.smoothScroll.title',
+      'Smooth Scrolling'
+    ),
+    description: translate(
+      'auto.components.settings.terminal.search.smoothScroll.description',
+      'Animate mouse-wheel, Shift+Page Up/Down and jump-to-latest scrolling in terminal scrollback.'
+    ),
+    keywords: [
+      ...translateSearchKeyword('auto.components.settings.terminal.search.scroll', 'scroll'),
+      ...translateSearchKeyword('auto.components.settings.terminal.search.smooth', 'smooth'),
+      ...translateSearchKeyword('auto.components.settings.terminal.search.animation', 'animation'),
+      ...translateSearchKeyword('auto.components.settings.terminal.search.wheel', 'wheel')
+    ]
+  },
+  {
+    title: translate(
       'auto.components.settings.terminal.search.ask_before_closing_running_terminals_title',
       'Ask Before Closing Running Terminals'
     ),

@@ -8,6 +8,7 @@ import {
   markTerminalPinnedViewport,
   syncTerminalScrollIntentFromViewport
 } from '@/lib/pane-manager/terminal-scroll-intent'
+import { smoothScrollTerminalTo } from '@/lib/pane-manager/terminal-smooth-scroll'
 import type { resolveTerminalKeyboardShortcutAction } from './terminal-keyboard-shortcut-matching'
 
 type TerminalShortcutAction = NonNullable<ReturnType<typeof resolveTerminalKeyboardShortcutAction>>
@@ -124,12 +125,18 @@ export function dispatchTerminalShortcutAction(
     }
     if (action.position === 'top') {
       markTerminalPinnedViewport(pane.terminal)
-      pane.terminal.scrollToLine(0)
     } else {
       markTerminalFollowOutput(pane.terminal)
-      pane.terminal.scrollToBottom()
     }
-    syncTerminalScrollIntentFromViewport(pane.terminal)
+    // Why: an animated jump re-samples intent when it lands; sampling now would read the start.
+    if (!smoothScrollTerminalTo(pane.terminal, action.position)) {
+      if (action.position === 'top') {
+        pane.terminal.scrollToLine(0)
+      } else {
+        pane.terminal.scrollToBottom()
+      }
+      syncTerminalScrollIntentFromViewport(pane.terminal)
+    }
     return
   }
   if (action.type === 'focusPane') {

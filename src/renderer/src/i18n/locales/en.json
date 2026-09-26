@@ -8853,6 +8853,10 @@
             "fastDescription": "Extra multiplier while scrolling with a modifier key.",
             "tui": "TUI",
             "tuiDescription": "Discrete wheel reports for full-screen terminal apps."
+          },
+          "smoothScroll": {
+            "description": "Animate mouse-wheel, Shift+Page Up/Down and jump-to-latest scrolling. Trackpads already scroll continuously; reduced motion turns this off.",
+            "title": "Smooth Scrolling"
           }
         },
         "TerminalSettingsPreview": {
@@ -10793,7 +10797,13 @@
               "statusline": "statusline",
               "dim": "dim",
               "colors": "colors"
-            }
+            },
+            "smoothScroll": {
+              "title": "Smooth Scrolling",
+              "description": "Animate mouse-wheel, Shift+Page Up/Down and jump-to-latest scrolling in terminal scrollback."
+            },
+            "smooth": "smooth",
+            "animation": "animation"
           },
           "windows": {
             "search": {
@@ -18121,6 +18131,12 @@
             "spaces": "spaces"
           }
         }
+      }
+    },
+    "terminal-pane": {
+      "jumpToLatest": {
+        "newOutput": "New output",
+        "label": "Jump to latest"
       }
     }
   },
