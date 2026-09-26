@@ -2,6 +2,7 @@ import type { RuntimeMetadata } from '../../../shared/runtime-bootstrap'
 import { writeRuntimeMetadata } from '../runtime-metadata'
 import type { RpcMessageContext } from '../rpc/transport'
 import type { RpcRequest, RpcResponse } from '../rpc/core'
+import type { DeviceAdministrationRpcContext } from '../rpc/device-administration-context'
 import { errorResponse } from '../rpc/errors'
 import { RuntimeRpcBinaryRouting } from './runtime-rpc-binary-routing'
 import { classifyRuntimeLongPoll, type RuntimeLongPollClass } from './runtime-rpc-long-poll'
@@ -36,7 +37,9 @@ export class RuntimeRpcRequestAdmission extends RuntimeRpcBinaryRouting {
 
     try {
       return await this.dispatcher.dispatch(request, {
-        signal: longPoll ? context?.signal : undefined
+        signal: longPoll ? context?.signal : undefined,
+        // Why: only this transport proves the caller read the owner-only metadata token.
+        deviceAdministration: this.getDeviceAdministrationContext()
       })
     } finally {
       this.releaseLongPoll(longPoll)
@@ -129,10 +132,20 @@ export class RuntimeRpcRequestAdmission extends RuntimeRpcBinaryRouting {
       return { error: this.buildError(request.id, 'unauthorized', 'Missing auth token') }
     }
     if (request.authToken !== this.authToken) {
+      this.securityEvents?.record({
+        event: 'auth.failed',
+        transport: 'local-socket',
+        reason: 'Invalid auth token'
+      })
       return { error: this.buildError(request.id, 'unauthorized', 'Invalid auth token') }
     }
 
     return { request }
+  }
+
+  // Why: the administration layer overrides this; without it host-only admin RPCs stay unreachable.
+  protected getDeviceAdministrationContext(): DeviceAdministrationRpcContext | undefined {
+    return undefined
   }
 
   protected buildError(id: string, code: string, message: string): RpcResponse {

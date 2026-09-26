@@ -155,7 +155,7 @@ describe('orca serve status | doctor | pairing', () => {
     await main(['serve', 'status', '--data-root', '/srv/orcad'], '/tmp/repo')
 
     const printed = error.mock.calls.flat().join(' ')
-    expect(printed).toContain('No orcad answered on data root /srv/orcad')
+    expect(printed).toContain('No Orca runtime answered on data root /srv/orcad')
     expect(printed).not.toContain('orca open')
     expect(process.exitCode).toBe(1)
   })
@@ -201,6 +201,28 @@ describe('orca serve status | doctor | pairing', () => {
 
     expect(callMock).toHaveBeenCalledWith('server.pairingOffer', { rotate: true })
     expect(String(log.mock.calls[0]?.[0])).toContain('Pairing URL: orca://pair?code=abc')
+  })
+
+  it('treats `serve pairing show` as the reprint and prints the offer expiry', async () => {
+    callMock.mockResolvedValueOnce(
+      okFixture('req_pair', {
+        available: true,
+        url: 'orca://pair?code=abc',
+        endpoint: 'ws://127.0.0.1:6768',
+        deviceId: 'device-1',
+        webClientUrl: null,
+        scope: 'runtime',
+        qr: null,
+        expiresAt: Date.UTC(2026, 0, 1, 0, 15)
+      })
+    )
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await main(['serve', 'pairing', 'show', '--data-root', '/srv/orcad'], '/tmp/repo')
+
+    expect(runtimeClientConstructorMock).toHaveBeenCalledWith(null, null)
+    expect(callMock).toHaveBeenCalledWith('server.pairingOffer', { rotate: false })
+    expect(String(log.mock.calls[0]?.[0])).toContain('Expires: 2026-01-01T00:15:00.000Z')
   })
 
   it('runs doctor against the data root and exits 1 on a failed check', async () => {

@@ -9,6 +9,8 @@ export const ROOT_HELP_TEXT_PRIMARY = [
   "  serve status              Show a running orcad server's health and stats",
   '  serve doctor              Preflight an orcad host and print fixes',
   "  serve pairing             Reprint a running server's pairing link and QR",
+  '  serve pairing new         Mint another pairing offer (runtime or --mobile)',
+  '  serve devices             List, revoke or rotate paired devices',
   '  status                    Show app/runtime/graph readiness',
   '',
   'Diagnostics:',

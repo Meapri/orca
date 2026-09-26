@@ -3,6 +3,7 @@ import { isAbsolute, join } from 'node:path'
 import { app } from 'electron'
 import { resolveAdvertisedPairingEndpoint } from '../runtime/pairing-endpoint'
 import { notifyServeSupervisorReady } from '../serve-update-handoff'
+import { renderTerminalPairingQr } from '../../shared/terminal-pairing-qr'
 import { mainProcessState as state } from './main-process-state'
 import { getServeOptions, type ServeOptions } from './serve-options'
 
@@ -16,21 +17,6 @@ export function getBundledWebClientRoot(): string | undefined {
     join(appPath, '..', 'web')
   ]
   return roots.find((root) => existsSync(join(root, 'web-index.html')))
-}
-
-async function renderTerminalPairingQr(pairingUrl: string): Promise<string | null> {
-  // Why dynamic: qrcode is only reachable from mobile pairing, so launch should
-  // not parse it for the majority who never pair a device.
-  const QRCode = await import('qrcode')
-  try {
-    return await QRCode.toString(pairingUrl, { type: 'terminal', small: true })
-  } catch {
-    try {
-      return await QRCode.toString(pairingUrl, { type: 'utf8' })
-    } catch {
-      return null
-    }
-  }
 }
 
 export async function printServeReady(options: ServeOptions): Promise<void> {

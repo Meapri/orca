@@ -1,5 +1,6 @@
 import type { OrcadOptions } from './orcad-entry'
 import { parseOrcadResourceLimit } from './orcad-resource-limit-flags'
+import { parsePairingOfferLifetime } from '../../shared/pairing-offer-lifetime'
 
 /**
  * orcad's flags. A value-taking flag consumes the next token whatever it looks
@@ -28,6 +29,13 @@ export function parseArgs(argv: string[]): OrcadOptions {
         throw new Error('--bind expects a value')
       }
       options.bind = value
+      i += 1
+    } else if (arg === '--pairing-expires') {
+      const parsed = parsePairingOfferLifetime(argv[i + 1] ?? '')
+      if (!parsed.ok) {
+        throw new Error(`--pairing-expires: ${parsed.message}`)
+      }
+      options.pairingExpiresInMs = parsed.ms
       i += 1
     } else if (arg === '--pairing-address') {
       const value = argv[i + 1]

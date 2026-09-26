@@ -12,6 +12,8 @@ export type ServePairingReadiness =
       webClientUrl: string | null
       scope: 'runtime' | 'mobile'
       qr: string | null
+      /** Epoch ms after which the unclaimed offer stops authenticating. Additive; absent = no expiry. */
+      expiresAt?: number | null
     }
   | {
       available: false
@@ -122,6 +124,11 @@ function renderHumanReadiness(readiness: ServeReadiness): string {
       lines.push(`Mobile pairing QR:\n${readiness.pairing.qr}`)
     }
     lines.push(`Pairing URL: ${readiness.pairing.url}`)
+    if (typeof readiness.pairing.expiresAt === 'number') {
+      lines.push(
+        `Pairing URL expires: ${new Date(readiness.pairing.expiresAt).toISOString()} (mint another with \`orca serve pairing new\`)`
+      )
+    }
   } else {
     lines.push(`Pairing unavailable: ${readiness.pairing.reason}`)
     lines.push(`Pairing guidance: ${readiness.pairing.guidance}`)

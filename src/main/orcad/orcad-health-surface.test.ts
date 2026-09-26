@@ -7,6 +7,7 @@ import { OrcaRuntimeRpcServer } from '../runtime/runtime-rpc'
 import { readRuntimeMetadata } from '../runtime/runtime-metadata'
 import { createOrcadHealthSurface, type OrcadHealthSurface } from './orcad-health-surface'
 import { sendLocalRuntimeRpcRequest } from './orcad-local-rpc-request'
+import { createOrcadPairingOffer } from './orcad-pairing-offer'
 
 vi.mock('../git/worktree', () => ({
   listWorktrees: vi.fn().mockResolvedValue([]),
@@ -48,11 +49,16 @@ async function startServer(options: { noPairing: boolean }): Promise<{
     await surface.stop()
     await rpc.stop()
   })
+  const pairingOffer = createOrcadPairingOffer({
+    noPairing: options.noPairing,
+    pairingAddress: undefined,
+    offerLifetimeMs: 15 * 60_000
+  })
   surface.attach({
     rpc,
     runtimeDegradations: () => [],
     listLocalTerminals: async () => [{ id: 'pty-1' }, { id: 'pty-2' }],
-    pairing: { noPairing: options.noPairing, pairingAddress: undefined }
+    pairingOffer: (request) => pairingOffer.current(rpc, request)
   })
   const endpoint = rpc.getWebSocketEndpoint()
   if (!endpoint) {
@@ -121,17 +127,33 @@ describe('orcad health surface', () => {
     expect((await fetch(`${baseUrl}/not-a-probe`)).status).toBe(404)
   })
 
-  it('reprints the same pending pairing offer until a device uses it', async () => {
-    const { userDataPath } = await startServer({ noPairing: false })
+  it('reprints the same expiring offer until it is claimed, and rotation revokes it', async () => {
+    const { rpc, userDataPath } = await startServer({ noPairing: false })
+    const registry = rpc.getDeviceRegistry()
+    if (!registry) {
+      throw new Error('device registry unavailable')
+    }
+    const field = (offer: unknown, key: string): unknown =>
+      offer && typeof offer === 'object' ? Reflect.get(offer, key) : undefined
+    const deviceIdOf = (offer: unknown): string => String(field(offer, 'deviceId'))
 
     const first = await callLocal(userDataPath, 'server.pairingOffer', {})
     const second = await callLocal(userDataPath, 'server.pairingOffer', {})
     const rotated = await callLocal(userDataPath, 'server.pairingOffer', { rotate: true })
 
     expect(first).toMatchObject({ available: true, scope: 'runtime' })
+    expect(field(first, 'expiresAt')).toEqual(expect.any(Number))
     expect(second).toEqual(first)
     expect(rotated).toMatchObject({ available: true })
     expect(rotated).not.toEqual(first)
+    // A rotated offer is revoked, not merely replaced in the printout.
+    expect(registry.getDevice(deviceIdOf(first))).toBeNull()
+
+    registry.updateLastSeen(deviceIdOf(rotated))
+    const afterClaim = await callLocal(userDataPath, 'server.pairingOffer', { rotate: true })
+    expect(deviceIdOf(afterClaim)).not.toBe(deviceIdOf(rotated))
+    // Rotation never touches a grant a client already claimed.
+    expect(registry.getDevice(deviceIdOf(rotated))).not.toBeNull()
   })
 
   it('reports pairing disabled when the operator started with --no-pairing', async () => {

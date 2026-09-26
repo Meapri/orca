@@ -19,7 +19,15 @@ export const HANDLER_GROUPS: readonly HandlerGroup[] = [
   },
   {
     name: 'serve-admin',
-    keys: ['serve status', 'serve doctor', 'serve pairing'],
+    keys: [
+      'serve status',
+      'serve doctor',
+      'serve pairing',
+      'serve pairing new',
+      'serve devices list',
+      'serve devices revoke',
+      'serve devices rotate'
+    ],
     load: async () => (await import('./handlers/serve-admin.js')).SERVE_ADMIN_HANDLERS
   },
   {

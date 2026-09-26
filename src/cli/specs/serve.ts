@@ -1,5 +1,6 @@
 import type { CommandSpec } from '../args'
 import { GLOBAL_FLAGS } from '../args'
+import { SERVE_ADMINISTRATION_COMMAND_SPECS } from './serve-administration'
 
 export const SERVE_COMMAND_SPECS: CommandSpec[] = [
   {
@@ -21,7 +22,8 @@ export const SERVE_COMMAND_SPECS: CommandSpec[] = [
       '--pairing-address changes only the client-advertised address; use a reachable LAN, Tailscale, SSH-forward, or reverse-proxy endpoint.',
       'Use --recipe-json with --project-root from VM recipes to print the recipe result JSON and leave the server running.',
       'Use --mobile-pairing to print a mobile-scoped pairing QR/link instead of the default runtime-environment pairing link.',
-      'When the web client bundle is available, the server also prints a browser URL with the pairing data embedded.'
+      'When the web client bundle is available, the server also prints a browser URL with the pairing data embedded.',
+      'To pair more clients, or both a phone and a peer host, against an already-running server use `orca serve pairing new`; manage them with `orca serve devices list|revoke|rotate`.'
     ],
     examples: [
       'orca serve',
@@ -38,7 +40,7 @@ export const SERVE_COMMAND_SPECS: CommandSpec[] = [
     allowedFlags: [...GLOBAL_FLAGS, 'fresh', 'data-root'],
     notes: [
       'Reports readiness, liveness, build, terminal-daemon verdict, degradations, uptime, memory, CPU, event-loop lag, connected clients and live terminals.',
-      'Locally it reads the orcad data root ($ORCA_USER_DATA, else $XDG_DATA_HOME/Orca, else ~/.orca); --environment asks a paired server instead.',
+      'Locally it reads the data root from --data-root, $ORCA_USER_DATA or $ORCA_USER_DATA_PATH, else the orcad root ($XDG_DATA_HOME/Orca or ~/.orca) or the desktop profile, whichever has a running runtime; --environment asks a paired server instead.',
       '--fresh re-runs the terminal-daemon self-test instead of reading the last minute-old verdict.',
       'Exits 1 when the server is not ready, not live, or does not answer.'
     ],
@@ -60,16 +62,5 @@ export const SERVE_COMMAND_SPECS: CommandSpec[] = [
     ],
     examples: ['orca serve doctor', 'orca serve doctor --port 6768 --json']
   },
-  {
-    path: ['serve', 'pairing'],
-    summary: 'Reprint the pairing link and QR code of a running orcad server',
-    usage: 'orca serve pairing [--rotate] [--data-root <path>] [--json]',
-    allowedFlags: [...GLOBAL_FLAGS, 'rotate', 'data-root'],
-    notes: [
-      'Prints the same unused pairing offer the server printed at startup, without restarting it; after a device pairs, it prints a fresh one.',
-      '--rotate invalidates the unused offer (for example, one that leaked) and mints a new one.',
-      'Runs on the server host only; paired clients cannot mint pairing offers.'
-    ],
-    examples: ['orca serve pairing', 'orca serve pairing --rotate']
-  }
+  ...SERVE_ADMINISTRATION_COMMAND_SPECS
 ]

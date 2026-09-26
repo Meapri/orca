@@ -48,3 +48,38 @@ describe('resolveServeDataRoot', () => {
     expect(() => resolveServeDataRoot(new Map([['data-root', true]]))).toThrow('--data-root')
   })
 })
+
+describe('resolveServeDataRoot discovery', () => {
+  const HOME = '/home/orca'
+  const DESKTOP_ROOT = join(HOME, '.config', 'orca')
+  const ORCAD_ROOT = join(HOME, '.orca')
+
+  function resolve(env: Record<string, string>, live: string[]): string {
+    // Why: getDefaultUserDataPath also reads the ambient variable an Orca terminal exports.
+    delete process.env.ORCA_USER_DATA_PATH
+    return resolveServeDataRoot(new Map(), {
+      env,
+      platform: 'linux',
+      homeDir: HOME,
+      hasMetadata: (path) => live.includes(path)
+    })
+  }
+
+  it('prefers explicit env over any discovery', () => {
+    expect(resolve({ ORCA_USER_DATA: '/b', ORCA_USER_DATA_PATH: '/a' }, [ORCAD_ROOT])).toBe('/b')
+    expect(resolve({ ORCA_USER_DATA_PATH: '/a' }, [DESKTOP_ROOT])).toBe('/a')
+  })
+
+  it('finds a running orcad first, then a running desktop runtime', () => {
+    expect(resolve({}, [ORCAD_ROOT])).toBe(ORCAD_ROOT)
+    expect(resolve({}, [DESKTOP_ROOT, ORCAD_ROOT])).toBe(ORCAD_ROOT)
+    expect(resolve({}, [DESKTOP_ROOT])).toBe(DESKTOP_ROOT)
+    expect(resolve({ XDG_DATA_HOME: '/srv/data' }, [join('/srv/data', 'Orca')])).toBe(
+      join('/srv/data', 'Orca')
+    )
+  })
+
+  it('falls back to the orcad root when no runtime published metadata', () => {
+    expect(resolve({}, [])).toBe(ORCAD_ROOT)
+  })
+})

@@ -97,9 +97,17 @@ export function formatServePairing(pairing: OrcadPairingOfferReport, qr: string 
   if (pairing.webClientUrl) {
     lines.push(`Web client URL: ${pairing.webClientUrl}`)
   }
+  if (typeof pairing.expiresAt === 'number') {
+    lines.push(
+      `Expires: ${new Date(pairing.expiresAt).toISOString()} unless a client uses it first`
+    )
+  }
   if (qr) {
     lines.push('', qr)
   }
-  lines.push('', 'Anyone holding this link can pair until a device uses it; `--rotate` revokes it.')
+  lines.push(
+    '',
+    'Anyone holding this link can pair until a device uses it; `--rotate` revokes it, and `orca serve pairing new` mints another.'
+  )
   return lines.join('\n')
 }

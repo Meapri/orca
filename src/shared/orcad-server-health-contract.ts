@@ -150,5 +150,7 @@ export type OrcadPairingOfferReport =
       webClientUrl: string | null
       scope: 'runtime' | 'mobile'
       qr: string | null
+      /** Epoch ms after which the unclaimed offer stops authenticating; absent from older orcad. */
+      expiresAt?: number | null
     }
   | { available: false; reason: string; guidance: string }

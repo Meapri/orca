@@ -10,6 +10,7 @@
  * the runtime factory, but only when an Electron serve sidecar or an operator-supplied
  * Chromium proves available at startup.
  */
+import { join } from 'node:path'
 import process from 'node:process'
 import { setAppEnvironment, type AppEnvironment } from '../../shared/app-environment'
 import { setSecretStore, type SecretStore } from '../../shared/secret-store'
@@ -93,6 +94,8 @@ export type OrcadOptions = {
   json?: boolean
   noPairing?: boolean
   pairingAddress?: string
+  /** Lifetime of the startup offer; see DEFAULT_PAIRING_OFFER_LIFETIME_MS. */
+  pairingExpiresInMs?: number
   /** Literal IP to bind. Defaults to loopback; see orcad-bind-address.ts. */
   bind?: string
   /** Resource-governance env assignments from `--limit`; see orcad-resource-limit-flags.ts. */
@@ -140,8 +143,10 @@ async function startOrcadRuntime(
   const { createOrcadProfileStateStartup } = await import('./orcad-profile-state-startup')
   const { startOrcadDaemon, stopOrcadDaemon } = await import('./orcad-daemon-supervision')
   const { daemonOwnsFreshPersistentPtys } = await import('../daemon/daemon-init')
-  const { buildOrcadPairingReadiness, createOrcadHealthSurface } =
-    await import('./orcad-health-surface')
+  const { createOrcadHealthSurface } = await import('./orcad-health-surface')
+  const { createOrcadPairingOffer } = await import('./orcad-pairing-offer')
+  const { SECURITY_LOG_FILENAME } = await import('../runtime/security-event-log')
+  const { DEFAULT_PAIRING_OFFER_LIFETIME_MS } = await import('../../shared/pairing-offer-lifetime')
   // Why importable here: the singleton's module tree never reaches Electron, and orcad supplies
   // its persistence and endpoint paths explicitly below.
   const { agentHookServer } = await import('../agent-hooks/server')
@@ -323,6 +328,7 @@ async function startOrcadRuntime(
     pinnedBindHost: bindHost,
     extraMethods: healthSurface.extraMethods,
     httpProbeHandler: healthSurface.httpProbeHandler,
+    securityLogPath: join(getAppEnvironment().getPath('logs'), SECURITY_LOG_FILENAME),
     // Why required: a pinned --port that silently moved leaves every client dialing a dead port.
     ...(options.port !== undefined
       ? { wsPort: options.port, preferPinnedWsPort: true, requirePinnedWsPort: true }
@@ -342,12 +348,18 @@ async function startOrcadRuntime(
   const advertised = boundEndpoint
     ? resolveAdvertisedPairingEndpoint(boundEndpoint, options.pairingAddress)
     : null
-  const pairing = { noPairing: options.noPairing === true, pairingAddress: options.pairingAddress }
+  // Why: `orca serve pairing new` mints a fresh offer on demand, so a short window costs nothing.
+  const pairingOffer = createOrcadPairingOffer({
+    noPairing: options.noPairing === true,
+    pairingAddress: options.pairingAddress,
+    offerLifetimeMs: options.pairingExpiresInMs ?? DEFAULT_PAIRING_OFFER_LIFETIME_MS
+  })
+  const listeningRpc = rpc
   healthSurface.attach({
-    rpc,
+    rpc: listeningRpc,
     runtimeDegradations: () => runtime.getStatus().degradations ?? [],
     listLocalTerminals: () => getLocalPtyProvider().listProcesses(),
-    pairing
+    pairingOffer: (request) => pairingOffer.current(listeningRpc, request)
   })
 
   const readiness: ServeReadiness = {
@@ -357,7 +369,7 @@ async function startOrcadRuntime(
     // Why 'settled': the WSL CLI reconciliation barrier is a desktop-launch concern.
     // orcad never runs it, so there is no pending repair a client could race.
     managedWslCliReconciliation: 'settled',
-    pairing: buildOrcadPairingReadiness(rpc, pairing),
+    pairing: pairingOffer.current(listeningRpc),
     // Why in the readiness payload: this is the one message a supervisor and a deploy
     // transaction both read, and a green orcad with a dead daemon is exactly the
     // looks-healthy-but-useless state they must not activate.

@@ -25,46 +25,11 @@ import type { OrcadProfileStateAuthoritySelection } from './orcad-profile-state-
 
 const LOCAL_TERMINAL_LIST_TIMEOUT_MS = 3_000
 
-export type OrcadPairingOptions = { noPairing: boolean; pairingAddress: string | undefined }
-
-type PairingRpc = Pick<OrcaRuntimeRpcServer, 'createPairingOffer'>
-
-/** Same offer the readiness line prints; a pending token is re-served until a device uses it. */
-export function buildOrcadPairingReadiness(
-  rpc: PairingRpc,
-  options: OrcadPairingOptions & { rotate?: boolean }
-): ServePairingReadiness {
-  if (options.noPairing) {
-    return {
-      available: false,
-      reason: 'disabled_by_operator',
-      guidance: 'Restart without --no-pairing to create a client pairing offer.'
-    }
-  }
-  const offer = rpc.createPairingOffer({
-    address: options.pairingAddress,
-    name: `CLI ${new Date().toLocaleDateString()}`,
-    scope: 'runtime',
-    ...(options.rotate ? { rotate: true } : {})
-  })
-  return offer.available
-    ? {
-        available: true,
-        url: offer.pairingUrl,
-        endpoint: offer.endpoint,
-        deviceId: offer.deviceId,
-        webClientUrl: offer.webClientUrl,
-        scope: 'runtime',
-        qr: null
-      }
-    : offer
-}
-
 export type OrcadHealthSurfaceHost = {
   rpc: OrcaRuntimeRpcServer
   runtimeDegradations: () => readonly RuntimeDegradation[]
   listLocalTerminals: () => Promise<readonly unknown[]>
-  pairing: OrcadPairingOptions
+  pairingOffer: (request: { rotate: boolean }) => ServePairingReadiness
 }
 
 async function withTimeout<T>(work: Promise<T>, timeoutMs: number): Promise<T | null> {
@@ -166,7 +131,7 @@ export function createOrcadHealthSurface(options: {
         if (!host) {
           throw new Error('server_not_ready')
         }
-        return buildOrcadPairingReadiness(host.rpc, { ...host.pairing, rotate })
+        return host.pairingOffer({ rotate })
       }
     }),
     httpProbeHandler: createOrcadHealthProbeHandler(monitor),

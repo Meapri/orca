@@ -45,6 +45,13 @@ describe('parseArgs', () => {
     expect(() => parseArgs(['--limit'])).toThrow('--limit expects')
     expect(() => parseArgs(['--limit', 'toString=1'])).toThrow('--limit expects')
   })
+
+  it('parses --pairing-expires and refuses a lifetime outside the supported window', () => {
+    expect(parseArgs(['--pairing-expires', '2h'])).toEqual({ pairingExpiresInMs: 7_200_000 })
+    expect(() => parseArgs(['--pairing-expires'])).toThrow('--pairing-expires')
+    expect(() => parseArgs(['--pairing-expires', '10s'])).toThrow('at least 1 minute')
+    expect(() => parseArgs(['--pairing-expires', 'never'])).toThrow('Invalid pairing lifetime')
+  })
 })
 
 describe('resolveOrcadExitCode', () => {
