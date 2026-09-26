@@ -217,7 +217,8 @@ await_gate() {
 # ---- census ---------------------------------------------------------------------------------
 
 default_census_command() {
-  for candidate in orca-ide orca "$HOME/.local/bin/orca-ide"; do
+  # In system mode the CLI registration lives in the service account's home, not root's.
+  for candidate in orca-ide orca "${service_home:-$HOME}/.local/bin/orca-ide"; do
     if command -v "$candidate" >/dev/null 2>&1; then
       echo "$candidate terminal list --json"
       return 0
