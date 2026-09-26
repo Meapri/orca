@@ -29,7 +29,14 @@ const SEEDS = Math.max(1, Number(process.env.SERIALIZE_TRANSCRIPT_SEEDS) || 2)
 // Checkpoints (default seeds) whose new replay diverges exactly as the previous
 // build's did — pre-existing upstream limitations, not regressions (verified
 // with ORCA_OLD_SERIALIZE_ADDON). Shrink when one is fixed.
-const KNOWN_PREEXISTING_I2_FAILURES: Record<string, number> = { less: 6, nano: 2, opencode: 5 }
+const KNOWN_PREEXISTING_I2_FAILURES: Record<string, number> = {
+  less: 6,
+  nano: 2,
+  opencode: 5,
+  // Same counts on da6d483ab9's serializer: alt-screen repaints under resize, not IME regressions.
+  'claude-code-ime-korean-typed': 2,
+  'grok-ime-korean-typed': 24
+}
 
 type Transcript = { name: string; data: string; cols: number; rows: number }
 type Schedule = 'none' | 'shrink' | 'shrink-grow' | 'jitter'
