@@ -2,7 +2,8 @@ import { parseExplicitFileLinkTarget } from './explicit-file-link-target'
 import type { ParsedTerminalFileLink } from './terminal-links'
 
 const LEADING_TRIM_CHARS = new Set(['(', '[', '{', '"', "'"])
-const TRAILING_TRIM_CHARS = new Set([')', ']', '}', '"', "'", ',', ';', '.'])
+// Why `:`: compilers print `file.go:12:3:` before the message; no real path ends in a colon.
+const TRAILING_TRIM_CHARS = new Set([')', ']', '}', '"', "'", ',', ';', '.', ':'])
 
 export type DetectedTerminalFileLinkRange = {
   startIndex: number
@@ -123,4 +124,34 @@ export function toParsedTerminalFileLink(
     endIndex: range.endIndex,
     displayText: range.text
   }
+}
+
+export function trimTerminalFileLinkRangeEnd(
+  range: DetectedTerminalFileLinkRange
+): DetectedTerminalFileLinkRange {
+  const text = range.text.trimEnd()
+  return {
+    text,
+    startIndex: range.startIndex,
+    endIndex: range.startIndex + text.length
+  }
+}
+
+/** Every prefix of a spaced candidate that still contains a space, longest first. */
+export function buildLineEndingSpacedPathPrefixRanges(
+  range: DetectedTerminalFileLinkRange
+): DetectedTerminalFileLinkRange[] {
+  const ranges: DetectedTerminalFileLinkRange[] = []
+  for (const match of range.text.matchAll(/\s+/g)) {
+    const endIndex = match.index ?? 0
+    const text = range.text.slice(0, endIndex).trimEnd()
+    if (text.includes(' ')) {
+      ranges.push({
+        text,
+        startIndex: range.startIndex,
+        endIndex: range.startIndex + text.length
+      })
+    }
+  }
+  return ranges.toReversed()
 }

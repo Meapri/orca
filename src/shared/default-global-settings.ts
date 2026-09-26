@@ -61,6 +61,8 @@ export function buildDefaultSettings(args: {
       args.primarySelectionMiddleClickPaste,
     terminalFontSize: 14,
     terminalFontFamily: args.terminalFontFamily,
+    // Why empty: the built-in per-OS Latin/symbol/CJK chain applies unless the user adds a stack.
+    terminalFontFallbackFamily: '',
     terminalFontWeight: DEFAULT_TERMINAL_FONT_WEIGHT,
     terminalFontWeightBold: DEFAULT_TERMINAL_FONT_WEIGHT_BOLD,
     terminalLineHeight: 1,
@@ -78,6 +80,9 @@ export function buildDefaultSettings(args: {
     terminalCursorStyle: 'block',
     terminalCursorStyleDefaultedToBlock: true,
     terminalCursorBlink: true,
+    terminalImePreeditInGrid: true,
+    // Why on: the glide only follows local typing and snaps for output, TUIs and reduced motion.
+    terminalCursorAnimation: true,
     terminalThemeDark: 'Ghostty Default Style Dark',
     terminalDividerColorDark: '#3f3f46',
     terminalUseSeparateLightTheme: true,
@@ -104,6 +109,7 @@ export function buildDefaultSettings(args: {
     terminalQuickCommands: getDefaultTerminalQuickCommands(),
     // Why: opt-in only, matching Ghostty's default (upgrades never enable it unexpectedly).
     terminalFocusFollowsMouse: false,
+    terminalSmoothScroll: true,
     windowBackgroundBlur: false,
     minimizeToTrayOnClose: false,
     // Why: default-on everywhere so it round-trips across platforms; only darwin acts on it.
@@ -112,6 +118,9 @@ export function buildDefaultSettings(args: {
     // Why: only the run of spaces shared by every selected line is dropped, so
     // relative indentation survives and the clipboard loses only the gutter.
     terminalCopyTrimsGutter: true,
+    // Why: default to prompts proven by shell integration; arrows sent to a raw reader would echo.
+    terminalClickToMoveCursor: 'input-line',
+    terminalComposerSubmitOnSend: true,
     // Why: default on so Zellij/tmux/nvim copy works out of the box. Query
     // replies stay disabled and payload size is capped in the OSC 52 handler.
     // This default only covers new profiles; existing ones persisted `false`
@@ -119,6 +128,7 @@ export function buildDefaultSettings(args: {
     // applied by both the Electron store and the web client's localStorage store).
     terminalAllowOsc52Clipboard: true,
     terminalAllowOsc52ClipboardDefaultedOnForAllUsers: true,
+    terminalCommandMarks: true,
     claudeAgentTeamsMode: 'off',
     setupScriptLaunchMode: 'new-tab',
     terminalScrollbackRows: DESKTOP_TERMINAL_SCROLLBACK_ROWS_DEFAULT,

@@ -15,6 +15,7 @@ import {
   rangeForParsedFileLink,
   type WrappedLogicalLine
 } from './wrapped-terminal-link-ranges'
+import { buildFramedHardWrappedPathLogicalLineCandidates } from './framed-terminal-path-links'
 
 type FileLinkHitTestDeps = {
   startupCwd: string
@@ -112,7 +113,10 @@ export function buildCandidateLogicalLinesForBufferPosition(
   buffer: { getLine(y: number): IBufferLine | undefined },
   bufferLineNumber: number
 ): WrappedLogicalLine[] {
-  const hardWrappedCandidates = buildHardWrappedPathLogicalLineCandidates(buffer, bufferLineNumber)
+  const hardWrappedCandidates = [
+    ...buildFramedHardWrappedPathLogicalLineCandidates(buffer, bufferLineNumber),
+    ...buildHardWrappedPathLogicalLineCandidates(buffer, bufferLineNumber)
+  ]
   const softWrappedLogicalLine = buildWrappedLogicalLine(buffer, bufferLineNumber)
   const candidates = softWrappedLogicalLine
     ? [...hardWrappedCandidates, softWrappedLogicalLine]

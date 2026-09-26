@@ -97,6 +97,43 @@ const getTerminalTypographySearchEntryCatalog = createLocalizedCatalog(() => [
         'font features'
       )
     ]
+  },
+  {
+    title: translate(
+      'auto.components.settings.terminal.search.fontFallback.title',
+      'Fallback Fonts'
+    ),
+    description: translate(
+      'auto.components.settings.terminal.search.fontFallback.description',
+      'Fonts tried after the terminal font for characters it lacks, such as Korean, Chinese or Japanese.'
+    ),
+    keywords: [
+      ...translateSearchKeyword('auto.components.settings.terminal.search.f66a7cf715', 'terminal'),
+      ...translateSearchKeyword('auto.components.settings.terminal.search.b0bb76ae6b', 'font'),
+      ...translateSearchKeyword(
+        'auto.components.settings.terminal.search.fontFallback.fallback',
+        'fallback'
+      ),
+      ...translateSearchKeyword(
+        'auto.components.settings.terminal.search.fontFallback.cjk',
+        'cjk',
+        {
+          englishOnly: true
+        }
+      ),
+      ...translateSearchKeyword(
+        'auto.components.settings.terminal.search.fontFallback.korean',
+        'korean'
+      ),
+      ...translateSearchKeyword(
+        'auto.components.settings.terminal.search.fontFallback.chinese',
+        'chinese'
+      ),
+      ...translateSearchKeyword(
+        'auto.components.settings.terminal.search.fontFallback.japanese',
+        'japanese'
+      )
+    ]
   }
 ])
 
@@ -205,6 +242,20 @@ export const getTerminalCursorSearchEntries = createLocalizedCatalog(() => [
       ...translateSearchKeyword('auto.components.settings.terminal.search.f66a7cf715', 'terminal'),
       ...translateSearchKeyword('auto.components.settings.terminal.search.6eaf7ee0e4', 'cursor'),
       ...translateSearchKeyword('auto.components.settings.terminal.search.25f606d9e5', 'blink')
+    ]
+  },
+  {
+    title: translate('auto.components.settings.terminal.search.9226c75396', 'Cursor Animation'),
+    description: translate(
+      'auto.components.settings.terminal.search.3ac3ea1cac',
+      'Glides the cursor as you type and fades its blink. Requires GPU rendering.'
+    ),
+    keywords: [
+      ...translateSearchKeyword('auto.components.settings.terminal.search.f66a7cf715', 'terminal'),
+      ...translateSearchKeyword('auto.components.settings.terminal.search.6eaf7ee0e4', 'cursor'),
+      ...translateSearchKeyword('auto.components.settings.terminal.search.e2b79d0578', 'animation'),
+      ...translateSearchKeyword('auto.components.settings.terminal.search.da61b65178', 'smooth'),
+      ...translateSearchKeyword('auto.components.settings.terminal.search.45087d1a4d', 'glide')
     ]
   },
   {

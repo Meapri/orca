@@ -102,6 +102,7 @@ export type UseTerminalPaneLifecycleDeps = {
     source: 'terminal-bell' | 'agent-task-complete'
     terminalTitle?: string
     paneKey?: string
+    terminalNotification?: { title: string | null; body: string }
     agentStatusSnapshot?: ParsedAgentStatusPayload
   }) => void
   setCacheTimerStartedAt: (key: string, ts: number | null) => void

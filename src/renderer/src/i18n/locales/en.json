@@ -3270,7 +3270,7 @@
             "missing": {
               "tui": {
                 "title": "This ZCode build has no terminal UI",
-                "description": "Orca's hooks installed correctly \u2014 the zcode on your PATH just cannot open a session. The ZCode desktop app bundles the agent runtime without its terminal UI. Install a zcode that ships the TUI, then run zcode outside Orca to confirm."
+                "description": "Orca's hooks installed correctly — the zcode on your PATH just cannot open a session. The ZCode desktop app bundles the agent runtime without its terminal UI. Install a zcode that ships the TUI, then run zcode outside Orca to confirm."
               }
             }
           },
@@ -8746,11 +8746,17 @@
           "e90afcc44f": "off",
           "16c471ee03": "on",
           "typographyAdvanced": "Typography",
-          "dimUnfocusedPanes": "Dim unfocused panes."
+          "dimUnfocusedPanes": "Dim unfocused panes.",
+          "0739c1f2b6": "Cursor Animation",
+          "ebde1c981e": "Glides the cursor as you type and fades its blink. Requires GPU rendering."
         },
         "TerminalAdvancedTypographyControls": {
           "f5fa1a08f1": "Bold Font Weight",
           "0e0d1ee15a": "Adjust independently from Font Weight. Some fonts map several values to one face, so lower Font Weight or choose another font if bold looks unchanged."
+        },
+        "TerminalFontFallbackSetting": {
+          "title": "Fallback Fonts",
+          "description": "Comma-separated fonts tried after Font Family for characters it lacks, such as Korean, Chinese, Japanese or symbols. Orca already falls back to your system’s CJK fonts."
         },
         "TerminalFontSizeSetting": {
           "9b5252c85a": "px",
@@ -8853,6 +8859,10 @@
             "fastDescription": "Extra multiplier while scrolling with a modifier key.",
             "tui": "TUI",
             "tuiDescription": "Discrete wheel reports for full-screen terminal apps."
+          },
+          "smoothScroll": {
+            "description": "Animate mouse-wheel, Shift+Page Up/Down and jump-to-latest scrolling. Trackpads already scroll continuously; reduced motion turns this off.",
+            "title": "Smooth Scrolling"
           }
         },
         "TerminalSettingsPreview": {
@@ -10793,7 +10803,27 @@
               "statusline": "statusline",
               "dim": "dim",
               "colors": "colors"
-            }
+            },
+            "fontFallback": {
+              "title": "Fallback Fonts",
+              "description": "Fonts tried after the terminal font for characters it lacks, such as Korean, Chinese or Japanese.",
+              "fallback": "fallback",
+              "cjk": "cjk",
+              "korean": "korean",
+              "chinese": "chinese",
+              "japanese": "japanese"
+            },
+            "9226c75396": "Cursor Animation",
+            "3ac3ea1cac": "Glides the cursor as you type and fades its blink. Requires GPU rendering.",
+            "e2b79d0578": "animation",
+            "da61b65178": "smooth",
+            "45087d1a4d": "glide",
+            "smoothScroll": {
+              "title": "Smooth Scrolling",
+              "description": "Animate mouse-wheel, Shift+Page Up/Down and jump-to-latest scrolling in terminal scrollback."
+            },
+            "smooth": "smooth",
+            "animation": "animation"
           },
           "windows": {
             "search": {
@@ -18102,13 +18132,42 @@
       "TerminalContextMenu": {
         "copySessionId": "Copy Session ID",
         "copySessionIdSuccess": "Session ID copied",
-        "copySessionIdError": "Unable to copy session ID"
+        "copySessionIdError": "Unable to copy session ID",
+        "copyRaw": "Copy Raw"
+      },
+      "mouseCaptureSelectionHint": {
+        "mac": "This app captures the mouse. Hold ⌥ Option while dragging to select text.",
+        "other": "This app captures the mouse. Hold Shift while dragging to select text."
+      },
+      "copyFeedback": {
+        "copied": "Copied to clipboard"
+      },
+      "marks": {
+        "commandOutputCopied": "Command output copied",
+        "commandOutputCopyFailed": "Unable to copy command output",
+        "copyCommandOutput": "Copy Command Output",
+        "selectCommandOutput": "Select Command Output",
+        "removeBookmark": "Remove Bookmark",
+        "bookmarkLine": "Bookmark Line",
+        "bookmarks": "Bookmarks",
+        "blankLine": "Blank line",
+        "lineNumber": "Line {{value0}}"
       }
     },
     "settings": {
       "TerminalInteraction": {
         "copyTrimsGutter": "Trim Gutter on Copy",
-        "copyTrimsGutterDescription": "Drop the left gutter agent output is painted behind, so copied text is not indented. Only the indent every selected line shares is removed."
+        "copyTrimsGutterDescription": "Drop the gutter, box borders, line numbers and trailing padding agent and TUI output is painted with, and rejoin lines a boxed TUI wrapped. Only the indent every selected line shares is removed; right-click › Copy Raw keeps the screen cells as-is.",
+        "clickToMoveCursor": "Click to Move Cursor",
+        "clickToMoveCursorDescription": "Click on the line you are typing to move the cursor there. \"At prompts\" needs shell integration; \"Any input line\" also works in agent CLIs and REPLs.",
+        "clickToMoveOff": "Off",
+        "clickToMoveShellPrompt": "At prompts",
+        "clickToMoveInputLine": "Any input line",
+        "search": {
+          "click": "click",
+          "cursor": "cursor",
+          "caret": "caret"
+        }
       },
       "terminal": {
         "clipboard": {
@@ -18121,6 +18180,37 @@
             "spaces": "spaces"
           }
         }
+      },
+      "TerminalCommandMarks": {
+        "title": "Show Command Marks",
+        "description": "Mark each prompt and submitted line in the terminal gutter and scrollbar, with failed commands in red. Jumping between prompts works either way.",
+        "search": {
+          "prompt": "prompt",
+          "marks": "marks",
+          "command": "command",
+          "jump": "jump",
+          "gutter": "gutter",
+          "scrollbar": "scrollbar",
+          "osc133": "osc 133",
+          "shellIntegration": "shell integration"
+        }
+      },
+      "TerminalRendering": {
+        "imePreeditInGrid": "Draw IME Composition in Terminal Cells",
+        "imePreeditInGridDescription": "Render text being composed with an input method (Korean, Japanese, Chinese) as terminal cells at the cursor. Turn off to use the floating overlay instead."
+      }
+    },
+    "terminalComposer": {
+      "send": "Send",
+      "label": "Terminal composer",
+      "placeholder": "Compose input for the terminal. Enter adds a line.",
+      "submitOnSend": "Press Enter after sending",
+      "cancel": "Cancel"
+    },
+    "terminal-pane": {
+      "jumpToLatest": {
+        "newOutput": "New output",
+        "label": "Jump to latest"
       }
     }
   },

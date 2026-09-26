@@ -18085,13 +18085,31 @@
       "TerminalContextMenu": {
         "copySessionId": "Copier l'ID de session",
         "copySessionIdSuccess": "ID de session copié",
-        "copySessionIdError": "Impossible de copier l'ID de session"
+        "copySessionIdError": "Impossible de copier l'ID de session",
+        "copyRaw": "Copier le texte brut"
+      },
+      "mouseCaptureSelectionHint": {
+        "mac": "Cette application capture la souris. Maintenez ⌥ Option en faisant glisser pour sélectionner du texte.",
+        "other": "Cette application capture la souris. Maintenez Maj en faisant glisser pour sélectionner du texte."
+      },
+      "copyFeedback": {
+        "copied": "Copié dans le presse-papiers"
       }
     },
     "settings": {
       "TerminalInteraction": {
         "copyTrimsGutter": "Couper la gouttière lors de la copie",
-        "copyTrimsGutterDescription": "Déposez la sortie de l'agent de gouttière gauche qui est peinte derrière, donc le texte copié n'est pas en retrait. Seul le retrait de chaque partage de ligne sélectionnée est supprimé."
+        "copyTrimsGutterDescription": "Déposez la sortie de l'agent de gouttière gauche qui est peinte derrière, donc le texte copié n'est pas en retrait. Seul le retrait de chaque partage de ligne sélectionnée est supprimé.",
+        "clickToMoveCursor": "Cliquer pour déplacer le curseur",
+        "clickToMoveCursorDescription": "Cliquez sur la ligne en cours de saisie pour y déplacer le curseur. « Aux invites » nécessite l’intégration du shell ; « Toute ligne de saisie » fonctionne aussi dans les CLI d’agents et les REPL.",
+        "clickToMoveOff": "Désactivé",
+        "clickToMoveShellPrompt": "Aux invites",
+        "clickToMoveInputLine": "Toute ligne de saisie",
+        "search": {
+          "click": "clic",
+          "cursor": "curseur",
+          "caret": "caret"
+        }
       },
       "terminal": {
         "clipboard": {
@@ -18104,7 +18122,18 @@
             "spaces": "espaces"
           }
         }
+      },
+      "TerminalRendering": {
+        "imePreeditInGrid": "Afficher la composition IME dans les cellules du terminal",
+        "imePreeditInGridDescription": "Affiche le texte en cours de composition avec une méthode de saisie (coréen, japonais, chinois) sous forme de cellules du terminal au curseur. Désactivez pour utiliser la superposition flottante."
       }
+    },
+    "terminalComposer": {
+      "send": "Envoyer",
+      "label": "Compositeur du terminal",
+      "placeholder": "Rédigez la saisie pour le terminal. Entrée ajoute une ligne.",
+      "submitOnSend": "Appuyer sur Entrée après l’envoi",
+      "cancel": "Annuler"
     }
   },
   "dashboardPopout": {

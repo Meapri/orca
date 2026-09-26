@@ -12,9 +12,11 @@ import { TerminalSessionStateSaveFailureDialog } from './TerminalSessionStateSav
 import { LinkActionPopover } from '@/components/link-actions/LinkActionPopover'
 import { TerminalAgentSessionForkDialog } from './TerminalAgentSessionForkDialog'
 import { SessionRestoredBannerPortals } from './SessionRestoredBannerPortals'
+import { TerminalPaneJumpToLatestPortals } from './TerminalJumpToLatestPortals'
 import { handleInternalTerminalFileDrop } from './terminal-drop-handler'
 import { TerminalQuickCommandEditorDialog } from './TerminalQuickCommandEditorDialog'
 import { TerminalPaneNativeChatPortal } from './TerminalPaneNativeChatPortal'
+import { TerminalPaneComposerPortal } from './TerminalPaneComposerPortal'
 import {
   TerminalPaneCodexRestartPortals,
   TerminalPaneMobileDriverPortals,
@@ -196,6 +198,7 @@ export function TerminalPaneSurface({
             `terminal-error-${activePane.id}`
           )
         : null}
+      <TerminalPaneJumpToLatestPortals controller={controller} />
       <TerminalPaneProcessExitPortals controller={controller} />
       <TerminalPaneSshReconnectPortals controller={controller} />
       <DaemonActionDialog api={daemonActions} />
@@ -222,6 +225,7 @@ export function TerminalPaneSurface({
         paneIds={sessionRestoredBannerPaneIds}
       />
       <TerminalPaneNativeChatPortal controller={controller} />
+      <TerminalPaneComposerPortal controller={controller} />
       <TerminalContextMenu
         open={contextMenu.open}
         onOpenChange={contextMenu.setOpen}
@@ -234,6 +238,7 @@ export function TerminalPaneSurface({
           contextMenu.menuPaneId !== null && contextMenu.menuPaneId === expandedPaneId
         }
         onCopy={() => void contextMenu.onCopy()}
+        onCopyRaw={() => void contextMenu.onCopyRaw()}
         onSelectAll={contextMenu.onSelectAll}
         onPaste={() => void contextMenu.onPaste()}
         onSplitRight={contextMenu.onSplitRight}
@@ -267,6 +272,7 @@ export function TerminalPaneSurface({
         onCopyPaneId={contextMenu.onCopyPaneId}
         canCopyAgentSessionId={menuAgentSessionId !== null}
         onCopyAgentSessionId={() => void contextMenu.onCopyAgentSessionId()}
+        getMenuTerminal={contextMenu.getMenuTerminal}
       />
       <LinkActionPopover request={terminalLinkActionRequest} onClose={closeTerminalLinkActions} />
       {quickCommandEditorOpen ? (

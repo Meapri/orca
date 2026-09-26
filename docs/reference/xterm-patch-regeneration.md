@@ -14,6 +14,13 @@ are the build output those sources produce (`lib/xterm.js`, `lib/xterm.mjs`,
 and both sourcemaps). The bundle half is 7.3 MB of minified code. It is
 generated, and this document exists so nobody edits it by hand.
 
+The core patch also carries the in-grid IME preedit (`imePreeditInGrid`, the
+`IImePreedit` surface on `ITerminal`, and its use in the DOM renderer). The
+WebGL addon reads that surface too, but each package is built from a checkout
+with only its own source patch applied, so the addon declares the shape it reads
+locally instead of importing the core type; importing it fails the addon build.
+New files are not picked up either: the checkout diff only sees tracked files.
+
 The two halves are the same edits diffed two ways, so the generator requires
 them to match byte for byte on every source file. A hunk the shipped patch
 cannot name — upstream's `.npmignore` strips `src/**/*.test.ts` — would be
@@ -113,6 +120,11 @@ $EDITOR /tmp/xterm/upstream/addons/addon-webgl/src/TextureAtlas.ts
 git -C /tmp/xterm/upstream/addons/addon-webgl diff --relative -- src/ \
   > config/patches/xterm-src/@xterm__addon-webgl@0.20.0-beta.299.src.patch
 ```
+
+A new source file (such as `addons/addon-webgl/src/CursorMotionAnimator.ts`) is invisible
+to `git diff` until it is marked with `git add -N`. The generator applies source
+patches with `--intent-to-add` and copies patch-added `src/` files into the emitted
+tree, so new modules ship like edited ones; `*.test.ts` files still cannot.
 
 `--write` rewrites the source patch into the canonical form it would emit on a
 re-diff, so a hand-produced `git diff` gets normalized on the first run rather

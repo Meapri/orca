@@ -17966,7 +17966,15 @@
       "TerminalContextMenu": {
         "copySessionId": "セッション ID をコピー",
         "copySessionIdSuccess": "セッション ID をコピーしました",
-        "copySessionIdError": "セッション ID のコピーに失敗しました"
+        "copySessionIdError": "セッション ID のコピーに失敗しました",
+        "copyRaw": "そのままコピー"
+      },
+      "mouseCaptureSelectionHint": {
+        "mac": "このアプリはマウスを使用しています。テキストを選択するには ⌥ Option を押しながらドラッグしてください。",
+        "other": "このアプリはマウスを使用しています。テキストを選択するには Shift を押しながらドラッグしてください。"
+      },
+      "copyFeedback": {
+        "copied": "クリップボードにコピーしました"
       }
     },
     "jiraUserPicker": {
@@ -17992,7 +18000,17 @@
     "settings": {
       "TerminalInteraction": {
         "copyTrimsGutter": "コピー時に余白をトリミングする",
-        "copyTrimsGutterDescription": "左側のガターをドロップすると、Agent の出力が後ろに描画されるため、コピーされたテキストはインデントされません。選択した行ごとに共有されるインデントのみが削除されます。"
+        "copyTrimsGutterDescription": "左側のガターをドロップすると、Agent の出力が後ろに描画されるため、コピーされたテキストはインデントされません。選択した行ごとに共有されるインデントのみが削除されます。",
+        "clickToMoveCursor": "クリックでカーソルを移動",
+        "clickToMoveCursorDescription": "入力中の行をクリックすると、その位置にカーソルが移動します。「プロンプトで」にはシェル統合が必要です。「すべての入力行」は Agent CLI や REPL でも動作します。",
+        "clickToMoveOff": "オフ",
+        "clickToMoveShellPrompt": "プロンプトで",
+        "clickToMoveInputLine": "すべての入力行",
+        "search": {
+          "click": "クリック",
+          "cursor": "カーソル",
+          "caret": "キャレット"
+        }
       },
       "terminal": {
         "clipboard": {
@@ -18005,7 +18023,18 @@
             "spaces": "スペース"
           }
         }
+      },
+      "TerminalRendering": {
+        "imePreeditInGrid": "IME の変換中テキストをターミナルのセルに描画",
+        "imePreeditInGridDescription": "入力メソッド（韓国語、日本語、中国語）で変換中のテキストを、カーソル位置のターミナルのセルとして描画します。オフにするとフローティングオーバーレイを使用します。"
       }
+    },
+    "terminalComposer": {
+      "send": "送信",
+      "label": "ターミナルコンポーザー",
+      "placeholder": "ターミナルへの入力を作成します。Enter で改行します。",
+      "submitOnSend": "送信後に Enter を押す",
+      "cancel": "キャンセル"
     }
   },
   "dashboardPopout": {

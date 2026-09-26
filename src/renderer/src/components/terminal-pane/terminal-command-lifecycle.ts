@@ -1,5 +1,6 @@
 import type { Terminal, IDisposable } from '@xterm/xterm'
 import { createOsc133CommandFinishedScanner } from '../../../../shared/terminal-osc133-command-finished'
+import { observeTerminalShellIntegrationMark } from './terminal-shell-input-anchor'
 
 type TerminalCommandLifecycleOptions = {
   onCommandFinished: (bestEffortExitCode: number | null) => void
@@ -24,9 +25,17 @@ export function createTerminalCommandLifecycle(options: TerminalCommandLifecycle
   return {
     handlePtyData: scanner.scan,
     attachXtermConsumer(terminal) {
-      // Why: swallow OSC 133 so shell-integration markers never paint —
-      // rendering hygiene that applies regardless of side-effect authority.
-      const disposable = terminal.parser.registerOscHandler(133, () => true)
+      // Why: xterm never paints an unhandled OSC; returning false keeps this
+      // (re)registration from shadowing older OSC 133 observers (command marks).
+      // The mark still feeds the prompt-input anchor click-to-move relies on.
+      const disposable = terminal.parser.registerOscHandler(133, (data) => {
+        try {
+          observeTerminalShellIntegrationMark(terminal, data)
+        } catch {
+          // Why: the anchor is best-effort; a throw here must not break later observers.
+        }
+        return false
+      })
       disposables.push(disposable)
       return disposable
     },

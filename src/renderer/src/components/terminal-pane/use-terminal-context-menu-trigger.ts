@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { PaneManager } from '@/lib/pane-manager/pane-manager'
 import type { TerminalPasteSource } from './terminal-paste-coordinator'
 import { copyTerminalSelection } from './terminal-selection-copy'
+import { showTerminalCopyFeedback } from './terminal-copy-feedback'
 
 const CLOSE_ALL_CONTEXT_MENUS_EVENT = 'orca-close-all-context-menus'
 
@@ -75,7 +76,8 @@ export function useTerminalContextMenuTrigger({
         void copyTerminalSelection({
           terminal: clickedPane.terminal,
           writeClipboardText: window.api.ui.writeTerminalClipboardText,
-          clearSelectionOnSuccess: true
+          clearSelectionOnSuccess: true,
+          onCopied: showTerminalCopyFeedback
         }).catch(() => {
           /* ignore clipboard write failures */
         })

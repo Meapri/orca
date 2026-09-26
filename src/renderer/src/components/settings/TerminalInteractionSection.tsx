@@ -5,6 +5,8 @@ import { Label } from '../ui/label'
 import { ScrollSpeedSlider } from './TerminalScrollSpeedSlider'
 import { SettingsSubsectionHeader, SettingsSwitchRow } from './SettingsFormControls'
 import { SearchableSetting } from './SearchableSetting'
+import { TerminalClickToMoveCursorSetting } from './TerminalClickToMoveCursorSetting'
+import { TerminalCommandMarksSetting } from './TerminalCommandMarksSetting'
 import { matchesSettingsSearch } from './settings-search'
 import { getTerminalRightClickToPasteSearchEntry } from './terminal-windows-search'
 import { OSC52_CLIPBOARD_SETTING_ID } from '../terminal-pane/osc52-clipboard-setting-anchor'
@@ -54,6 +56,10 @@ export function TerminalInteractionSection({
         'auto.components.settings.TerminalPane.16753eea48',
         'Right-click pastes the clipboard. Ctrl+right-click opens the context menu.'
       )
+  const smoothScrollDescription = translate(
+    'auto.components.settings.TerminalPane.smoothScroll.description',
+    'Animate mouse-wheel, Shift+Page Up/Down and jump-to-latest scrolling. Trackpads already scroll continuously; reduced motion turns this off.'
+  )
   return (
     <section key="pane-interaction" className="space-y-3">
       <SettingsSubsectionHeader
@@ -185,6 +191,27 @@ export function TerminalInteractionSection({
           </div>
         </SearchableSetting>
 
+        <SearchableSetting
+          title={translate(
+            'auto.components.settings.TerminalPane.smoothScroll.title',
+            'Smooth Scrolling'
+          )}
+          description={smoothScrollDescription}
+          keywords={['terminal', 'scroll', 'smooth', 'animation', 'wheel', 'page up', 'page down']}
+        >
+          <SettingsSwitchRow
+            label={translate(
+              'auto.components.settings.TerminalPane.smoothScroll.title',
+              'Smooth Scrolling'
+            )}
+            description={smoothScrollDescription}
+            checked={settings.terminalSmoothScroll}
+            onChange={() =>
+              updateSettings({ terminalSmoothScroll: !settings.terminalSmoothScroll })
+            }
+          />
+        </SearchableSetting>
+
         {matchesSettingsSearch(searchQuery, getTerminalRightClickToPasteSearchEntry()) ? (
           <SearchableSetting
             title={translate(
@@ -239,6 +266,8 @@ export function TerminalInteractionSection({
           />
         </SearchableSetting>
 
+        <TerminalClickToMoveCursorSetting settings={settings} updateSettings={updateSettings} />
+
         <SearchableSetting
           title={translate('auto.components.settings.TerminalPane.902f5dee1f', 'Copy on Select')}
           description={translate(
@@ -280,7 +309,7 @@ export function TerminalInteractionSection({
           )}
           description={translate(
             'components.settings.TerminalInteraction.copyTrimsGutterDescription',
-            'Drop the left gutter agent output is painted behind, so copied text is not indented. Only the indent every selected line shares is removed.'
+            'Drop the gutter, box borders, line numbers and trailing padding agent and TUI output is painted with, and rejoin lines a boxed TUI wrapped. Only the indent every selected line shares is removed; right-click › Copy Raw keeps the screen cells as-is.'
           )}
           keywords={[
             'clipboard',
@@ -302,7 +331,7 @@ export function TerminalInteractionSection({
             )}
             description={translate(
               'components.settings.TerminalInteraction.copyTrimsGutterDescription',
-              'Drop the left gutter agent output is painted behind, so copied text is not indented. Only the indent every selected line shares is removed.'
+              'Drop the gutter, box borders, line numbers and trailing padding agent and TUI output is painted with, and rejoin lines a boxed TUI wrapped. Only the indent every selected line shares is removed; right-click › Copy Raw keeps the screen cells as-is.'
             )}
             checked={settings.terminalCopyTrimsGutter}
             onChange={() =>
@@ -356,6 +385,8 @@ export function TerminalInteractionSection({
             }
           />
         </SearchableSetting>
+
+        <TerminalCommandMarksSetting settings={settings} updateSettings={updateSettings} />
       </div>
     </section>
   )

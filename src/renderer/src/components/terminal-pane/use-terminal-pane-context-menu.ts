@@ -1,4 +1,5 @@
 import { useCallback, useRef } from 'react'
+import type { Terminal } from '@xterm/xterm'
 import type { ManagedPane, PaneManager } from '@/lib/pane-manager/pane-manager'
 import type { PtyTransport } from './pty-transport'
 import type { PaneCwdMap } from './resolve-split-cwd'
@@ -58,6 +59,7 @@ type TerminalMenuState = {
   onContextMenuCapture: (event: React.MouseEvent<HTMLDivElement>) => void
   onPaneTitleContextMenu: (event: React.MouseEvent<HTMLElement>, paneId: number) => void
   onCopy: () => Promise<void>
+  onCopyRaw: () => Promise<void>
   onSelectAll: () => void
   onCopyTerminalId: () => Promise<void>
   onCopyPaneId: () => Promise<void>
@@ -76,6 +78,7 @@ type TerminalMenuState = {
   onSetTitle: () => void
   onClearPaneTitle: () => void
   runForPane: <Result>(paneId: number, action: () => Result) => Result
+  getMenuTerminal: () => Terminal | null
 }
 
 export function useTerminalPaneContextMenu({
@@ -160,6 +163,8 @@ export function useTerminalPaneContextMenu({
   }
 
   const onCopy = async (): Promise<void> => copyTerminalPaneMenuSelection(resolveMenuPane())
+  const onCopyRaw = async (): Promise<void> =>
+    copyTerminalPaneMenuSelection(resolveMenuPane(), 'raw')
 
   const onSelectAll = (): void => {
     const pane = resolveMenuPane()
@@ -285,6 +290,7 @@ export function useTerminalPaneContextMenu({
     onContextMenuCapture,
     onPaneTitleContextMenu,
     onCopy,
+    onCopyRaw,
     onSelectAll,
     onCopyTerminalId,
     onCopyPaneId,
@@ -302,6 +308,7 @@ export function useTerminalPaneContextMenu({
     onToggleExpand,
     onSetTitle: handleSetTitle,
     onClearPaneTitle: handleClearPaneTitle,
-    runForPane
+    runForPane,
+    getMenuTerminal: () => resolveMenuPane()?.terminal ?? null
   }
 }

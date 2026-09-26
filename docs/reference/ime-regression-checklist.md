@@ -12,6 +12,46 @@ one machine.
 | [#16950](https://github.com/stablyai/orca/issues/16950) typing diagnostic records no CJK samples                              | The probe observes echoing keydowns but not reconciled composition commits, then guesses which queued input owns opaque TUI output.                                                        | A reconciled composition is observed even when `compositionend.data` is empty; only an isolated input enters exact percentiles, while overlap or a dropped-input gap produces one aggregate ambiguous burst.                                                                                                                                                    | Recorded Linux IBus empty-data commit, isolated direct and IME samples, mixed-source ambiguity, timeout/cap gaps, UTF-8 output bytes, and stop/drain cleanup are covered.                                                                                                                                    |
 | [#17104](https://github.com/stablyai/orca/issues/17104) Korean preedit repeats the Codex placeholder                          | Generic xterm row-tail reproduction exposed an application-semantic Codex or Claude composer placeholder that presentation style cannot identify safely.                                   | Xterm always preserves generic covered row text. Orca's existing structural composer classifier masks only a verified placeholder during the exact active composition session; repaint reclassification runs only while composing, and end, blur, or disposal clears ownership, class, and listeners. Arbitrary dim output and shell lookalikes remain visible. | Codex prompt/footer and Claude prompt/frame classification, arbitrary all-dim and shell-lookalike negatives, repaint entry and exit, end/blur/disposal cleanup, and rendered Electron proof at cursor column 2 preserving generic row text are covered.                                                      |
 
+## In-grid preedit (default)
+
+Orca terminals set xterm's patched `imePreeditInGrid` option (setting: Terminal >
+Rendering > "Draw IME Composition in Terminal Cells", default on). The preedit is
+then laid out the way `InputHandler.print` would store it and composed into the
+cursor row only in what the DOM or WebGL renderer draws: underlined, over the
+cursor cell's background, the committed tail pushed right, end-aligned at the
+right edge, the cursor at the IME caret. It never reaches the buffer, selection,
+serialize output, or the pty, and commit bytes and `xterm-composition-*` events
+are unchanged. The composer placeholder mask and the app-caret anchor feed it
+through `terminal-ime-grid-preedit.ts` instead of styling the overlay.
+
+`terminal-ime-xterm-grid-preedit.test.ts` covers the model; the e2e
+`terminal-ime-grid-preedit.spec.ts` reads the renderer's frame. The overlay
+sections below describe the fallback path (setting off), which the overlay
+geometry specs pin explicitly.
+
+### Where the preedit goes in agent TUIs
+
+Rules come from the captured `src/main/runtime/__fixtures__/*-ime-*.txt`
+transcripts, never from agent names. When the cursor is shown (Claude Code,
+Codex, Grok) it is the input position. When an app hides it (cursor-agent parks
+it at column 0 below its box), the input position is the app's own caret: a
+lone inverse-video cell (`resolveAppDrawnImeCaret`); a run of inverse cells is a
+highlight. Within one composition the last caret found is kept through a
+repaint that briefly paints none, and xterm keeps the preedit on the last shown
+cursor while a frame hides the cursor mid-repaint.
+
+### Commit held until echo
+
+A TUI repaints 15–110 ms after the IME commits, so xterm keeps each commit drawn
+(plain, not underlined, cursor after it) at the input position and lays the next
+preedit after it. Each hold ends when the input position advances past it, and
+all end when it moves anywhere else, on a key the app handles itself
+(Backspace, arrows, Enter), on blur, or after 250 ms (an app that never echoes,
+such as a password prompt). The held text is exactly what was sent; nothing
+extra reaches the pty. `terminal-ime-xterm-grid-preedit-echo.test.ts` and the
+cursor-agent replay in `terminal-ime-candidate-anchor-grid-preedit.test.ts`
+cover it.
+
 ## Preedit cell advances (#19315)
 
 Single-codepoint CJK graphemes use the active Unicode provider's cell width and

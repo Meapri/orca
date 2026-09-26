@@ -31,6 +31,10 @@ import {
 import { markTerminalPinnedViewport } from '@/lib/pane-manager/terminal-scroll-intent'
 import { syncTerminalScrollIntentSoon } from '@/lib/pane-manager/terminal-scroll-intent-settle'
 import { resetTerminalKeyboardProtocolAfterInterrupt } from './terminal-pane-lifecycle-primitives'
+import {
+  installTerminalClickToMoveCursor,
+  normalizeTerminalClickToMoveCursorMode
+} from './terminal-click-to-move-cursor'
 
 type PaneInputContext = {
   pane: ManagedPane
@@ -73,8 +77,14 @@ export function installTerminalPaneInputHandling(context: PaneInputContext): voi
         renderPreedit: createTerminalIosHangulPreeditRenderer(pane.terminal)
       })
     : null
+  const clickToMoveCursor = installTerminalClickToMoveCursor(pane.terminal, {
+    getMode: () =>
+      normalizeTerminalClickToMoveCursorMode(settingsRef.current?.terminalClickToMoveCursor),
+    getKittyKeyboardFlags: () => paneKittyKeyboardModesRef.current.get(pane.id)?.flags ?? 0
+  })
   imeCompositionDisposablesRef.current.set(pane.id, {
     dispose: () => {
+      clickToMoveCursor.dispose()
       imeComposerPlaceholderMask.dispose()
       imeCompositionTracker.dispose()
       linuxImeCandidateState?.dispose()

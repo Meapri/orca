@@ -50,4 +50,16 @@ describe('vendored xterm WebGL runtime contract', () => {
       'mergeRetries++ < Constants.MERGE_RETRY_LIMIT && this._glyphRenderer.value.beginFrame()'
     )
   })
+
+  it('ships the cursor animator as a patch-added source file and in both bundles', () => {
+    // Orca's pane code calls setCursorAnimation; a regeneration that dropped the new
+    // file would leave the method missing and silently fall back to the upstream cursor.
+    const animator = readInstalled('@xterm/addon-webgl', 'src/CursorMotionAnimator.ts')
+    expect(animator).toContain('export class CursorMotionAnimator')
+    for (const bundle of ['lib/addon-webgl.js', 'lib/addon-webgl.mjs']) {
+      const contents = readInstalled('@xterm/addon-webgl', bundle)
+      expect(contents, bundle).toContain('setCursorAnimation(')
+      expect(contents, bundle).toContain('(prefers-reduced-motion: reduce)')
+    }
+  })
 })

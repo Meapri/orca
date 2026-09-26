@@ -17,6 +17,7 @@ import { SearchableSetting } from './SearchableSetting'
 import { clampNumber } from '@/lib/terminal-theme'
 import { translate } from '@/i18n/i18n'
 import { getTerminalAdvancedTypographySearchEntries } from './terminal-typography-search'
+import { TerminalFontFallbackSetting } from './TerminalFontFallbackSetting'
 
 type TerminalAdvancedTypographyControlsProps = {
   settings: GlobalSettings
@@ -88,6 +89,12 @@ export function TerminalAdvancedTypographyControls({
           }
         />
       </SearchableSetting>
+
+      <TerminalFontFallbackSetting
+        settings={settings}
+        updateSettings={updateSettings}
+        searchEntry={searchEntries[3]}
+      />
 
       <SearchableSetting
         title={translate(

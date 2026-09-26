@@ -127,7 +127,7 @@ export const getTerminalClipboardSearchEntries = createLocalizedCatalog(() => [
     ),
     description: translate(
       'components.settings.TerminalInteraction.copyTrimsGutterDescription',
-      'Drop the left gutter agent output is painted behind, so copied text is not indented. Only the indent every selected line shares is removed.'
+      'Drop the gutter, box borders, line numbers and trailing padding agent and TUI output is painted with, and rejoin lines a boxed TUI wrapped. Only the indent every selected line shares is removed; right-click › Copy Raw keeps the screen cells as-is.'
     ),
     keywords: [
       ...translateSearchKeyword(

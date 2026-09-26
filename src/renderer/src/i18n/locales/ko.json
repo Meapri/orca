@@ -8635,6 +8635,10 @@
             "fastDescription": "수정 키로 스크롤할 때 적용되는 추가 배율.",
             "tui": "TUI",
             "tuiDescription": "전체 화면 터미널 앱을 위한 개별 휠 보고."
+          },
+          "smoothScroll": {
+            "title": "부드러운 스크롤",
+            "description": "마우스 휠, Shift+Page Up/Down, 최신으로 이동 스크롤에 애니메이션을 적용합니다. 트랙패드는 이미 연속으로 스크롤되며, 동작 줄이기 설정이 켜져 있으면 꺼집니다."
           }
         },
         "TerminalSettingsPreview": {
@@ -10578,7 +10582,13 @@
               "statusline": "상태 표시줄",
               "dim": "어둑한",
               "colors": "그림 물감"
-            }
+            },
+            "smoothScroll": {
+              "title": "부드러운 스크롤",
+              "description": "터미널 스크롤백에서 마우스 휠, Shift+Page Up/Down, 최신으로 이동 스크롤에 애니메이션을 적용합니다."
+            },
+            "smooth": "부드러운",
+            "animation": "애니메이션"
           },
           "windows": {
             "search": {
@@ -17966,7 +17976,15 @@
       "TerminalContextMenu": {
         "copySessionId": "세션 ID 복사",
         "copySessionIdSuccess": "세션 ID를 복사했습니다",
-        "copySessionIdError": "세션 ID를 복사하지 못했습니다"
+        "copySessionIdError": "세션 ID를 복사하지 못했습니다",
+        "copyRaw": "원본 복사"
+      },
+      "mouseCaptureSelectionHint": {
+        "mac": "이 앱이 마우스를 사용 중입니다. 텍스트를 선택하려면 ⌥ Option을 누른 채 드래그하세요.",
+        "other": "이 앱이 마우스를 사용 중입니다. 텍스트를 선택하려면 Shift를 누른 채 드래그하세요."
+      },
+      "copyFeedback": {
+        "copied": "클립보드에 복사했습니다"
       }
     },
     "jiraUserPicker": {
@@ -17992,7 +18010,17 @@
     "settings": {
       "TerminalInteraction": {
         "copyTrimsGutter": "복사 시 여백 자르기",
-        "copyTrimsGutterDescription": "왼쪽 배수구 에이전트 출력이 뒤에 그려지므로 복사된 텍스트가 들여쓰기되지 않습니다. 선택한 모든 줄 공유의 들여쓰기만 제거됩니다."
+        "copyTrimsGutterDescription": "에이전트·TUI 출력의 왼쪽 여백, 상자 테두리, 줄 번호, 끝 공백을 빼고 상자 안에서 줄바꿈된 줄을 다시 잇습니다. 선택한 모든 줄이 공유하는 들여쓰기만 제거되며, 화면 그대로 복사하려면 우클릭 › 원본 복사를 사용하세요.",
+        "clickToMoveCursor": "클릭으로 커서 이동",
+        "clickToMoveCursorDescription": "입력 중인 줄을 클릭하면 커서가 그 위치로 이동합니다. \"프롬프트에서\"는 셸 통합이 필요하고, \"모든 입력 줄\"은 에이전트 CLI와 REPL에서도 동작합니다.",
+        "clickToMoveOff": "끄기",
+        "clickToMoveShellPrompt": "프롬프트에서",
+        "clickToMoveInputLine": "모든 입력 줄",
+        "search": {
+          "click": "클릭",
+          "cursor": "커서",
+          "caret": "캐럿"
+        }
       },
       "terminal": {
         "clipboard": {
@@ -18005,6 +18033,23 @@
             "spaces": "공백"
           }
         }
+      },
+      "TerminalRendering": {
+        "imePreeditInGrid": "IME 조합 중인 글자를 터미널 셀에 그리기",
+        "imePreeditInGridDescription": "입력기(한국어, 일본어, 중국어)로 조합 중인 글자를 커서 위치의 터미널 셀로 렌더링합니다. 끄면 떠 있는 오버레이를 사용합니다."
+      }
+    },
+    "terminalComposer": {
+      "send": "보내기",
+      "label": "터미널 작성기",
+      "placeholder": "터미널에 보낼 입력을 작성하세요. Enter는 줄을 추가합니다.",
+      "submitOnSend": "보낸 뒤 Enter 누르기",
+      "cancel": "취소"
+    },
+    "terminal-pane": {
+      "jumpToLatest": {
+        "newOutput": "새 출력",
+        "label": "최신으로 이동"
       }
     }
   },

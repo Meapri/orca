@@ -1,170 +1,91 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { Terminal } from '@xterm/headless'
 import { describe, expect, it } from 'vitest'
-import type { IBuffer, IBufferCell, IBufferLine } from '@xterm/xterm'
-import { resolveCursorAgentImeAnchor } from './terminal-ime-anchor'
+import { resolveAppDrawnImeCaret } from './terminal-ime-anchor'
 
-type FakeCell = {
-  chars: string
-  width: number
+// Recorded with config/scripts/capture-agent-pty-transcript.mjs at 100x30; see each .meta.json.
+const FIXTURES = join(__dirname, '../../../../main/runtime/__fixtures__')
+
+function replay(data: string | Uint8Array, cols = 100, rows = 30): Promise<Terminal> {
+  const terminal = new Terminal({ cols, rows, allowProposedApi: true })
+  return new Promise((resolve) => terminal.write(data, () => resolve(terminal)))
 }
 
-function makeCell(cell: FakeCell): IBufferCell {
-  return {
-    getWidth: () => cell.width,
-    getChars: () => cell.chars
-  } as IBufferCell
+function replayTranscript(name: string): Promise<Terminal> {
+  return replay(readFileSync(join(FIXTURES, `${name}.txt`)))
 }
 
-function makeLine(text: string, cols = 80): IBufferLine {
-  const cells: FakeCell[] = []
-  for (const char of Array.from(text)) {
-    const width = char === '你' ? 2 : 1
-    cells.push({ chars: char, width })
-    if (width === 2) {
-      cells.push({ chars: '', width: 0 })
-    }
-  }
-  while (cells.length < cols) {
-    cells.push({ chars: '', width: 1 })
-  }
-
-  return {
-    isWrapped: false,
-    length: cells.length,
-    getCell: (column: number) => {
-      const cell = cells[column]
-      return cell ? makeCell(cell) : undefined
-    },
-    translateToString: (trimRight = false, startColumn = 0, endColumn = cells.length) => {
-      let result = ''
-      for (let column = startColumn; column < endColumn; column++) {
-        const cell = cells[column]
-        if (!cell || cell.width === 0) {
-          continue
-        }
-        result += cell.chars || ' '
-      }
-      return trimRight ? result.replace(/\s+$/, '') : result
-    }
-  } as IBufferLine
+function caretOf(terminal: Terminal): ReturnType<typeof resolveAppDrawnImeCaret> {
+  return resolveAppDrawnImeCaret({
+    buffer: terminal.buffer.active,
+    rows: terminal.rows,
+    cols: terminal.cols,
+    cursorVisible: terminal.modes.showCursor
+  })
 }
 
-function makeBuffer(lines: string[], cols = 80): IBuffer {
-  const bufferLines = lines.map((line) => makeLine(line, cols))
-  return {
-    baseY: 0,
-    cursorX: 0,
-    cursorY: 0,
-    length: bufferLines.length,
-    getLine: (row: number) => bufferLines[row],
-    getNullCell: () => makeCell({ chars: '', width: 1 })
-  } as IBuffer
+function charAt(terminal: Terminal, row: number, column: number): string {
+  const buffer = terminal.buffer.active
+  return (
+    buffer
+      .getLine(buffer.baseY + row)
+      ?.getCell(column)
+      ?.getChars() ?? ''
+  )
 }
 
-describe('resolveCursorAgentImeAnchor', () => {
-  it('anchors an empty Cursor Agent prompt at the visible prompt caret', () => {
-    const buffer = makeBuffer([
-      '',
-      '  Cursor Agent',
-      '  v2026.06.29-2ad2186',
-      '  Tip: Use /config to customize Cursor settings and behavior.',
-      '',
-      '',
-      '',
-      '',
-      '  → Plan, search, build anything',
-      '',
-      '',
-      '  Composer 2.5',
-      '  ~/development/code/xinyue/app_android · develop/app6.5.1',
-      ''
-    ])
+describe('resolveAppDrawnImeCaret on captured agent transcripts', () => {
+  it('finds cursor-agent’s inverse caret on the placeholder while the cursor is parked', async () => {
+    const terminal = await replayTranscript('cursor-agent-ime-ready')
+    const buffer = terminal.buffer.active
 
-    expect(
-      resolveCursorAgentImeAnchor({
-        buffer,
-        rows: 14,
-        cols: 80,
-        cursorX: 0,
-        cursorY: 13
-      })
-    ).toEqual({ row: 8, column: 4 })
+    expect(terminal.modes.showCursor).toBe(false)
+    expect({ row: buffer.cursorY, column: buffer.cursorX }).toEqual({ row: 14, column: 0 })
+    expect(caretOf(terminal)).toEqual({ row: 9, column: 4 })
+    expect(charAt(terminal, 9, 4)).toBe('P')
   })
 
-  it('does not override normal terminal cursor positioning', () => {
-    const buffer = makeBuffer(['', '  → ordinary shell output', '', ''])
+  it('follows cursor-agent’s caret through Korean, Backspace and Left/Right', async () => {
+    const terminal = await replayTranscript('cursor-agent-ime-korean-typed')
 
-    expect(
-      resolveCursorAgentImeAnchor({
-        buffer,
-        rows: 4,
-        cols: 80,
-        cursorX: 0,
-        cursorY: 3
-      })
-    ).toBeNull()
+    // "→ 안녕 하세요a한b" with the caret moved back onto "b".
+    expect(caretOf(terminal)).toEqual({ row: 9, column: 18 })
+    expect(charAt(terminal, 9, 18)).toBe('b')
+    expect(terminal.buffer.active.cursorY).toBe(14)
   })
 
-  it('anchors the follow-up placeholder after the Cursor Agent header scrolls away', () => {
-    const buffer = makeBuffer(['transcript', '', '  → Add a follow-up', '', ''])
+  it.each([
+    ['claude-code-ime-korean-typed', { row: 26, column: 16 }],
+    ['codex-ime-korean-typed', { row: 10, column: 16 }],
+    ['grok-ime-korean-typed', { row: 25, column: 20 }]
+  ])('leaves %s to its shown cursor, which already sits on the caret', async (name, cursor) => {
+    const terminal = await replayTranscript(name)
+    const buffer = terminal.buffer.active
 
-    expect(
-      resolveCursorAgentImeAnchor({
-        buffer,
-        rows: 5,
-        cols: 80,
-        cursorX: 0,
-        cursorY: 4
-      })
-    ).toEqual({ row: 2, column: 4 })
+    expect(terminal.modes.showCursor).toBe(true)
+    expect(caretOf(terminal)).toBeNull()
+    expect({ row: buffer.cursorY, column: buffer.cursorX }).toEqual(cursor)
+    expect(charAt(terminal, cursor.row, cursor.column)).toBe('b')
   })
 
-  it('does not override when xterm already exposes a non-stale cursor position', () => {
-    const buffer = makeBuffer(['', '  Cursor Agent', '', '  → Plan, search, build anything'])
+  it('does not take a highlighted run for a caret', async () => {
+    const terminal = await replay(
+      '\x1b[?25l\x1b[7m› 1. Trust and continue\x1b[27m\r\n  2. Quit',
+      40,
+      4
+    )
 
-    expect(
-      resolveCursorAgentImeAnchor({
-        buffer,
-        rows: 4,
-        cols: 80,
-        cursorX: 4,
-        cursorY: 3
-      })
-    ).toBeNull()
+    expect(caretOf(terminal)).toBeNull()
   })
 
-  it('anchors the input row, not a transcript line containing an arrow', () => {
-    const buffer = makeBuffer([
-      '',
-      '  Cursor Agent',
-      '',
-      '  Renamed a.ts → b.ts',
-      '',
-      '  → Plan, search, build anything',
-      ''
-    ])
+  it('prefers the lone inverse cell nearest the parked cursor', async () => {
+    const terminal = await replay(
+      '\x1b[?25l\x1b[7m \x1b[27m\r\n\r\n→ hi\x1b[7m \x1b[27m\r\n',
+      20,
+      4
+    )
 
-    expect(
-      resolveCursorAgentImeAnchor({
-        buffer,
-        rows: 7,
-        cols: 80,
-        cursorX: 0,
-        cursorY: 6
-      })
-    ).toEqual({ row: 5, column: 4 })
-  })
-
-  it('uses cell width when anchoring after typed Cursor Agent input', () => {
-    const buffer = makeBuffer(['', '  Cursor Agent', '', '  → hi你', ''])
-
-    expect(
-      resolveCursorAgentImeAnchor({
-        buffer,
-        rows: 5,
-        cols: 80,
-        cursorX: 0,
-        cursorY: 4
-      })
-    ).toEqual({ row: 3, column: 8 })
+    expect(caretOf(terminal)).toEqual({ row: 2, column: 4 })
   })
 })

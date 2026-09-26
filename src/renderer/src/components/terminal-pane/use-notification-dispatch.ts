@@ -53,6 +53,8 @@ export type TerminalNotificationEvent = {
   paneKey?: string
   agentStatusSnapshot?: AgentCompletionStatusSnapshot
   agentCompletionSource?: AgentCompletionDispatchMeta['source']
+  /** OSC 9 / OSC 777 program text; only meaningful for the terminal-bell source. */
+  terminalNotification?: { title: string | null; body: string }
 }
 
 /**
@@ -170,6 +172,9 @@ export function dispatchTerminalNotification(
         paneKey: request.subjectKey ?? undefined,
         ...getNotificationWorkspaceLabels(state, request.workspaceId, event.terminalTitle),
         terminalTitle: event.terminalTitle,
+        ...(event.source === 'terminal-bell' && event.terminalNotification
+          ? { terminalNotification: event.terminalNotification }
+          : {}),
         isActiveWorktree: request.workspaceIsActive,
         ...agentSnapshot
       },
