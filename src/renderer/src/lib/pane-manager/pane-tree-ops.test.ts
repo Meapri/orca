@@ -19,6 +19,13 @@ import {
   endTerminalScrollIntentBufferRebuild
 } from './terminal-scroll-intent-rebuild'
 
+// Why: these doubles return one shared marker for every registerMarker call;
+// the pin anchor's own marker is covered by terminal-scroll-intent-anchor.test.ts.
+vi.mock('./terminal-scroll-intent-anchor', () => ({
+  anchorPinnedScrollIntent: vi.fn(),
+  resolvePinnedViewportY: (_terminal: unknown, intent: { viewportY: number }) => intent.viewportY
+}))
+
 class MockHTMLElement {
   classList: { contains: (cls: string) => boolean }
   children: MockHTMLElement[]
