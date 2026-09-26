@@ -5,6 +5,7 @@ import { createDesktopTerminal } from './orca-runtime-create-terminal-desktop'
 import { buildRuntimeAgentTeamsLaunchPlan } from './orca-runtime-agent-teams-launch-plan'
 import { createPtySpawnCommitReporter } from './orca-runtime-report-pty-spawn-commit'
 import { recordPtySurface, spawnSurfaceClaimSequence } from './pty-recorded-surface-topology'
+import { assertTerminalSurfaceNotRetired } from './closed-terminal-surface-recording'
 
 export class OrcaRuntimeWithCreateTerminal extends OrcaRuntimeWithTerminalCreateDeduplication {
   async createTerminal(
@@ -14,6 +15,8 @@ export class OrcaRuntimeWithCreateTerminal extends OrcaRuntimeWithTerminalCreate
     if (opts.startupAgent && worktreeSelector === undefined) {
       throw new Error(`startupAgent ${opts.startupAgent} requires a workspace selector.`)
     }
+    // Why first: a client restoring a stale copy hints the ids it remembers; a closed id must not come back.
+    assertTerminalSurfaceNotRetired(this.closedTerminalSurfaceLedger, opts.tabId, opts.leafId)
     const presentation = dependencies.resolveTerminalPresentation(opts)
     const requiresRendererFocus = opts.presentation === 'focused' || opts.focus === true
     const availableAuthoritativeWindow = this.getAvailableAuthoritativeWindow()

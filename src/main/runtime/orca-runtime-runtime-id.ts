@@ -52,6 +52,7 @@ import {
 } from './orca-runtime-postlude'
 import { RuntimeTerminalWait as RuntimeTerminalWaitController } from './runtime-terminal-wait'
 import type { PtyLivenessVerdict } from '../../shared/pty-liveness-verdict'
+import { ClosedTerminalSurfaceLedger } from './closed-terminal-surface-ledger'
 
 export class OrcaRuntimeWithRuntimeId {
   protected readonly runtimeId = randomUUID()
@@ -160,6 +161,10 @@ export class OrcaRuntimeWithRuntimeId {
   >()
 
   protected clientSessionTabSelections = new ClientSessionTabSelectionStore()
+
+  // Why: the host, not any client's restored copy, decides whether a closed tab id may return.
+  // In-memory until the constructor installs the durable file (production hosts only).
+  protected closedTerminalSurfaceLedger = new ClosedTerminalSurfaceLedger(null)
 
   // Why: idempotency map for mobile terminal creation — a retried create with the
   // same clientMutationId returns the in-flight operation instead of duplicating.

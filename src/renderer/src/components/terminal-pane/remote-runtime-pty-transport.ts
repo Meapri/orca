@@ -72,6 +72,8 @@ import { subscribeAcceptedWebSessionTerminalHandle } from '@/runtime/web-session
 import { runRemoteAgentSessionLaunch } from '@/runtime/remote-agent-session-launch'
 import { useAppStore } from '@/store'
 import { recordWebAgentSessionHandoff } from '@/runtime/web-agent-session-handoff'
+import { dropHostRetiredLocalTerminalTab } from '@/runtime/host-retired-terminal-tab'
+import { isTerminalSurfaceRetiredError } from '../../../../shared/terminal-surface-retirement-refusal'
 import { refreshWebRuntimeSessionTabsSnapshot } from '@/runtime/web-runtime-session'
 import {
   bufferPtyShutdownData,
@@ -2411,6 +2413,9 @@ export function createRemoteRuntimePtyTransport(
           if (isRemoteTerminalGoneMessage(message)) {
             recovery.cancel()
             handleRemoteTerminalError(error)
+            if (tabId && isTerminalSurfaceRetiredError(message)) {
+              dropHostRetiredLocalTerminalTab(tabId)
+            }
           } else if (
             isRecoverableRemoteRuntimeConnectionError(toRemoteRuntimeClientErrorLike(error))
           ) {
