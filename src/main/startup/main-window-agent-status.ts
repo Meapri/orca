@@ -14,13 +14,6 @@ import { mainProcessState as state } from './main-process-state'
 
 export type MainWindowAgentStatusOptions = {
   window: BrowserWindow
-  maybeAutoRenameBranchOnFirstWork: (event: {
-    paneKey: string
-    tabId: string | undefined
-    worktreeId: string | undefined
-    payload: { state: string; prompt?: string; lastAssistantMessage?: string }
-    isReplay: boolean | undefined
-  }) => void
   onRecordAgentState: (agentType: string, status: string) => void
 }
 
@@ -70,9 +63,6 @@ export function installMainWindowAgentStatusListeners(options: MainWindowAgentSt
           providerSessionOnly: true
         })
         return
-      }
-      if (!restoredUnconfirmed) {
-        options.maybeAutoRenameBranchOnFirstWork({ paneKey, tabId, worktreeId, payload, isReplay })
       }
       const runtime = state.runtime
       const orchestration = runtime?.getAgentStatusOrchestrationContextForPaneKey(paneKey)
