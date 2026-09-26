@@ -74,12 +74,6 @@ export function planHostActivation(input: {
   /** No service is running (first install, or an operator-stopped unit). */
   serviceStopped?: boolean
 }): HostActivationPlan {
-  if (!input.serviceStopped) {
-    const stop = assessServiceStop(input.isolation, input.census)
-    if (!stop.safe) {
-      return { action: 'refuse', code: stop.code, reason: stop.reason }
-    }
-  }
   const plan = planOrcadUpdate({
     record: input.record,
     candidateVersion: input.candidateVersion,
@@ -90,8 +84,15 @@ export function planHostActivation(input: {
     },
     ...(input.force !== undefined ? { force: input.force } : {})
   })
+  // Re-activating the active version stops nothing, so it needs no stop-safety verdict.
   if (plan.action === 'noop') {
     return { action: 'noop', reason: plan.reason }
+  }
+  if (!input.serviceStopped) {
+    const stop = assessServiceStop(input.isolation, input.census)
+    if (!stop.safe) {
+      return { action: 'refuse', code: stop.code, reason: stop.reason }
+    }
   }
   if (plan.action === 'defer') {
     return { action: 'refuse', code: plan.code, reason: plan.reason }

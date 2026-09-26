@@ -114,6 +114,7 @@ describe.skipIf(process.platform === 'win32')('orcad-install.sh', () => {
     env = {
       PATH: process.env.PATH,
       HOME: join(root, 'home'),
+      XDG_CONFIG_HOME: join(root, 'config'),
       ORCAD_BASE: join(root, 'base'),
       ORCA_USER_DATA: join(root, 'data'),
       ORCAD_SERVICE: 'user',
@@ -168,6 +169,16 @@ describe.skipIf(process.platform === 'win32')('orcad-install.sh', () => {
   it('installs idempotently and activates the first version behind the health gate', () => {
     expect(install('install', tarballs.a)).toMatchObject({ status: 0 })
     expect(install('install', tarballs.a).output).toContain('already installed')
+    expect(install('service-install', '--port', '6799')).toMatchObject({ status: 0 })
+    const unit = readFileSync(join(env.XDG_CONFIG_HOME, 'systemd/user/orcad.service'), 'utf8')
+    expect(unit).not.toMatch(/@[A-Z_]+@/)
+    expect(unit).toContain(`ExecStart=/bin/sh ${base()}/orcad-current/deploy/orcad-install.sh run`)
+    expect(unit).toMatch(/^RestartPreventExitStatus=78$/m)
+    expect(unit).toMatch(/^KillMode=mixed$/m)
+    expect(unit).toMatch(/^#Type=notify$/m)
+    expect(readFileSync(join(env.XDG_CONFIG_HOME, 'orcad/orcad.env'), 'utf8')).toContain(
+      'ORCAD_BIND=127.0.0.1\nORCAD_PORT=6799'
+    )
     const activated = install('activate', '9.0.0+a1')
     expect(activated.output).toContain('is active')
     expect(record()).toMatchObject({ active: '9.0.0+a1', previous: null })

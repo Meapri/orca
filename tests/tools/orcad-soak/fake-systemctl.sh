@@ -21,6 +21,26 @@ main_pid() {
   return 1
 }
 
+start_unit() {
+  if main_pid >/dev/null; then return 0; fi
+  : "${FAKE_SYSTEMCTL_EXEC:?FAKE_SYSTEMCTL_EXEC is required}"
+  # shellcheck disable=SC2086 # the exec line is a deliberate word list
+  nohup $FAKE_SYSTEMCTL_EXEC >>"$state/stdout.log" 2>>"$state/stderr.log" </dev/null &
+  echo $! >"$pid_file"
+}
+
+stop_unit() {
+  pid=$(main_pid) || return 0
+  kill -TERM "$pid" 2>/dev/null || true
+  waited=0
+  while main_pid >/dev/null && [ "$waited" -lt 300 ]; do
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  if main_pid >/dev/null; then kill -KILL "$pid" 2>/dev/null || true; fi
+  rm -f "$pid_file"
+}
+
 case "$verb" in
   is-active)
     if main_pid >/dev/null; then
@@ -30,27 +50,19 @@ case "$verb" in
     [ "${1:-}" = --quiet ] || echo inactive
     exit 3
     ;;
-  start)
-    if main_pid >/dev/null; then exit 0; fi
-    : "${FAKE_SYSTEMCTL_EXEC:?FAKE_SYSTEMCTL_EXEC is required}"
-    # shellcheck disable=SC2086 # the exec line is a deliberate word list
-    nohup $FAKE_SYSTEMCTL_EXEC >>"$state/stdout.log" 2>>"$state/stderr.log" </dev/null &
-    echo $! >"$pid_file"
-    ;;
-  stop)
-    pid=$(main_pid) || exit 0
-    kill -TERM "$pid" 2>/dev/null || true
-    waited=0
-    while main_pid >/dev/null && [ "$waited" -lt 300 ]; do
-      sleep 0.1
-      waited=$((waited + 1))
-    done
-    if main_pid >/dev/null; then kill -KILL "$pid" 2>/dev/null || true; fi
-    rm -f "$pid_file"
+  start) start_unit ;;
+  stop) stop_unit ;;
+  restart)
+    stop_unit
+    start_unit
     ;;
   show)
-    # Only `show -p MainPID --value <unit>` is used.
-    main_pid || echo 0
+    # `show -p MainPID|LoadState --value <unit>` are the only forms used.
+    if [ "${2:-}" = LoadState ]; then
+      echo loaded
+    else
+      main_pid || echo 0
+    fi
     ;;
   reset-failed | daemon-reload | enable | disable) ;;
   *)

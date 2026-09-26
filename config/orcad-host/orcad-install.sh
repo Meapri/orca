@@ -396,6 +396,10 @@ activate_installed() {
   dir=$(version_dir "$version")
   [ -f "$dir/.install-complete" ] || die "orcad $version is not installed under $ORCAD_BASE"
   [ -f "$dir/orcad-host-install.js" ] || die "$dir has no installer policy; reinstall it from a release tarball"
+  if [ "$ORCAD_SERVICE" != none ] &&
+    [ "$(svc show -p LoadState --value "$ORCAD_UNIT" 2>/dev/null || true)" != loaded ]; then
+    die "$ORCAD_UNIT is not installed; run service-install first (or set ORCAD_SERVICE=none)"
+  fi
   [ -n "$WORK_DIR" ] || make_work_dir
   running=0
   if service_running; then running=1; fi
@@ -412,6 +416,12 @@ activate_installed() {
     0) ;;
     10)
       say "orcad $version is already active"
+      if [ "$running" = 0 ] && [ "$ORCAD_SERVICE" != none ]; then
+        point_current "orcad-$version"
+        start_service
+        await_gate "$version" >/dev/null || die "orcad $version was started but has not proven healthy"
+        say "started $ORCAD_UNIT"
+      fi
       return 0
       ;;
     20)
@@ -543,13 +553,14 @@ cmd_prune() {
 # ---- service unit ---------------------------------------------------------------------------
 
 kit_file() {
-  for kit in "$(dirname "$0")" "$ORCAD_BASE/orcad-current/deploy"; do
+  # Beside this script, then the active install, then any installed version's kit.
+  for kit in "$(dirname "$0")" "$ORCAD_BASE/orcad-current/deploy" "$ORCAD_BASE"/orcad-[0-9]*/deploy; do
     if [ -f "$kit/$1" ]; then
       echo "$kit/$1"
       return 0
     fi
   done
-  die "cannot find $1 beside this script or in $ORCAD_BASE/orcad-current/deploy"
+  die "cannot find $1 beside this script or in an install under $ORCAD_BASE"
 }
 
 assert_plain_path() {

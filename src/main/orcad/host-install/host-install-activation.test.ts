@@ -57,8 +57,12 @@ describe('planHostActivation', () => {
     expect(plan({}).action).toBe('proceed')
   })
 
-  it('is a no-op for the already active version', () => {
+  it('is a no-op for the already active version, even when a stop would be unsafe', () => {
     expect(plan({ candidateVersion: RECORD.active }).action).toBe('noop')
+    expect(
+      plan({ candidateVersion: RECORD.active, isolation: isolation('unscoped'), census: LIVE })
+        .action
+    ).toBe('noop')
   })
 
   it('defers on live terminals unless forced, when the daemon survives the restart', () => {
