@@ -22,6 +22,7 @@ import {
   startOrcadWithHost
 } from './orcad-lifecycle'
 import { parseArgs } from './orcad-command-arguments'
+import { applyOrcadResourceLimits } from './orcad-resource-limit-flags'
 import {
   changedAiVaultSearchSettings,
   type AiVaultSearchSettings
@@ -92,6 +93,8 @@ export type OrcadOptions = {
   pairingAddress?: string
   /** Literal IP to bind. Defaults to loopback; see orcad-bind-address.ts. */
   bind?: string
+  /** Resource-governance env assignments from `--limit`; see orcad-resource-limit-flags.ts. */
+  resourceLimits?: Record<string, string>
 }
 
 export type OrcadHandle = {
@@ -105,6 +108,8 @@ export type OrcadHandle = {
  * for byte so the same harnesses can drive either host.
  */
 export async function startOrcad(options: OrcadOptions = {}): Promise<OrcadHandle> {
+  // Why first: the daemon launch, history sweep and browser provider all read these at start.
+  applyOrcadResourceLimits(options.resourceLimits)
   installOrcadHostAdapters()
   return startOrcadWithHost(
     resolveUserDataPath(),

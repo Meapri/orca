@@ -30,6 +30,21 @@ describe('parseArgs', () => {
     expect(() => parseArgs(['--bind'])).toThrow('--bind expects a value')
     expect(() => parseArgs(['--bind', '--json'])).not.toThrow()
   })
+
+  it('maps repeatable --limit flags onto the resource-governance env vars', () => {
+    expect(
+      parseArgs(['--limit', 'terminal-memory-max=4G', '--limit', 'browser-max-tabs=4'])
+    ).toEqual({
+      resourceLimits: { ORCA_TERMINAL_MEMORY_MAX: '4G', ORCA_BROWSER_MAX_TABS: '4' }
+    })
+  })
+
+  it('refuses an unknown or empty --limit instead of ignoring it', () => {
+    expect(() => parseArgs(['--limit', 'memory=4G'])).toThrow('--limit expects <key>=<value>')
+    expect(() => parseArgs(['--limit', 'terminal-memory-max='])).toThrow('--limit expects')
+    expect(() => parseArgs(['--limit'])).toThrow('--limit expects')
+    expect(() => parseArgs(['--limit', 'toString=1'])).toThrow('--limit expects')
+  })
 })
 
 describe('resolveOrcadExitCode', () => {
