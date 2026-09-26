@@ -18091,7 +18091,17 @@
     "settings": {
       "TerminalInteraction": {
         "copyTrimsGutter": "Couper la gouttière lors de la copie",
-        "copyTrimsGutterDescription": "Déposez la sortie de l'agent de gouttière gauche qui est peinte derrière, donc le texte copié n'est pas en retrait. Seul le retrait de chaque partage de ligne sélectionnée est supprimé."
+        "copyTrimsGutterDescription": "Déposez la sortie de l'agent de gouttière gauche qui est peinte derrière, donc le texte copié n'est pas en retrait. Seul le retrait de chaque partage de ligne sélectionnée est supprimé.",
+        "clickToMoveCursor": "Cliquer pour déplacer le curseur",
+        "clickToMoveCursorDescription": "Cliquez sur la ligne en cours de saisie pour y déplacer le curseur. « Aux invites » nécessite l’intégration du shell ; « Toute ligne de saisie » fonctionne aussi dans les CLI d’agents et les REPL.",
+        "clickToMoveOff": "Désactivé",
+        "clickToMoveShellPrompt": "Aux invites",
+        "clickToMoveInputLine": "Toute ligne de saisie",
+        "search": {
+          "click": "clic",
+          "cursor": "curseur",
+          "caret": "caret"
+        }
       },
       "terminal": {
         "clipboard": {
@@ -18105,6 +18115,13 @@
           }
         }
       }
+    },
+    "terminalComposer": {
+      "send": "Envoyer",
+      "label": "Compositeur du terminal",
+      "placeholder": "Rédigez la saisie pour le terminal. Entrée ajoute une ligne.",
+      "submitOnSend": "Appuyer sur Entrée après l’envoi",
+      "cancel": "Annuler"
     }
   },
   "dashboardPopout": {

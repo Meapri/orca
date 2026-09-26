@@ -1,5 +1,6 @@
 import type { Terminal, IDisposable } from '@xterm/xterm'
 import { createOsc133CommandFinishedScanner } from '../../../../shared/terminal-osc133-command-finished'
+import { observeTerminalShellIntegrationMark } from './terminal-shell-input-anchor'
 
 type TerminalCommandLifecycleOptions = {
   onCommandFinished: (bestEffortExitCode: number | null) => void
@@ -26,7 +27,15 @@ export function createTerminalCommandLifecycle(options: TerminalCommandLifecycle
     attachXtermConsumer(terminal) {
       // Why: swallow OSC 133 so shell-integration markers never paint —
       // rendering hygiene that applies regardless of side-effect authority.
-      const disposable = terminal.parser.registerOscHandler(133, () => true)
+      // The mark still feeds the prompt-input anchor click-to-move relies on.
+      const disposable = terminal.parser.registerOscHandler(133, (data) => {
+        try {
+          observeTerminalShellIntegrationMark(terminal, data)
+        } catch {
+          // Why: the anchor is best-effort; a throw here must not unswallow the mark.
+        }
+        return true
+      })
       disposables.push(disposable)
       return disposable
     },

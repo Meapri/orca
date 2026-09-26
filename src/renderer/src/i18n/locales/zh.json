@@ -17992,7 +17992,17 @@
     "settings": {
       "TerminalInteraction": {
         "copyTrimsGutter": "修剪副本上的装订线",
-        "copyTrimsGutterDescription": "将左侧装订线代理输出绘制在后面，因此复制的文本不会缩进。仅删除每个选定行共享的缩进。"
+        "copyTrimsGutterDescription": "将左侧装订线代理输出绘制在后面，因此复制的文本不会缩进。仅删除每个选定行共享的缩进。",
+        "clickToMoveCursor": "点击移动光标",
+        "clickToMoveCursorDescription": "点击正在输入的行即可将光标移到该处。“在提示符处”需要 Shell 集成；“任意输入行”也适用于 Agent CLI 和 REPL。",
+        "clickToMoveOff": "关闭",
+        "clickToMoveShellPrompt": "在提示符处",
+        "clickToMoveInputLine": "任意输入行",
+        "search": {
+          "click": "点击",
+          "cursor": "光标",
+          "caret": "插入符"
+        }
       },
       "terminal": {
         "clipboard": {
@@ -18006,6 +18016,13 @@
           }
         }
       }
+    },
+    "terminalComposer": {
+      "send": "发送",
+      "label": "终端编辑器",
+      "placeholder": "为终端编写输入。按 Enter 换行。",
+      "submitOnSend": "发送后按 Enter",
+      "cancel": "取消"
     }
   },
   "dashboardPopout": {

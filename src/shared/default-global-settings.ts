@@ -114,6 +114,9 @@ export function buildDefaultSettings(args: {
     // Why: only the run of spaces shared by every selected line is dropped, so
     // relative indentation survives and the clipboard loses only the gutter.
     terminalCopyTrimsGutter: true,
+    // Why: default to prompts proven by shell integration; arrows sent to a raw reader would echo.
+    terminalClickToMoveCursor: 'shell-prompt',
+    terminalComposerSubmitOnSend: true,
     // Why: default on so Zellij/tmux/nvim copy works out of the box. Query
     // replies stay disabled and payload size is capped in the OSC 52 handler.
     // This default only covers new profiles; existing ones persisted `false`

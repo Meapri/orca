@@ -9,6 +9,7 @@ import {
   syncTerminalScrollIntentFromViewport
 } from '@/lib/pane-manager/terminal-scroll-intent'
 import type { resolveTerminalKeyboardShortcutAction } from './terminal-keyboard-shortcut-matching'
+import { requestTerminalComposerOpen } from '../terminal-composer/terminal-composer-open-event'
 
 type TerminalShortcutAction = NonNullable<ReturnType<typeof resolveTerminalKeyboardShortcutAction>>
 
@@ -191,6 +192,15 @@ export function dispatchTerminalShortcutAction(
     const pane = manager.getActivePane() ?? manager.getPanes()[0]
     if (pane) {
       onClearPaneTitle(pane.id)
+    }
+    return
+  }
+  if (action.type === 'openComposer') {
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    const pane = manager.getActivePane() ?? manager.getPanes()[0]
+    if (pane) {
+      requestTerminalComposerOpen({ tabId, paneId: pane.id })
     }
     return
   }

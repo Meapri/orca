@@ -33,6 +33,24 @@ export const getTerminalPaneAppearanceSearchEntries = createLocalizedCatalog(() 
   }
 ])
 
+export const getTerminalClickToMoveCursorSearchEntry = createLocalizedCatalog(() => ({
+  title: translate(
+    'components.settings.TerminalInteraction.clickToMoveCursor',
+    'Click to Move Cursor'
+  ),
+  description: translate(
+    'components.settings.TerminalInteraction.clickToMoveCursorDescription',
+    'Click on the line you are typing to move the cursor there. "At prompts" needs shell integration; "Any input line" also works in agent CLIs and REPLs.'
+  ),
+  keywords: [
+    ...translateSearchKeyword('components.settings.TerminalInteraction.search.click', 'click'),
+    ...translateSearchKeyword('components.settings.TerminalInteraction.search.cursor', 'cursor'),
+    ...translateSearchKeyword('components.settings.TerminalInteraction.search.caret', 'caret'),
+    ...translateSearchKeyword('auto.components.settings.terminal.search.prompt', 'prompt'),
+    ...translateSearchKeyword('auto.components.settings.terminal.search.ea364ce6e4', 'mouse')
+  ]
+}))
+
 export const getTerminalPaneInteractionSearchEntries = createLocalizedCatalog(() => [
   {
     title: translate('auto.components.settings.terminal.search.scrollSpeed.title', 'Scroll Speed'),
@@ -91,5 +109,6 @@ export const getTerminalPaneInteractionSearchEntries = createLocalizedCatalog(()
       ...translateSearchKeyword('auto.components.settings.terminal.search.f036794286', 'active')
     ]
   },
+  getTerminalClickToMoveCursorSearchEntry(),
   ...getTerminalClipboardSearchEntries()
 ])

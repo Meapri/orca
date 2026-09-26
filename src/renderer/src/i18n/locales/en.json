@@ -18121,7 +18121,17 @@
     "settings": {
       "TerminalInteraction": {
         "copyTrimsGutter": "Trim Gutter on Copy",
-        "copyTrimsGutterDescription": "Drop the left gutter agent output is painted behind, so copied text is not indented. Only the indent every selected line shares is removed."
+        "copyTrimsGutterDescription": "Drop the left gutter agent output is painted behind, so copied text is not indented. Only the indent every selected line shares is removed.",
+        "clickToMoveCursor": "Click to Move Cursor",
+        "clickToMoveCursorDescription": "Click on the line you are typing to move the cursor there. \"At prompts\" needs shell integration; \"Any input line\" also works in agent CLIs and REPLs.",
+        "clickToMoveOff": "Off",
+        "clickToMoveShellPrompt": "At prompts",
+        "clickToMoveInputLine": "Any input line",
+        "search": {
+          "click": "click",
+          "cursor": "cursor",
+          "caret": "caret"
+        }
       },
       "terminal": {
         "clipboard": {
@@ -18135,6 +18145,13 @@
           }
         }
       }
+    },
+    "terminalComposer": {
+      "send": "Send",
+      "label": "Terminal composer",
+      "placeholder": "Compose input for the terminal. Enter adds a line.",
+      "submitOnSend": "Press Enter after sending",
+      "cancel": "Cancel"
     }
   },
   "dashboardPopout": {

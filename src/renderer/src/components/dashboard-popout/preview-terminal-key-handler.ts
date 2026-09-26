@@ -205,6 +205,7 @@ export function installPreviewTerminalKeyHandler(args: {
       case 'copySelection':
       case 'equalizePaneSizes':
       case 'focusPane':
+      case 'openComposer':
       case 'setTitle':
       case 'splitActivePane':
       case 'toggleExpandActivePane':
