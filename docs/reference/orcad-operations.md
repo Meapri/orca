@@ -237,6 +237,12 @@ because those terminals die with orcad. A daemon that answered and then failed i
 probe is also `degraded`, not `absent`: it still holds live sessions, and calling those
 exited would be the verdict `ssh-execution-boundary.md` forbids guessing.
 
+## Feature parity with `orca serve`
+
+Which paired-client features orcad still lacks relative to the Electron-hosted `orca serve`, and
+which startup steps it now performs the same way, is tracked in
+[orcad-feature-parity.md](./orcad-feature-parity.md).
+
 ## What is not covered
 
 Named here so nothing reads as implemented that is not:
