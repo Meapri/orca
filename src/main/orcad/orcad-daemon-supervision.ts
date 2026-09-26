@@ -17,6 +17,11 @@ import {
   initDaemonPtyProvider,
   readDaemonPidRecord
 } from '../daemon/daemon-init'
+import { applyTerminalResourceLimitsToLiveDaemon } from './orcad-terminal-resource-limits'
+import {
+  cancelExitedTerminalHistoryRetention,
+  scheduleExitedTerminalHistoryRetention
+} from '../daemon/terminal-history-exited-retention-schedule'
 
 export type OrcadDaemonStartup =
   | { state: 'live'; pid: number | null }
@@ -44,6 +49,11 @@ export async function startOrcadDaemon(): Promise<OrcadDaemonStartup> {
     )
     return { state: 'unavailable', reason }
   }
+  // Why only with a daemon: its adapters are the writers the sweep must never race.
+  scheduleExitedTerminalHistoryRetention()
+  await applyTerminalResourceLimitsToLiveDaemon({
+    readCgroupUnit: () => readDaemonPidRecord()?.cgroupUnit ?? null
+  })
   if (!daemonOwnsFreshPersistentPtys()) {
     const reason = 'daemon adopted in degraded mode; fresh terminals run on the local provider'
     console.warn(
@@ -63,5 +73,6 @@ export async function startOrcadDaemon(): Promise<OrcadDaemonStartup> {
  * the exact property this whole item exists to buy.
  */
 export async function stopOrcadDaemon(): Promise<void> {
+  cancelExitedTerminalHistoryRetention()
   await disconnectDaemon()
 }

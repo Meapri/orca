@@ -24,6 +24,11 @@ vi.mock('../daemon/daemon-init', () => ({
   readDaemonPidRecord: readDaemonPidRecordMock
 }))
 
+vi.mock('../daemon/terminal-history-exited-retention-schedule', () => ({
+  scheduleExitedTerminalHistoryRetention: vi.fn(),
+  cancelExitedTerminalHistoryRetention: vi.fn()
+}))
+
 const { startOrcadDaemon, stopOrcadDaemon } = await import('./orcad-daemon-supervision')
 
 beforeEach(() => {

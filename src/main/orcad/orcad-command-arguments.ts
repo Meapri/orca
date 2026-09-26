@@ -1,4 +1,5 @@
 import type { OrcadOptions } from './orcad-entry'
+import { parseOrcadResourceLimit } from './orcad-resource-limit-flags'
 
 /**
  * orcad's flags. A value-taking flag consumes the next token whatever it looks
@@ -34,6 +35,10 @@ export function parseArgs(argv: string[]): OrcadOptions {
         throw new Error('--pairing-address expects a value')
       }
       options.pairingAddress = value
+      i += 1
+    } else if (arg === '--limit') {
+      const [envName, value] = parseOrcadResourceLimit(argv[i + 1] ?? '')
+      options.resourceLimits = { ...options.resourceLimits, [envName]: value }
       i += 1
     } else {
       throw new Error(`Unknown argument: ${arg}`)

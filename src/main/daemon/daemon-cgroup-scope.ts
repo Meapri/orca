@@ -244,6 +244,30 @@ export function buildLegacyScopeMigrationCommand(
   }
 }
 
+/** `systemctl --user set-property --runtime` against the daemon's own scope, dialed on the same
+ *  user bus the launch resolved (see `buildLegacyScopeMigrationCommand` for the env handling). */
+export function buildDaemonScopeSetPropertyCommand(
+  unit: string,
+  limits: readonly string[],
+  env: NodeJS.ProcessEnv,
+  canonicalRuntimeDir: string | null = CANONICAL_USER_RUNTIME_DIR
+): DurableDaemonScopeCommand {
+  const runtimeDir = resolveUserRuntimeDir(env, canonicalRuntimeDir)
+  const commandEnv: NodeJS.ProcessEnv = runtimeDir
+    ? { ...env, XDG_RUNTIME_DIR: runtimeDir }
+    : { ...env }
+  delete commandEnv.DBUS_SESSION_BUS_ADDRESS
+  return {
+    command: 'systemctl',
+    args: ['--user', 'set-property', '--runtime', unit, ...limits],
+    env: commandEnv
+  }
+}
+
+export function isOwnDaemonScopeUnit(unit: string | null): unit is string {
+  return unit?.startsWith(UNIT_NAME_PREFIX) === true && unit.endsWith('.scope')
+}
+
 export function migrateLegacyDaemonScope(
   pid: number,
   launchNonce: string,
@@ -299,7 +323,8 @@ export function buildDurableDaemonScopeCommand(
   scriptArgs: string[],
   launchNonce: string,
   env: NodeJS.ProcessEnv,
-  canonicalRuntimeDir: string | null = CANONICAL_USER_RUNTIME_DIR
+  canonicalRuntimeDir: string | null = CANONICAL_USER_RUNTIME_DIR,
+  scopePropertyArgs: readonly string[] = []
 ): DurableDaemonScopeCommand {
   const runtimeDir = resolveUserRuntimeDir(env, canonicalRuntimeDir)
   return {
@@ -309,6 +334,7 @@ export function buildDurableDaemonScopeCommand(
       '--scope',
       `--unit=${daemonScopeUnitName(launchNonce)}`,
       '--property=TimeoutStopSec=5s',
+      ...scopePropertyArgs,
       '--collect',
       '--quiet',
       '--',

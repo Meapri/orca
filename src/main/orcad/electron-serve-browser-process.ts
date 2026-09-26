@@ -1,5 +1,4 @@
 import { mkdtemp, rm } from 'node:fs/promises'
-import { createServer, type AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -23,81 +22,79 @@ import {
   electronSidecarRuntimeMethodName,
   TARGETLESS_BROWSER_METHODS
 } from './electron-sidecar-method-routing'
+import {
+  electronServeEnvironment,
+  processIsLive,
+  reserveLoopbackPort,
+  signalProcess
+} from './electron-serve-sidecar-process-control'
+import {
+  ElectronSidecarGovernance,
+  type ElectronSidecarGovernanceDeps
+} from './electron-serve-browser-governance'
 
 const START_TIMEOUT_MS = 120_000
 const STOP_TIMEOUT_MS = 5_000
+const SIDECAR_TAB_CLOSE_TIMEOUT_MS = 5_000
 const BrowserPageResult = z.object({ browserPageId: z.string() }).passthrough()
 const BrowserCloseResult = z.object({ closed: z.boolean() }).passthrough()
 const BrowserTabListResult = z.object({ tabs: z.array(ElectronSidecarTabSchema) }).passthrough()
 const RuntimeStatusResult = z.object({ capabilities: z.array(z.string()).optional() }).passthrough()
-
-async function reserveLoopbackPort(): Promise<number> {
-  const server = createServer()
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject)
-    server.listen(0, '127.0.0.1', () => {
-      server.removeListener('error', reject)
-      resolve()
-    })
-  })
-  const address = server.address() as AddressInfo
-  await new Promise<void>((resolve, reject) => {
-    server.close((error) => {
-      if (error) {
-        reject(error)
-      } else {
-        resolve()
-      }
-    })
-  })
-  return address.port
-}
-function electronServeEnvironment(): NodeJS.ProcessEnv {
-  const environment = { ...process.env }
-  for (const key of [
-    'AGENT_BROWSER_ARGS',
-    'AGENT_BROWSER_AUTO_CONNECT',
-    'AGENT_BROWSER_CDP',
-    'AGENT_BROWSER_ENGINE',
-    'AGENT_BROWSER_EXECUTABLE_PATH',
-    'AGENT_BROWSER_HEADED',
-    'AGENT_BROWSER_PROFILE',
-    'AGENT_BROWSER_PROVIDER',
-    'AGENT_BROWSER_SESSION',
-    'AGENT_BROWSER_SESSION_NAME',
-    'AGENT_BROWSER_STATE'
-  ]) {
-    delete environment[key]
-  }
-  return environment
-}
-
-function signalProcess(pid: number, signal: NodeJS.Signals): void {
-  try {
-    process.kill(pid, signal)
-  } catch {
-    // The sidecar already exited.
-  }
-}
-
-function processIsLive(pid: number): boolean {
-  try {
-    process.kill(pid, 0)
-    return true
-  } catch {
-    return false
-  }
-}
 
 export class ElectronServeBrowserProcess {
   private child: SpawnedProcess | null = null
   private metadata: RuntimeMetadata | null = null
   private readonly tabs = new ElectronSidecarTabRegistry()
   private sidecarDataPath: string | null = null
+  private stopped = false
+  private readonly governance: ElectronSidecarGovernance
 
-  constructor(private readonly executablePath: string) {}
+  constructor(
+    private readonly executablePath: string,
+    options: Pick<ElectronSidecarGovernanceDeps, 'limits' | 'now' | 'maintenanceIntervalMs'> = {}
+  ) {
+    this.governance = new ElectronSidecarGovernance({
+      ...options,
+      tabs: this.tabs,
+      closePage: async (page) => {
+        if (this.metadata) {
+          await sendOrcadSidecarRequest(
+            this.metadata,
+            'browser.tabClose',
+            { page: page.sidecarPageId },
+            SIDECAR_TAB_CLOSE_TIMEOUT_MS
+          )
+        }
+      },
+      // Why stopped counts as alive: a deliberate stop has nothing to recover.
+      isAlive: () => this.stopped || this.isAvailable(),
+      relaunch: async () => {
+        await this.stopSidecar()
+        await this.startSidecar()
+      }
+    })
+  }
+
+  /** Relaunches recovered and tabs reclaimed since start; for health reporting and tests. */
+  crashCount(): number {
+    return this.governance.crashCount()
+  }
+
+  reclaimedTabCount(): number {
+    return this.governance.reclaimer.totalReclaimed()
+  }
+
+  runMaintenance(): Promise<void> {
+    return this.governance.runMaintenance()
+  }
 
   async start(): Promise<void> {
+    this.stopped = false
+    await this.startSidecar()
+    this.governance.arm()
+  }
+
+  private async startSidecar(): Promise<void> {
     const temporaryRoot = process.platform === 'win32' ? tmpdir() : '/tmp'
     const userDataPath = await mkdtemp(join(temporaryRoot, 'orcad-browser-'))
     this.sidecarDataPath = userDataPath
@@ -167,6 +164,12 @@ export class ElectronServeBrowserProcess {
   }
 
   async stop(): Promise<void> {
+    this.stopped = true
+    this.governance.disarm()
+    await this.stopSidecar()
+  }
+
+  private async stopSidecar(): Promise<void> {
     const child = this.child
     const sidecarPid = this.metadata?.pid ?? child?.pid ?? null
     const sidecarDataPath = this.sidecarDataPath
@@ -207,6 +210,7 @@ export class ElectronServeBrowserProcess {
         'The Electron browser provider is not running.'
       )
     }
+    this.governance.noteHost(host)
     const original = (args[0] ?? {}) as Record<string, unknown>
     const worktreeId =
       typeof original.worktree === 'string'
@@ -228,6 +232,9 @@ export class ElectronServeBrowserProcess {
       // mints its own id and the caller's is adopted as the public one below; passing
       // the unknown id through would make the generic branch require() a missing page.
       delete params.page
+    }
+    if (method === 'browserTabCreate') {
+      await this.governance.reclaimer.makeRoomForNewTab()
     }
 
     if (method === 'browserTabCurrent' && worktreeId) {
@@ -254,6 +261,9 @@ export class ElectronServeBrowserProcess {
       params.page = targetPage.sidecarPageId
     }
 
+    if (targetPage) {
+      this.governance.reclaimer.touch(targetPage.publicPageId)
+    }
     let result: unknown
     try {
       result = await sendOrcadSidecarRequest(metadata, rpcMethod, params)
@@ -270,6 +280,7 @@ export class ElectronServeBrowserProcess {
     if (method === 'browserTabCreate') {
       const created = BrowserPageResult.parse(result)
       const page = this.tabs.register(created.browserPageId, requestedPageId, worktreeId)
+      this.governance.reclaimer.touch(page.publicPageId)
       return { ...created, browserPageId: page.publicPageId }
     }
     if (method === 'browserTabList') {

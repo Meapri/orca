@@ -164,8 +164,13 @@ An external supervisor (systemd, launchd, a process manager). orcad conforms to 
 - **Logs.** orcad writes human-readable diagnostics to **stderr** and its readiness contract
   to **stdout**; the supervisor owns capture and rotation. The daemon, being detached, writes
   its own NDJSON lifecycle log to `<data-root>/logs/daemon.log` (suppressed by
-  `ORCA_DIAGNOSTICS_DISABLED=1`). Rotation of that file is not implemented — see
-  [What is not covered](#what-is-not-covered).
+  `ORCA_DIAGNOSTICS_DISABLED=1`). That file rotates by size: at 5 MB it becomes
+  `daemon.log.1`, the previous `.1` becomes `.2`, and the oldest is dropped, so the family
+  never exceeds three files (~15 MB). Rotation reads the file's on-disk size and takes a
+  short `daemon.log.rotate-lock`, so it stays bounded across daemon restarts and while two
+  daemon generations append to the same file. (A daemon forked from a build before this
+  change keeps its own per-process counter; it is still bounded, but only by that counter.) A failed write (for example `ENOSPC`)
+  pauses daemon logging for 60 s instead of for the rest of the daemon's life.
 
 ### orcad supervising the daemon
 
@@ -255,9 +260,121 @@ because those terminals die with orcad. A daemon that answered and then failed i
 probe is also `degraded`, not `absent`: it still holds live sessions, and calling those
 exited would be the verdict `ssh-execution-boundary.md` forbids guessing.
 
+## Resource governance
+
+A small VPS must survive runaway agent work and months of unattended disk growth. Every knob is an
+environment variable (for a systemd unit's `Environment=`) and also an orcad flag,
+`--limit <key>=<value>` (repeatable), which sets the same variable before anything reads it.
+Invalid values are logged and ignored rather than guessed at.
+
+| `--limit` key              | Environment variable                   | Default     |
+| -------------------------- | -------------------------------------- | ----------- |
+| `terminal-memory-high`     | `ORCA_TERMINAL_MEMORY_HIGH`            | unset       |
+| `terminal-memory-max`      | `ORCA_TERMINAL_MEMORY_MAX`             | unset       |
+| `terminal-tasks-max`       | `ORCA_TERMINAL_TASKS_MAX`              | unset       |
+| `terminal-cpu-weight`      | `ORCA_TERMINAL_CPU_WEIGHT`             | unset       |
+| `terminal-nice`            | `ORCA_TERMINAL_NICE`                   | reset to 0  |
+| `terminal-oom-score-adj`   | `ORCA_TERMINAL_OOM_SCORE_ADJ`          | 200 (Linux) |
+| `history-retention-days`   | `ORCA_TERMINAL_HISTORY_RETENTION_DAYS` | 7           |
+| `history-max-exited-mb`    | `ORCA_TERMINAL_HISTORY_MAX_EXITED_MB`  | 2048        |
+| `browser-max-tabs`         | `ORCA_BROWSER_MAX_TABS`                | 8           |
+| `browser-tab-idle-minutes` | `ORCA_BROWSER_TAB_IDLE_MINUTES`        | 30          |
+
+### Terminal and agent limits (Linux, systemd)
+
+The four `terminal-*` cgroup limits are systemd properties (`MemoryHigh=`, `MemoryMax=`,
+`TasksMax=`, `CPUWeight=`, same value syntax: `4G`, `80%`, `infinity`, `idle`) applied to the
+daemon's `orca-daemon-*.scope`. That scope holds the daemon and every PTY it owns, so a limit
+bounds **all terminal and agent work on the host together**, not each terminal. Prefer
+`MemoryHigh` (throttle and reclaim) with `MemoryMax` a little above it as the hard stop.
+
+- **Fresh daemon.** The limits are passed to `systemd-run --scope` at launch. Every fresh scope
+  also asks for `OOMPolicy=continue`: with systemd's default (`stop`), one OOM-killed agent would
+  make systemd stop the whole scope and every terminal in it. If systemd rejects the properties
+  (for example an older systemd without scope `OOMPolicy`), the launch retries a bare scope, then
+  falls back to the unscoped launch exactly as before.
+- **Adopted daemon.** orcad restarts adopt the running daemon, so on every start orcad also runs
+  `systemctl --user set-property --runtime <scope> …` for the configured limits. Changing a limit
+  and restarting orcad takes effect without touching live terminals. It is never applied to a
+  legacy `app-orca-*` scope, which can contain desktop GUI processes.
+- **Not in force.** Configured limits that are not enforced — no systemd user manager, a daemon
+  that fell back to the unscoped launch, rejected properties, a failed `set-property` — are
+  published in `status.get` as a `terminal_resource_limits_unavailable` degradation naming the
+  missing assignments. Terminals keep working either way.
+
+Per-terminal limits (one sub-scope per PTY) are deliberately not provided: moving a PTY into its
+own unit takes it out of the daemon scope that is stopped when the daemon dies, so its
+descendants would outlive the daemon.
+
+### PTY priority and OOM preference
+
+- **Niceness (#14639).** A PTY child used to inherit orcad's nice level. A niced daemon now resets
+  each new PTY child to 0; `ORCA_TERMINAL_NICE=inherit` keeps inheritance and an integer pins a
+  level. Lowering niceness needs `RLIMIT_NICE`: in the unit, `Nice=10` plus `LimitNICE=20` lets
+  the service run niced while terminals run at 0. Without it the reset is refused and children
+  keep the inherited level.
+- **OOM preference (Linux).** Each new PTY child's `oom_score_adj` is raised to 200 (never
+  lowered; `0` disables), so under memory pressure the kernel kills a runaway agent before the
+  daemon that owns every other terminal. Descendants inherit it.
+
+Both are applied by the daemon at spawn, from the environment it was launched with, so they reach
+terminals created by a daemon launched after the setting changed. They, and the launch-time scope
+properties above, live in the shared daemon launch path, so a Linux desktop gets them too.
+
+### Terminal history retention
+
+Each daemon-backed terminal keeps a history tree (checkpoint plus incremental log, up to hundreds
+of MB) under `<data-root>/terminal-history/`. orcad sweeps it two minutes after start and every six
+hours:
+
+- Only sessions whose PTY exit was **observed** are collectible: `meta.json` records `endedAt`
+  and a numeric `exitCode`. That is the `exited` verdict of
+  [ssh-execution-boundary.md](./ssh-execution-boundary.md). A session still marked running (it may
+  be live, or crash-restorable), one a shutdown marked ended without an exit code, one with
+  unreadable metadata, and one a daemon adapter still writes are kept, whatever their age.
+- Exited sessions older than `history-retention-days`, then the oldest exited sessions until the
+  rest fit `history-max-exited-mb`, are tombstoned and removed off the critical path. Nothing that
+  ended less than ten minutes ago is collected. `off` disables either rule.
+- Nothing reads an exited session's tree (cold restore requires a session that did not end), so
+  collection only drops scrollback of terminals whose process is gone.
+
+orcad runs no private `CODEX_HOME` (the Codex account flows are desktop-only), so Codex's own
+`sessions/` under the user's `~/.codex` is third-party data and is never touched.
+
+### Headless browser tabs
+
+Each browser tab is a renderer process. Both orcad browser providers — the installed Orca Electron
+app driven as a `--serve` sidecar, and an operator-supplied Chromium via `ORCA_BROWSER_EXECUTABLE`
+— now bound them (#14552):
+
+- **Cap.** Creating a tab beyond `browser-max-tabs` first closes the least recently used one.
+- **Idle.** A tab no command has touched for `browser-tab-idle-minutes` (`off` disables) is closed
+  by a once-a-minute maintenance pass. With external Chromium the last tab is blanked instead,
+  because the driver needs one attached page.
+- A command naming a reclaimed tab fails like any closed tab, and the tab list is republished.
+
+The browser runs in its own process tree, so its death never takes orcad down (#16084); what
+changed is that orcad now recovers it instead of staying broken:
+
+- **External Chromium.** A tab whose renderer stopped answering (a command timed out and a 5 s URL
+  probe also failed) is closed with `browser_tab_closed`. Two consecutive driver failures mark the
+  browser crashed: its tabs are forgotten, `status.get` reports `browser_unavailable` /
+  `provider_unhealthy`, and it is relaunched on the next command or maintenance pass.
+- **Electron sidecar.** A sidecar whose process exited is relaunched by the maintenance pass.
+- Relaunches are spaced at least 5 s apart and capped at 5 per 10 minutes, the same containment
+  the terminal daemon uses, so a host that cannot keep a browser up stops forking one.
+
 ## What is not covered
 
 Named here so nothing reads as implemented that is not:
+
+- **Per-terminal resource limits.** Limits cover the daemon scope as a whole (see
+  [Resource governance](#resource-governance)); one terminal can still use the whole budget.
+- **Browser processes orphaned by a killed driver.** If the external Chromium provider's
+  `agent-browser` daemon itself is killed, the Chromium tree it launched is re-parented and keeps
+  running; the relaunched driver starts a new browser and nothing reaps the old one.
+- **Resource governance on the desktop app.** Exited-history retention and the live
+  `set-property` apply are wired into orcad only; the desktop keeps its previous behavior.
 
 - **A continuous health endpoint.** `health` is published once, in the readiness payload. A
   supervisor's periodic liveness/readiness probe needs an HTTP or RPC surface over the same
@@ -275,7 +392,6 @@ Named here so nothing reads as implemented that is not:
   conflict.
 - **Reconciling `webClientUrl` with reachability** under the loopback default.
 - **State-schema rollback rules.**
-- **Daemon log rotation.** `<data-root>/logs/daemon.log` grows unbounded.
 - **A census without the Orca CLI.** The self-managed installer reads live terminals through
   `terminal list --json` from an Orca CLI. A host with no CLI can prove a stop safe only
   through daemon scope isolation; an unscoped daemon there cannot be stopped by the installer.
