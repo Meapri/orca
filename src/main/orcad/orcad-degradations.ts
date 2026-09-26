@@ -71,28 +71,52 @@ function daemonDegradations(inputs: OrcadDegradationInputs): OrcadDegradation[] 
   return found
 }
 
+const WATCHDOG_PROBES = [
+  {
+    key: 'runtimeProbe',
+    code: 'runtime_unresponsive',
+    subject: 'runtime',
+    describe: (failures: number) =>
+      `The runtime did not answer ${failures} consecutive self-probes over its own socket.`
+  },
+  {
+    key: 'threadpoolProbe',
+    code: 'threadpool_stalled',
+    subject: 'filesystem',
+    describe: (failures: number) =>
+      `Filesystem calls did not complete for ${failures} consecutive probes; a hung mount or saturated I/O pool stalls every repository and persistence call.`
+  }
+] as const
+
 function watchdogDegradations(watchdog: OrcadWatchdogSnapshot | null): OrcadDegradation[] {
   if (!watchdog) {
     return []
   }
   const found: OrcadDegradation[] = []
-  if (watchdog.verdict === 'wedged' && watchdog.runtimeProbe.state === 'failing') {
-    found.push({
-      code: 'runtime_unresponsive',
-      severity: 'critical',
-      component: 'runtime',
-      message: `The runtime did not answer ${watchdog.runtimeProbe.consecutiveFailures} consecutive self-probes over its own socket.`,
-      ...(watchdog.runtimeProbe.lastError ? { reason: watchdog.runtimeProbe.lastError } : {})
-    })
-  }
-  if (watchdog.verdict === 'wedged' && watchdog.threadpoolProbe.state === 'failing') {
-    found.push({
-      code: 'threadpool_stalled',
-      severity: 'critical',
-      component: 'runtime',
-      message: `Filesystem calls did not complete for ${watchdog.threadpoolProbe.consecutiveFailures} consecutive probes; a hung mount or saturated I/O pool stalls git and persistence.`,
-      ...(watchdog.threadpoolProbe.lastError ? { reason: watchdog.threadpoolProbe.lastError } : {})
-    })
+  for (const { key, code, subject, describe } of WATCHDOG_PROBES) {
+    const probe = watchdog[key]
+    if (probe.consecutiveFailures < watchdog.wedgeAfterFailures) {
+      continue
+    }
+    const reason = probe.lastError ? { reason: probe.lastError } : {}
+    // Why split on a prior success: only a probe that used to answer proves the runtime stopped.
+    found.push(
+      probe.lastOkAt === null
+        ? {
+            code: 'watchdog_probe_unavailable',
+            severity: 'warning',
+            component: 'runtime',
+            message: `The self-watchdog's ${subject} probe has never succeeded, so a wedge there cannot be detected.`,
+            ...reason
+          }
+        : {
+            code,
+            severity: 'critical',
+            component: 'runtime',
+            message: describe(probe.consecutiveFailures),
+            ...reason
+          }
+    )
   }
   if (watchdog.eventLoop.maxLagMs >= watchdog.eventLoop.warnMs) {
     found.push({

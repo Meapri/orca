@@ -40,7 +40,7 @@ async function startServer(options: { noPairing: boolean }): Promise<{
     enableWebSocket: true,
     wsPort: 0,
     pinnedBindHost: '127.0.0.1',
-    methods: surface.methods,
+    extraMethods: surface.extraMethods,
     httpProbeHandler: surface.httpProbeHandler
   })
   await rpc.start()

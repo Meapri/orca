@@ -84,6 +84,11 @@ nothing can reach.
 Under the shipping design a client reaches a remote orcad over an SSH local port-forward, so
 loopback is the correct default and the pairing credential travels over SSH.
 
+A `--port` is pinned too. If that port cannot be bound (in use, privileged, or an address this
+host does not own), orcad exits 78 and names the port. It never falls back to a persisted or
+OS-assigned port, because every client would then dial a port nothing listens on. Without
+`--port`, orcad tries the default `6768` and keeps the older fallback behavior.
+
 ## Data root and the instance lock
 
 The data root is `$ORCA_USER_DATA`, else `$XDG_DATA_HOME/Orca`, else `~/.orca`.
@@ -142,9 +147,30 @@ not admit new work after the census. Orca does not yet provide an atomic census-
 An external supervisor (systemd, launchd, a process manager). orcad conforms to it:
 
 - **Readiness.** One JSON line on stdout (`--json`), `type: "orca_server_ready"`, published
-  after the listener is bound and the daemon verdict is in. There is no separate readiness
-  socket; the line is the signal. Set the supervisor's start timeout generously — the daemon
-  launch has its own retries and can take tens of seconds on a cold host.
+  after the listener is bound and the daemon verdict is in. The line is the primary signal.
+  Set the supervisor's start timeout generously — the daemon launch has its own retries and
+  can take tens of seconds on a cold host.
+- **systemd notify.** When `NOTIFY_SOCKET` is set (Linux only), orcad also sends `READY=1`
+  right after the readiness line, `WATCHDOG=1` every `WATCHDOG_USEC / 2` while its
+  [self-watchdog](#self-watchdog) reports the runtime live, a `STATUS=` line on every verdict
+  change, and `STOPPING=1` when a graceful stop begins. It sends them through the
+  `systemd-notify` binary (the notify socket is a Unix datagram socket, which neither Node nor
+  Bun can open), so the unit needs `NotifyAccess=all`. orcad removes `NOTIFY_SOCKET` and
+  `WATCHDOG_*` from its environment before launching the daemon, so no PTY can signal the unit.
+  A wedged runtime stops pinging, and systemd restarts the unit after `WatchdogSec`:
+
+  ```ini
+  [Service]
+  Type=notify
+  NotifyAccess=all
+  WatchdogSec=60
+  Restart=on-failure
+  RestartPreventExitStatus=78
+  ```
+
+  Behind the bundled launcher, systemd's main PID is the launcher and the runtime is its child.
+  orcad accepts `WATCHDOG_PID` naming either one. Without `NOTIFY_SOCKET`, none of this runs.
+
 - **Shutdown.** `SIGTERM` or `SIGINT` starts one graceful stop. Repeated signals share
   that stop because a supervisor may signal both the launcher and its child. A 15s deadline
   exits with code 1 if teardown stalls. The bundled runtime also stops gracefully if its
@@ -152,11 +178,11 @@ An external supervisor (systemd, launchd, a process manager). orcad conforms to 
   so terminal hangups do not stop a headless host. Use `SIGTERM` or `SIGINT` to stop it.
 - **Exit codes.**
 
-  | Code | Meaning                                                      | Supervisor should    |
-  | ---- | ------------------------------------------------------------ | -------------------- |
-  | 0    | clean shutdown                                               | restart per policy   |
-  | 1    | startup or shutdown failure                                  | restart with backoff |
-  | 78   | configuration fault (bind address, data root, instance lock) | **not** restart      |
+  | Code | Meaning                                                                   | Supervisor should    |
+  | ---- | ------------------------------------------------------------------------- | -------------------- |
+  | 0    | clean shutdown                                                            | restart per policy   |
+  | 1    | startup or shutdown failure                                               | restart with backoff |
+  | 78   | configuration fault (bind address, pinned port, data root, instance lock) | **not** restart      |
 
   78 is `EX_CONFIG`. Put it in systemd's `RestartPreventExitStatus`: restarting on a data
   root owned by someone else is a restart-spin, not a recovery.
@@ -216,7 +242,11 @@ terminalDaemon:
                      this orcad after an update — reporting orcad's version for both would
                      hide exactly that)
   entryPath / protocolVersion
+  cgroupUnit         the systemd scope the daemon found itself in, or null (unscoped)
   selfTest { ok, coverage, verdict, durationMs }
+degradations[]     see below; optional, so an older reader treats absence as "not reported"
+watchdog           the self-watchdog snapshot (server.health only; the readiness payload
+                   precedes the first probe)
 ```
 
 ### What the self-test proves
@@ -237,24 +267,116 @@ because those terminals die with orcad. A daemon that answered and then failed i
 probe is also `degraded`, not `absent`: it still holds live sessions, and calling those
 exited would be the verdict `ssh-execution-boundary.md` forbids guessing.
 
+## Continuous health
+
+The readiness payload is a snapshot. A running orcad keeps the same verdict up to date. It
+re-runs `collectOrcadHealth()` once a minute, because the daemon self-test spawns a real PTY and
+running it on every probe would make the probe the load. Each probe then combines that cached
+result with the live self-watchdog. There are three ways to read it.
+
+### `/healthz` and `/readyz`
+
+These are plain HTTP `GET`/`HEAD` paths on orcad's existing WebSocket listener, so they are
+loopback-only unless `--bind` widened the listener. They need no pairing credential, so their
+bodies carry verdict words and degradation codes only. They never include PIDs, paths,
+versions or messages.
+
+| Path       | 200                                     | 503                                                                                     |
+| ---------- | --------------------------------------- | --------------------------------------------------------------------------------------- |
+| `/healthz` | `{"status":"ok"}`                       | `{"status":"wedged"}` — the self-watchdog tripped                                       |
+| `/readyz`  | `{"status":"ready","degradations":[…]}` | `starting` before the readiness line; `not_ready` while a `critical` degradation stands |
+
+`degradations` here is `[{ "code", "severity" }]`. Liveness says "restart me". Readiness says
+"route no new work here". A host with only `warning` degradations is ready.
+
+### `server.health` and `orca serve status`
+
+`server.health` (params `{ fresh?: boolean }`) is an authenticated RPC method that returns the
+full picture: `state`, `live`, `boundEndpoint`, `checkedAt`, the `health` object above with
+`degradations` and `watchdog`, and `stats` (`startedAt`, `uptimeSeconds`, memory, CPU,
+`connectedClients`, `pairedDevices`, `localTerminals`). A count that could not be verified is
+`null`, never `0`. `fresh: true` re-runs the daemon self-test first. The wire types are in
+`src/shared/orcad-server-health-contract.ts`.
+
+Only orcad registers `server.*`. The desktop app, and orcad builds from before this surface,
+answer `method_not_found`. Treat that as "not reported", never as "down".
+
+`orca serve status` prints it and exits 1 when the host is not ready, is wedged, or does not
+answer. On the host, it reads the orcad data root (`--data-root`, else `$ORCA_USER_DATA`, else
+`$ORCA_USER_DATA_PATH`, else whichever default root has runtime metadata). With
+`--environment <id>`, it asks a paired server instead.
+
+### `degradations[]`
+
+Each entry is `{ code, severity: critical | warning, component, message, reason? }`. `code` is
+an open vocabulary: render `message`, and never switch on `code` exhaustively.
+
+| Code                          | Severity | Meaning                                                                         |
+| ----------------------------- | -------- | ------------------------------------------------------------------------------- |
+| `terminal_daemon_unhealthy`   | critical | The daemon failed its self-test. Its sessions are `unverifiable`, not `exited`. |
+| `terminal_unavailable`        | critical | This host cannot spawn PTYs (from `status.get`).                                |
+| `runtime_unresponsive`        | critical | The self-probe over the runtime's own socket failed three times in a row.       |
+| `threadpool_stalled`          | critical | Filesystem calls stopped completing (a hung mount or a saturated I/O pool).     |
+| `terminal_daemon_absent`      | warning  | No daemon. Terminals run inside orcad and end when it restarts.                 |
+| `terminal_daemon_not_durable` | warning  | The daemon answers, but new terminals are not daemon-owned.                     |
+| `terminal_daemon_unscoped`    | warning  | Under a systemd service on Linux, the daemon shares the service cgroup.         |
+| `event_loop_lagging`          | warning  | The event loop stalled at least 1s within the last minute.                      |
+| `watchdog_probe_unavailable`  | warning  | A self-watchdog probe has never succeeded, so it cannot detect a wedge.         |
+| `browser_unavailable`         | warning  | No browser backend (from `status.get`).                                         |
+
+### Self-watchdog
+
+This addresses a listener that stays bound while the runtime stops answering (#23072). orcad
+measures event-loop timer drift every 500 ms. Every 10 s, it also sends a real request over its
+own local socket, and it stats its data root to exercise the I/O thread pool. A probe that
+fails, or has not settled within 5 s, counts as a failure. Three failures in a row, after that
+probe has succeeded at least once, make the host `wedged`: `/healthz` returns 503,
+`server.health` reports `live: false`, and systemd watchdog pings stop. The next successful
+probe clears it. A probe that has never succeeded is a probe fault, not proof that the runtime
+stopped, so it only raises `watchdog_probe_unavailable`. Withholding pings on it would put a
+host that was never wedged into a restart loop.
+
+A synchronous stall cannot be seen from inside while it is happening. Timers do not fire until
+it ends, and it is then reported as lag. That is why the systemd watchdog, an outside observer,
+is the restart mechanism.
+
+## Operator CLI
+
+These commands run on the server host, or against it with `--environment`:
+
+- `orca serve status [--fresh] [--json]` shows the verdict and stats above.
+- `orca serve doctor [--data-root] [--bind] [--port] [--json]` is a preflight with a fix for
+  each finding. It checks data-root ownership and mode, the Unix socket path length (the CLI
+  cannot dial past `sun_path`), the instance lock, whether the listener can bind (a pinned port
+  in use fails, because orcad would exit 78), the systemd user bus and linger that keep the
+  daemon's scope alive across logouts and service restarts, daemon cgroup isolation, the glibc
+  floor, the Node ABI (from the running orcad), and free disk space. Checks that need the
+  running server are skipped when it is down. It exits 1 on any failure. It runs locally only.
+- `orca serve pairing [--rotate] [--json]` reprints the running server's pairing link and a
+  terminal QR code without a restart. The server re-serves its unused pending offer, the same
+  one the readiness line printed, until a device uses it. `--rotate` revokes that offer and mints
+  a new one. It runs locally only: `server.pairingOffer` refuses paired (remote) callers, and no
+  new credential type exists.
+
 ## What is not covered
 
 Named here so nothing reads as implemented that is not:
 
-- **A continuous health endpoint.** `health` is published once, in the readiness payload. A
-  supervisor's periodic liveness/readiness probe needs an HTTP or RPC surface over the same
-  `collectOrcadHealth()`; that surface does not exist yet.
+- **Health probes without a WebSocket listener.** `/healthz` and `/readyz` share the WebSocket
+  listener. When that listener fails to start without a pinned `--port`, orcad serves over its
+  local socket only, and `orca serve status` still works, but there is no HTTP probe.
+- **systemd notify verified on a real host.** The `sd_notify` path is covered by unit tests
+  with fakes. It has not been exercised against a real systemd manager in CI. Older
+  `systemd-notify` builds can exit before systemd attributes the message to the unit. If the
+  unit never leaves `activating`, use `Type=exec` and probe `/readyz` instead.
 - **Supervision of an unscoped fallback daemon.** When the durable `systemd-run --user --scope`
   launch is unavailable (see [above](#two-long-lived-processes-not-one)) orcad and its daemon
   share one service cgroup, and a combined-unit stop cannot preserve live terminals. There is
   no mechanism that re-isolates such a daemon after the fact.
 - **libc slot.** There is no honest health value to publish until native libc detection owns
   it.
-- **`degradations[]`.** The readiness contract does not publish this collection yet.
 - **Credential administration** (list / revoke / rotate devices, expiring pending offers,
   structured security logging).
-- **Pinned-port fail-closed.** A pinned `--port` still falls back to an OS-assigned port on
-  conflict.
 - **Reconciling `webClientUrl` with reachability** under the loopback default.
 - **State-schema rollback rules.**
 - **Daemon log rotation.** `<data-root>/logs/daemon.log` grows unbounded.

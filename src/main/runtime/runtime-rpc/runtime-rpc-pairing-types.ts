@@ -63,6 +63,8 @@ export type OrcaRuntimeRpcServerOptions = {
   metadataOwnershipPollMs?: number
   // Why: tests may inject inert protocol stages before production authorization registers them.
   methods?: readonly RpcAnyMethodDeclaration[]
+  // Why: a host (orcad) adds its own methods to the shared registry without replacing it.
+  extraMethods?: readonly RpcAnyMethodDeclaration[]
 }
 
 export type PairingOfferUnavailableReason =

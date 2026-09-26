@@ -316,7 +316,7 @@ async function startOrcadRuntime(
     // once a device has connected, so a loopback deployment would silently go wide one
     // restart after its first client paired.
     pinnedBindHost: bindHost,
-    methods: healthSurface.methods,
+    extraMethods: healthSurface.extraMethods,
     httpProbeHandler: healthSurface.httpProbeHandler,
     // Why required: a pinned --port that silently moved leaves every client dialing a dead port.
     ...(options.port !== undefined

@@ -109,14 +109,19 @@ export class OrcadRuntimeWatchdog {
     this.lagSamples = this.lagSamples.filter((sample) => sample.at >= cutoff)
     const maxLagMs = this.lagSamples.reduce((max, sample) => Math.max(max, sample.lagMs), 0)
     const lagMs = this.lagSamples.at(-1)?.lagMs ?? 0
+    // Why a prior success is required: a probe that never answered is a probe fault, and
+    // withholding systemd pings on it would restart-loop a host that was never wedged.
     const wedged = (['runtimeProbe', 'threadpoolProbe'] as const).some(
-      (name) => this.state[name].consecutiveFailures >= this.wedgeAfterFailures
+      (name) =>
+        this.state[name].consecutiveFailures >= this.wedgeAfterFailures &&
+        this.state[name].lastOkAt !== null
     )
     return {
       verdict: wedged ? 'wedged' : maxLagMs >= this.lagWarnMs ? 'lagging' : 'responsive',
       eventLoop: { lagMs, maxLagMs, windowMs: this.lagWindowMs, warnMs: this.lagWarnMs },
       runtimeProbe: { ...this.state.runtimeProbe },
-      threadpoolProbe: { ...this.state.threadpoolProbe }
+      threadpoolProbe: { ...this.state.threadpoolProbe },
+      wedgeAfterFailures: this.wedgeAfterFailures
     }
   }
 

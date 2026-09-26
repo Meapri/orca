@@ -30,6 +30,7 @@ function watchdog(overrides: Partial<OrcadWatchdogSnapshot> = {}): OrcadWatchdog
     eventLoop: { lagMs: 0, maxLagMs: 0, windowMs: 60_000, warnMs: 1_000 },
     runtimeProbe: probe,
     threadpoolProbe: probe,
+    wedgeAfterFailures: 3,
     ...overrides
   }
 }
@@ -117,7 +118,7 @@ describe('deriveOrcadDegradations', () => {
         runtimeProbe: {
           state: 'failing',
           consecutiveFailures: 3,
-          lastOkAt: null,
+          lastOkAt: 1,
           lastDurationMs: 5_000,
           lastError: 'runtime self-probe timeout'
         }
@@ -127,6 +128,26 @@ describe('deriveOrcadDegradations', () => {
       ['runtime_unresponsive', 'critical'],
       ['event_loop_lagging', 'warning']
     ])
+  })
+
+  it('reports a probe that never succeeded as unavailable, not as a critical wedge', () => {
+    const found = deriveOrcadDegradations({
+      ...base,
+      terminalDaemon: daemon(),
+      watchdog: watchdog({
+        threadpoolProbe: {
+          state: 'failing',
+          consecutiveFailures: 5,
+          lastOkAt: null,
+          lastDurationMs: 5_000,
+          lastError: 'probe exceeded 5000ms'
+        }
+      })
+    })
+    expect(found.map((entry) => [entry.code, entry.severity])).toEqual([
+      ['watchdog_probe_unavailable', 'warning']
+    ])
+    expect(hasCriticalDegradation(found)).toBe(false)
   })
 
   it('maps runtime status degradations, making only terminal loss critical', () => {

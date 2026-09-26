@@ -9,7 +9,6 @@ import type { RuntimeMetadata } from '../../shared/runtime-bootstrap'
 import type { RuntimeDegradation } from '../../shared/runtime-types'
 import type { OrcaRuntimeRpcServer } from '../runtime/runtime-rpc'
 import type { ServePairingReadiness } from '../server/serve-readiness'
-import { ALL_RPC_METHODS } from '../runtime/rpc/methods'
 import { readRuntimeMetadata } from '../runtime/runtime-metadata'
 import { collectOrcadHealth, type OrcadHealth } from './orcad-health'
 import { OrcadHealthMonitor } from './orcad-health-monitor'
@@ -122,7 +121,15 @@ export function createOrcadHealthSurface(options: {
   const monitor = new OrcadHealthMonitor({
     collectBase: (): Promise<OrcadHealth> =>
       collectOrcadHealth(options.buildVersion, options.profileStateAuthority),
-    runtimeDegradations: () => host?.runtimeDegradations() ?? [],
+    runtimeDegradations: () => {
+      try {
+        return host?.runtimeDegradations() ?? []
+      } catch (error) {
+        // Why: a status read that throws must not fail readiness or a probe; say so and move on.
+        console.error('[orcad] could not read runtime degradations for health:', error)
+        return []
+      }
+    },
     collectStats: async () => {
       const terminals = host
         ? await withTimeout(host.listLocalTerminals(), LOCAL_TERMINAL_LIST_TIMEOUT_MS)
@@ -153,18 +160,15 @@ export function createOrcadHealthSurface(options: {
     : null
 
   return {
-    methods: [
-      ...ALL_RPC_METHODS,
-      ...createOrcadServerAdminMethods({
-        serverHealth: (request) => monitor.serverHealth(request),
-        pairingOffer: ({ rotate }) => {
-          if (!host) {
-            throw new Error('server_not_ready')
-          }
-          return buildOrcadPairingReadiness(host.rpc, { ...host.pairing, rotate })
+    extraMethods: createOrcadServerAdminMethods({
+      serverHealth: (request) => monitor.serverHealth(request),
+      pairingOffer: ({ rotate }) => {
+        if (!host) {
+          throw new Error('server_not_ready')
         }
-      })
-    ],
+        return buildOrcadPairingReadiness(host.rpc, { ...host.pairing, rotate })
+      }
+    }),
     httpProbeHandler: createOrcadHealthProbeHandler(monitor),
     /** After the listener binds: the self-probe needs the socket and metadata. */
     attach(nextHost: OrcadHealthSurfaceHost): void {

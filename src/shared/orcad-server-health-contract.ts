@@ -111,6 +111,8 @@ export type OrcadWatchdogSnapshot = {
   eventLoop: { lagMs: number; maxLagMs: number; windowMs: number; warnMs: number }
   runtimeProbe: OrcadWatchdogProbeSnapshot
   threadpoolProbe: OrcadWatchdogProbeSnapshot
+  /** Consecutive failures, after at least one success, that make the host `wedged`. */
+  wedgeAfterFailures: number
 }
 
 export type OrcadServerStats = {

@@ -42,7 +42,7 @@ describe('OrcadRuntimeWatchdog', () => {
   })
 
   it('reports wedged after repeated runtime probe failures and recovers on the next success', async () => {
-    let failing = true
+    let failing = false
     const watchdog = createWatchdog({
       probeRuntime: async () => {
         if (failing) {
@@ -51,7 +51,9 @@ describe('OrcadRuntimeWatchdog', () => {
       }
     })
     watchdog.start()
-    await vi.advanceTimersByTimeAsync(1_000)
+    await vi.advanceTimersByTimeAsync(0)
+    failing = true
+    await vi.advanceTimersByTimeAsync(2_000)
     expect(watchdog.snapshot().verdict).toBe('responsive')
     await vi.advanceTimersByTimeAsync(1_000)
 
@@ -65,10 +67,30 @@ describe('OrcadRuntimeWatchdog', () => {
     watchdog.stop()
   })
 
-  it('counts a probe that never settles as a failure on every tick', async () => {
-    const watchdog = createWatchdog({ probeThreadpool: () => new Promise<void>(() => {}) })
+  it('never reports wedged for a probe that has not succeeded once', async () => {
+    const watchdog = createWatchdog({
+      probeRuntime: async () => {
+        throw new Error('connect_failed')
+      }
+    })
     watchdog.start()
-    await vi.advanceTimersByTimeAsync(2_100)
+    await vi.advanceTimersByTimeAsync(10_000)
+
+    expect(watchdog.snapshot().runtimeProbe.consecutiveFailures).toBeGreaterThanOrEqual(3)
+    expect(watchdog.snapshot().verdict).toBe('responsive')
+    expect(watchdog.isLive()).toBe(true)
+    watchdog.stop()
+  })
+
+  it('counts a probe that never settles as a failure on every tick', async () => {
+    let hang = false
+    const watchdog = createWatchdog({
+      probeThreadpool: () => (hang ? new Promise<void>(() => {}) : Promise.resolve())
+    })
+    watchdog.start()
+    await vi.advanceTimersByTimeAsync(0)
+    hang = true
+    await vi.advanceTimersByTimeAsync(3_100)
 
     const snapshot = watchdog.snapshot()
     expect(snapshot.threadpoolProbe.consecutiveFailures).toBeGreaterThanOrEqual(3)
