@@ -8,9 +8,9 @@ export type TerminalCopyRow = { cells: TerminalCopyCell[]; isWrapped: boolean }
 /** Selected rows plus the selection's first-row start and last-row end (exclusive) columns. */
 export type TerminalCopySelection = { rows: TerminalCopyRow[]; startX: number; endX: number }
 
-// Why: smart copy walks every selected cell; select-all over a deep
-// scrollback falls back to xterm's own text instead of stalling the copy.
-export const TERMINAL_SMART_COPY_MAX_ROWS = 10_000
+// Why: smart copy walks every selected cell and copy-on-select reruns it per
+// drag step; past this, xterm's own text is used so a huge drag cannot stall.
+export const TERMINAL_SMART_COPY_MAX_ROWS = 3_000
 
 const NON_BREAKING_SPACES = / /g
 
