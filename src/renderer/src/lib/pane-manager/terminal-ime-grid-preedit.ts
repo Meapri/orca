@@ -17,6 +17,7 @@ export function resolveTerminalImePreeditInGrid(setting: boolean | undefined): b
 }
 
 type GridPreeditCompositionHelper = {
+  readonly hasGridPreedit: boolean
   setPreeditHidesTail: (hidesTail: boolean) => void
   setPreeditAnchor: (anchor: { x: number; y: number } | undefined) => void
 }
@@ -28,6 +29,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function isGridPreeditCompositionHelper(value: unknown): value is GridPreeditCompositionHelper {
   return (
     isRecord(value) &&
+    typeof value.hasGridPreedit === 'boolean' &&
     typeof value.setPreeditHidesTail === 'function' &&
     typeof value.setPreeditAnchor === 'function'
   )
@@ -45,6 +47,11 @@ function gridPreeditCompositionHelper(terminal: Terminal): GridPreeditCompositio
 /** Whether this terminal draws its IME preedit in the cell grid rather than the overlay. */
 export function isTerminalImePreeditInGrid(terminal: Terminal): boolean {
   return gridPreeditCompositionHelper(terminal) !== null
+}
+
+/** Whether the grid draws a preedit, or a commit still waiting for the app's echo. */
+export function isTerminalImePreeditDrawn(terminal: Terminal): boolean {
+  return gridPreeditCompositionHelper(terminal)?.hasGridPreedit === true
 }
 
 /** Hides the row tail the in-grid preedit would push right; a no-op on the overlay path. */

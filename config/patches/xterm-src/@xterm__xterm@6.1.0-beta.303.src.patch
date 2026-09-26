@@ -1,5 +1,5 @@
 diff --git a/src/browser/CoreBrowserTerminal.ts b/src/browser/CoreBrowserTerminal.ts
-index 67893b7966eb095db4459b8837de9766921f36c5..bead883f4f21a2a0a39ad803d6f945840b9d2b6f 100644
+index 67893b7966eb095db4459b8837de9766921f36c5..507e78f5fd3ea06e114f73dd4df8970b3b562710 100644
 --- a/src/browser/CoreBrowserTerminal.ts
 +++ b/src/browser/CoreBrowserTerminal.ts
 @@ -25,7 +25,7 @@ import { IDecoration, IDecorationOptions, IDisposable, ILinkProvider, IMarker, I
@@ -51,7 +51,7 @@ index 67893b7966eb095db4459b8837de9766921f36c5..bead883f4f21a2a0a39ad803d6f94584
      this._register(addDisposableListener(this.textarea!, 'input', (ev: InputEvent) => this._inputEvent(ev), true));
      this._register(this.onRender(() => this._compositionHelper!.updateCompositionElements()));
    }
-@@ -552,6 +569,11 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
+@@ -552,6 +569,16 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
      this._compositionView = this._document.createElement('div');
      this._compositionView.classList.add('composition-view');
      this._compositionHelper = this._instantiationService.createInstance(CompositionHelper, this.textarea, this._compositionView);
@@ -60,10 +60,15 @@ index 67893b7966eb095db4459b8837de9766921f36c5..bead883f4f21a2a0a39ad803d6f94584
 +        this._compositionHelper.dispose();
 +      }
 +    }));
++    this._register(this.onWriteParsed(() => {
++      if (this._compositionHelper instanceof CompositionHelper) {
++        this._compositionHelper.handleWriteParsed();
++      }
++    }));
      this._helperContainer.appendChild(this._compositionView);
  
      this._mouseCoordsService = this._instantiationService.createInstance(MouseCoordsService);
-@@ -1009,7 +1031,9 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
+@@ -1009,7 +1036,9 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
  
      this._onKey.fire({ key, domEvent: ev });
      this._showCursor();
@@ -74,7 +79,7 @@ index 67893b7966eb095db4459b8837de9766921f36c5..bead883f4f21a2a0a39ad803d6f94584
  
      this._keyPressHandled = true;
  
-@@ -1027,6 +1051,15 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
+@@ -1027,6 +1056,15 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
     * @param ev The input event to be handled.
     */
    protected _inputEvent(ev: InputEvent): boolean {
@@ -139,7 +144,7 @@ index 497afcf535f3eaca00889525a77e15eb633ccd96..bbe95178f084cfb0d7c1ed5f4a9dc118
  
  export interface IBrowser {
 diff --git a/src/browser/input/CompositionHelper.ts b/src/browser/input/CompositionHelper.ts
-index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..a1c14a0a31769235df91f13b89c62ed6586f01a6 100644
+index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..d4568f948342aa664704995f8a706483bbae5584 100644
 --- a/src/browser/input/CompositionHelper.ts
 +++ b/src/browser/input/CompositionHelper.ts
 @@ -1,10 +1,22 @@
@@ -167,7 +172,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..a1c14a0a31769235df91f13b89c62ed6
  import { C0 } from '../../common/data/EscapeSequences';
  
  interface IPosition {
-@@ -12,6 +24,27 @@ interface IPosition {
+@@ -12,6 +24,48 @@ interface IPosition {
    end: number;
  }
  
@@ -188,6 +193,27 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..a1c14a0a31769235df91f13b89c62ed6
 +  nextCompositionStart?: number;
 +}
 +
++/** A commit drawn in place until the app echoes it: its transaction and the text that was sent. */
++interface IGridEchoSegment {
++  transactionId: number;
++  text: string;
++  width: number;
++}
++
++interface IGridEcho {
++  /** The input position (column, absolute row) the app will echo the first segment at. */
++  x: number;
++  row: number;
++  segments: IGridEchoSegment[];
++  layout: CompositionGridPreedit;
++  timer?: ReturnType<typeof setTimeout>;
++}
++
++/** Longest a commit stays drawn without its echo; an app that never echoes (a password) clears it. */
++const GRID_ECHO_HOLD_MS = 250;
++
++const MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'AltGraph', 'Meta', 'CapsLock', 'Fn']);
++
 +const XTERM_COMPOSITION_SESSION_START_EVENT = 'xterm-composition-session-start';
 +const XTERM_COMPOSITION_SESSION_END_EVENT = 'xterm-composition-session-end';
 +const XTERM_COMPOSITION_TRANSACTION_ACCEPTED_EVENT =
@@ -195,7 +221,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..a1c14a0a31769235df91f13b89c62ed6
  /**
   * Encapsulates the logic for handling compositionstart, compositionupdate and compositionend
   * events, displaying the in-progress composition to the UI and forwarding the final composition
-@@ -24,6 +57,15 @@ export class CompositionHelper {
+@@ -24,6 +78,15 @@ export class CompositionHelper {
     */
    private _isComposing: boolean;
    public get isComposing(): boolean { return this._isComposing; }
@@ -211,7 +237,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..a1c14a0a31769235df91f13b89c62ed6
  
    /**
     * The position within the input textarea's value of the current composition.
-@@ -36,52 +78,163 @@ export class CompositionHelper {
+@@ -36,52 +99,219 @@ export class CompositionHelper {
     */
    private _compositionSuffix: string;
  
@@ -290,9 +316,59 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..a1c14a0a31769235df91f13b89c62ed6
 +
 +  private _gridPreeditAnchor?: { x: number, y: number };
 +
++  /**
++   * Commits still drawn where the app will echo them. A TUI repaints later than the IME commits,
++   * so without this the text blanks and the cursor steps back until the echo lands.
++   */
++  private _gridEcho?: IGridEcho;
++
++  /**
++   * Where the cursor was last shown while this preedit is drawn. A TUI hides the cursor while it
++   * repaints, and a frame split across writes parks it anywhere; that is not where input goes.
++   */
++  private _shownCursor?: { x: number, row: number };
++
 +  /** The in-grid preedit the renderers draw, laid out against the live cursor. */
 +  public get imePreedit(): IImePreedit | undefined {
-+    return this._gridPreedit?.resolve(this._gridPreeditAnchor, this._gridPreeditHidesTail);
++    return (this._gridPreedit ?? this._gridEcho?.layout)?.resolve(
++      this._gridLayoutAnchor(), this._gridPreeditHidesTail
++    );
++  }
++
++  /** Whether the renderer draws a preedit or a held commit, so an embedder keeps its anchor current. */
++  public get hasGridPreedit(): boolean {
++    return this._gridPreedit !== undefined || this._gridEcho !== undefined;
++  }
++
++  /** A held commit pins the layout to where the app will echo it; otherwise the input position. */
++  private _gridLayoutAnchor(): { x: number, y: number } | undefined {
++    const echo = this._gridEcho;
++    return echo ? { x: echo.x, y: echo.row - this._bufferService.buffer.ybase } : this._inputPosition();
++  }
++
++  /** The embedder's anchor, else the cursor where it was last shown; `undefined` is the live cursor. */
++  private _inputPosition(): { x: number, y: number } | undefined {
++    const shown = this._shownCursor;
++    if (this._gridPreeditAnchor || !shown || !this._coreService.isCursorHidden) {
++      return this._gridPreeditAnchor;
++    }
++    return { x: shown.x, y: shown.row - this._bufferService.buffer.ybase };
++  }
++
++  private _trackShownCursor(): void {
++    if (this._coreService.isCursorHidden || this._coreService.decPrivateModes.synchronizedOutput) {
++      return;
++    }
++    const buffer = this._bufferService.buffer;
++    this._shownCursor = { x: buffer.x, row: buffer.ybase + buffer.y };
++  }
++
++  /** Forgets the input position once neither a preedit nor a held commit is drawn. */
++  private _releaseInputPosition(): void {
++    if (!this.hasGridPreedit) {
++      this._gridPreeditAnchor = undefined;
++      this._shownCursor = undefined;
++    }
 +  }
 +
 +  // Keep the six-argument form callable: upstream's own CompositionHelper.test.ts constructs
@@ -376,6 +452,12 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..a1c14a0a31769235df91f13b89c62ed6
 +    this._lastCompositionData = '';
 +    if (this._optionsService.rawOptions.imePreeditInGrid && this._unicodeService) {
 +      this._gridPreedit = new CompositionGridPreedit(this._bufferService, this._unicodeService);
++      this._gridPreedit.setPrefix(this._gridEchoText());
++      if (!this._gridEcho) {
++        // Only a cursor shown during this session counts; one hidden from the start is left live.
++        this._shownCursor = undefined;
++      }
++      this._trackShownCursor();
 +    } else {
 +      this._compositionView.classList.add('active');
 +    }
@@ -386,7 +468,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..a1c14a0a31769235df91f13b89c62ed6
    }
  
    /**
-@@ -89,22 +242,133 @@ export class CompositionHelper {
+@@ -89,22 +319,269 @@ export class CompositionHelper {
     * @param ev The event.
     */
    public compositionupdate(ev: Pick<CompositionEvent, 'data'>): void {
@@ -472,6 +554,18 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..a1c14a0a31769235df91f13b89c62ed6
 +    if (this._isComposing || this.hasPendingCompositionFinalization) {
 +      this._finalizeComposition(false);
 +    }
++    this._clearGridEcho();
++  }
++
++  /** Output was parsed: follow the input position, and stop drawing commits the app has echoed. */
++  public handleWriteParsed(): void {
++    if (!this.hasGridPreedit) {
++      return;
++    }
++    this._trackShownCursor();
++    if (!this._settleGridEcho()) {
++      this._publishGridPreedit();
++    }
 +  }
 +
 +  public dispose(): void {
@@ -491,6 +585,9 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..a1c14a0a31769235df91f13b89c62ed6
 +    this._isComposing = false;
 +    this._compositionTransactionId++;
 +    this._compositionView.classList.remove('active');
++    this._gridEcho = undefined;
++    this._gridPreeditAnchor = undefined;
++    this._shownCursor = undefined;
 +    this._resetCompositionView();
 +    this._preeditRenderer?.dispose();
 +    this._preeditRenderer = undefined;
@@ -510,26 +607,147 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..a1c14a0a31769235df91f13b89c62ed6
 +
 +  /**
 +   * Draws the in-grid preedit at `anchor` (column, row relative to the buffer base) instead of the
-+   * terminal cursor, for embedders that know the app hides its real input position. Cleared when
-+   * the composition ends.
++   * terminal cursor, for embedders that know the app hides its real input position. Ignored while
++   * nothing is drawn, and cleared once the composition and any held commit end.
 +   */
 +  public setPreeditAnchor(anchor: { x: number, y: number } | undefined): void {
 +    const current = this._gridPreeditAnchor;
-+    if (anchor?.x !== current?.x || anchor?.y !== current?.y) {
++    if (this.hasGridPreedit && (anchor?.x !== current?.x || anchor?.y !== current?.y)) {
 +      this._gridPreeditAnchor = anchor && { x: anchor.x, y: anchor.y };
-+      this._refreshGridPreedit();
++      if (!this._settleGridEcho()) {
++        this._refreshGridPreedit();
++      }
 +    }
 +  }
 +
 +  private _refreshGridPreedit(): void {
-+    if (this._gridPreedit) {
++    if (this.hasGridPreedit) {
 +      this._publishGridPreedit();
 +      this._positionGridPreeditTextarea();
 +    }
++  }
++
++  private _gridEchoText(): string {
++    return this._gridEcho?.segments.map(segment => segment.text).join('') ?? '';
++  }
++
++  /** Keeps the committing preedit drawn, without its underline, until the app echoes it. */
++  private _holdGridEcho(): void {
++    const preedit = this._gridPreedit;
++    if (!preedit?.text || !this._unicodeService) {
++      return;
++    }
++    let echo = this._gridEcho;
++    if (!echo) {
++      const buffer = this._bufferService.buffer;
++      const position = this._inputPosition();
++      echo = {
++        x: position?.x ?? buffer.x,
++        row: buffer.ybase + (position?.y ?? buffer.y),
++        segments: [],
++        layout: new CompositionGridPreedit(this._bufferService, this._unicodeService)
++      };
++      this._gridEcho = echo;
++    }
++    echo.segments.push({
++      transactionId: this._compositionTransactionId,
++      text: preedit.text,
++      width: preedit.measure(preedit.text)
++    });
++    this._cancelDeferredTimer(echo.timer);
++    echo.timer = this._defer(() => this._clearGridEcho(), GRID_ECHO_HOLD_MS);
++    this._syncGridEchoPrefix();
++  }
++
++  /** Replaces a held commit's provisional text with what was actually sent, or drops it. */
++  private _confirmGridEcho(transactionId: number, input: string): void {
++    const echo = this._gridEcho;
++    const index = echo ? echo.segments.findIndex(segment => segment.transactionId === transactionId) : -1;
++    if (!echo || index < 0) {
++      return;
++    }
++    const segment = echo.segments[index];
++    // Control bytes (a commit that carries Enter or Backspace) repaint the input, not append to it.
++    if (!input || [...input].some(char => char < ' ' || char === '\x7f')) {
++      echo.segments.splice(index, 1);
++    } else if (input !== segment.text) {
++      segment.text = input;
++      segment.width = echo.layout.measure(input);
++    } else {
++      return;
++    }
++    this._updateGridEcho();
++  }
++
++  /**
++   * Drops the held commits the app has echoed: its input position moved past them. Any other move
++   * means it repainted differently, so all are dropped. Returns whether anything changed.
++   */
++  private _settleGridEcho(): boolean {
++    const echo = this._gridEcho;
++    const anchor = this._gridPreeditAnchor;
++    // Mid-frame (synchronized output, or a hidden cursor with no app caret to read): wait for the
++    // frame to finish, or for the hold to expire.
++    if (
++      !echo ||
++      this._coreService.decPrivateModes.synchronizedOutput ||
++      (!anchor && this._coreService.isCursorHidden)
++    ) {
++      return false;
++    }
++    const buffer = this._bufferService.buffer;
++    const x = anchor?.x ?? buffer.x;
++    const row = buffer.ybase + (anchor?.y ?? buffer.y);
++    if (x === echo.x && row === echo.row) {
++      return false;
++    }
++    let end = echo.x;
++    let echoed = 0;
++    while (echoed < echo.segments.length && end < x) {
++      end += echo.segments[echoed++].width;
++    }
++    if (row === echo.row && end === x) {
++      echo.segments.splice(0, echoed);
++      echo.x = x;
++    } else {
++      echo.segments.length = 0;
++    }
++    this._updateGridEcho();
++    return true;
++  }
++
++  private _updateGridEcho(): void {
++    if (this._gridEcho?.segments.length === 0) {
++      this._clearGridEcho();
++      return;
++    }
++    this._syncGridEchoPrefix();
++    this._refreshGridPreedit();
++  }
++
++  private _clearGridEcho(): void {
++    const echo = this._gridEcho;
++    if (!echo) {
++      return;
++    }
++    this._cancelDeferredTimer(echo.timer);
++    this._gridEcho = undefined;
++    this._syncGridEchoPrefix();
++    this._publishGridPreedit();
++    if (this._gridPreedit) {
++      this._positionGridPreeditTextarea();
++    }
++    this._releaseInputPosition();
++  }
++
++  private _syncGridEchoPrefix(): void {
++    const text = this._gridEchoText();
++    this._gridEcho?.layout.setPrefix(text);
++    this._gridPreedit?.setPrefix(text);
    }
  
    /**
-@@ -113,7 +377,19 @@ export class CompositionHelper {
+@@ -113,7 +590,19 @@ export class CompositionHelper {
     * @returns Whether the Terminal should continue processing the keydown event.
     */
    public keydown(ev: KeyboardEvent): boolean {
@@ -550,7 +768,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..a1c14a0a31769235df91f13b89c62ed6
        if (ev.keyCode === 20 || ev.keyCode === 229) {
          // 20 is CapsLock, 229 is Enter
          // Continue composing if the keyCode is the "composition character"
-@@ -128,6 +404,10 @@ export class CompositionHelper {
+@@ -128,6 +617,10 @@ export class CompositionHelper {
        this._finalizeComposition(false);
      }
  
@@ -561,10 +779,17 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..a1c14a0a31769235df91f13b89c62ed6
      if (ev.keyCode === 229) {
        // If the "composition character" is used but gets to this point it means a non-composition
        // character (eg. numbers and punctuation) was pressed when the IME was active.
-@@ -138,6 +418,74 @@ export class CompositionHelper {
-     return true;
-   }
+@@ -135,6 +628,78 @@ export class CompositionHelper {
+       return false;
+     }
  
++    // A key the app handles itself (Backspace, arrows, Enter) repaints the input its own way.
++    if (!MODIFIER_KEYS.has(ev.key)) {
++      this._clearGridEcho();
++    }
++    return true;
++  }
++
 +  /**
 +   * Defers keypress text while a composition finalizer is pending so all input is emitted once
 +   * after reconciliation with the final textarea candidate.
@@ -630,19 +855,19 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..a1c14a0a31769235df91f13b89c62ed6
 +      this._textareaChangeTimer = undefined;
 +    }
 +    this._coreService.triggerDataEvent(text, true);
-+    return true;
-+  }
-+
-   /**
-    * Finalizes the composition, resuming regular input actions. This is called when a composition
-    * is ending.
-@@ -146,23 +494,52 @@ export class CompositionHelper {
+     return true;
+   }
+ 
+@@ -146,23 +711,55 @@ export class CompositionHelper {
     *   compositionend event is triggered, such as enter, so that the composition is sent before
     *   the command is executed.
     */
 -  private _finalizeComposition(waitForPropagation: boolean): void {
 +  private _finalizeComposition(waitForPropagation: boolean, endData: string = ''): void {
 +    const wasComposing = this._isComposing;
++    if (waitForPropagation && wasComposing) {
++      this._holdGridEcho();
++    }
      this._compositionView.classList.remove('active');
 +    // Cleared, not just hidden: a rendered tail left in the view is stale DOM the next composition
 +    // would have to correct before its own first update lands.
@@ -700,7 +925,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..a1c14a0a31769235df91f13b89c62ed6
  
        // Since composition* events happen before the changes take place in the textarea on most
        // browsers, use a setTimeout with 0ms time to allow the native compositionend event to
-@@ -172,35 +549,313 @@ export class CompositionHelper {
+@@ -172,35 +769,314 @@ export class CompositionHelper {
        // - The last compositionupdate event's data property does not always accurately describe
        //   the character, a counter example being Korean where an ending consonsant can move to
        //   the following character if the following input is a vowel.
@@ -734,7 +959,8 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..a1c14a0a31769235df91f13b89c62ed6
 +        pending.finalizerTimer = undefined;
 +        if (this._compositionTransactionId === pending.transactionId) {
 +          this._isAwaitingCompositionEnd = false;
-+        }
+         }
+-      }, 0);
 +        if (this._pendingComposition === pending) {
 +          this._sendPendingComposition(pending, true);
 +        }
@@ -749,7 +975,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..a1c14a0a31769235df91f13b89c62ed6
 +    this._cancelPendingFinalizer(pending);
 +    if (this._pendingComposition === pending) {
 +      this._pendingComposition = undefined;
-+    }
+     }
 +    const textareaInput = this._getPendingTextareaInput(pending, includeFollowingInput);
 +    const observedInput = this._removeAlreadySentData(
 +      pending.inputData || pending.keypressData,
@@ -896,6 +1122,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..a1c14a0a31769235df91f13b89c62ed6
 +    input: string,
 +    dispatchSessionEnd: boolean = true
 +  ): void {
++    this._confirmGridEcho(transactionId, input);
 +    let prevented = false;
 +    if (dispatchSessionEnd) {
 +      const event = new CustomEvent(XTERM_COMPOSITION_SESSION_END_EVENT, {
@@ -929,8 +1156,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..a1c14a0a31769235df91f13b89c62ed6
 +          id: pending.transactionId,
 +          data: input,
 +          dataPendingReconciliation: true
-         }
--      }, 0);
++        }
 +      }
 +    ));
 +  }
@@ -1023,11 +1249,11 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..a1c14a0a31769235df91f13b89c62ed6
 +    );
 +  }
 +
-+  private _defer(callback: () => void): ReturnType<typeof setTimeout> {
++  private _defer(callback: () => void, delay: number = 0): ReturnType<typeof setTimeout> {
 +    const timer = setTimeout(() => {
 +      this._compositionTimers.delete(timer);
 +      callback();
-+    }, 0);
++    }, delay);
 +    this._compositionTimers.add(timer);
 +    return timer;
 +  }
@@ -1035,13 +1261,13 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..a1c14a0a31769235df91f13b89c62ed6
 +  private _cancelDeferredTimer(timer?: ReturnType<typeof setTimeout>): void {
 +    if (timer === undefined) {
 +      return;
-     }
++    }
 +    clearTimeout(timer);
 +    this._compositionTimers.delete(timer);
    }
  
    /**
-@@ -222,6 +877,9 @@ export class CompositionHelper {
+@@ -222,6 +1098,9 @@ export class CompositionHelper {
  
          const diff = newValue.replace(oldValue, '');
  
@@ -1051,7 +1277,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..a1c14a0a31769235df91f13b89c62ed6
          this._dataAlreadySent = diff;
  
          if (newValue.length > oldValue.length) {
-@@ -236,6 +894,183 @@ export class CompositionHelper {
+@@ -236,6 +1115,186 @@ export class CompositionHelper {
      }, 0);
    }
  
@@ -1104,15 +1330,18 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..a1c14a0a31769235df91f13b89c62ed6
 +  /** Anchors the textarea to the drawn preedit so the OS candidate window follows it. */
 +  private _positionGridPreeditTextarea(): void {
 +    const buffer = this._bufferService.buffer;
-+    const grid = this._gridPreedit;
-+    const preedit = grid?.resolve(this._gridPreeditAnchor, this._gridPreeditHidesTail);
++    const grid = this._gridPreedit ?? this._gridEcho?.layout;
++    const preedit = grid?.resolve(this._gridLayoutAnchor(), this._gridPreeditHidesTail);
 +    const viewportRow = (preedit ? preedit.row : buffer.ybase + buffer.y) - buffer.ydisp;
 +    if (viewportRow < 0 || viewportRow >= this._bufferService.rows) {
 +      return;
 +    }
 +    const cell = this._renderService.dimensions.css.cell;
-+    const column = preedit && grid ? grid.start : Math.min(buffer.x, this._bufferService.cols - 1);
-+    const width = Math.max((preedit && grid ? grid.visibleWidth : 0) * cell.width, 1);
++    // The candidate window belongs to the preedit, after any held commit.
++    const column = preedit && grid
++      ? grid.start + grid.visiblePrefixWidth
++      : Math.min(buffer.x, this._bufferService.cols - 1);
++    const width = Math.max((preedit && grid ? grid.visibleWidth - grid.visiblePrefixWidth : 0) * cell.width, 1);
 +    this._setTextareaStyle('left', column * cell.width + 'px');
 +    this._setTextareaStyle('top', viewportRow * cell.height + 'px');
 +    // Ensure the text area is at least 1x1, otherwise certain IMEs may break
@@ -1211,7 +1440,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..a1c14a0a31769235df91f13b89c62ed6
 +  private _resetCompositionView(): void {
 +    if (this._gridPreedit) {
 +      this._gridPreedit = undefined;
-+      this._gridPreeditAnchor = undefined;
++      this._releaseInputPosition();
 +      this._publishGridPreedit();
 +    }
 +    this._preeditRenderer?.clear();
@@ -1235,20 +1464,20 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..a1c14a0a31769235df91f13b89c62ed6
    /**
     * Positions the composition view on top of the cursor and the textarea just below it (so the
     * IME helper dialog is positioned correctly).
-@@ -243,10 +1078,27 @@ export class CompositionHelper {
+@@ -243,9 +1302,26 @@ export class CompositionHelper {
     *   necessary as the IME events across browsers are not consistently triggered.
     */
    public updateCompositionElements(dontRecurse?: boolean): void {
 -    if (!this._isComposing) {
 +    if (this._gridPreedit) {
 +      this._positionGridPreeditTextarea();
-+      return;
-+    }
-+    // Empty updates hide the overlay without ending the inferred transaction.
-+    if (!this._compositionView.classList.contains('active')) {
        return;
      }
- 
++    // Empty updates hide the overlay without ending the inferred transaction.
++    if (!this._compositionView.classList.contains('active')) {
++      return;
++    }
++
 +    // A TUI can repaint the row under an open composition (spinners, streamed output), and this
 +    // already runs on every render — so keep the rendered tail current with the buffer. A string
 +    // compare adds no layout read.
@@ -1260,11 +1489,10 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..a1c14a0a31769235df91f13b89c62ed6
 +      this._renderCompositionRemainder(rowRemainder);
 +    }
 +    this._styleCompositionCaret();
-+
+ 
      if (this._bufferService.buffer.isCursorInViewport) {
        const cursorX = Math.min(this._bufferService.buffer.x, this._bufferService.cols - 1);
- 
-@@ -254,31 +1106,337 @@ export class CompositionHelper {
+@@ -254,31 +1330,371 @@ export class CompositionHelper {
        const cursorTop = this._bufferService.buffer.y * this._renderService.dimensions.css.cell.height;
        const cursorLeft = cursorX * this._renderService.dimensions.css.cell.width;
  
@@ -1327,9 +1555,9 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..a1c14a0a31769235df91f13b89c62ed6
 -      setTimeout(() => this.updateCompositionElements(true), 0);
 +      this._cancelDeferredTimer(this._compositionViewTimer);
 +      this._compositionViewTimer = this._defer(() => this.updateCompositionElements(true));
-+    }
-+  }
-+}
+     }
+   }
+ }
 +
 +const CJK = /^[\p{Script_Extensions=Han}\p{Script_Extensions=Hiragana}\p{Script_Extensions=Katakana}\uac00-\ud7a3\u3131-\u318e\uff01-\uff60]$/u;
 +const NATIVE = /[\p{Mark}\p{Extended_Pictographic}]/u;
@@ -1440,18 +1668,24 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..a1c14a0a31769235df91f13b89c62ed6
 +
 +/**
 + * The preedit laid out the way the buffer would hold it once committed, so the renderer draws it
-+ * as ordinary cells: graphemes join and take widths exactly as `InputHandler.print` would.
++ * as ordinary cells: graphemes join and take widths exactly as `InputHandler.print` would. A
++ * committed prefix (text sent but not yet echoed) is drawn the same way, without the underline.
 + */
 +class CompositionGridPreedit implements IImePreedit {
 +  public text = '';
 +  public row = 0;
 +  public cursorX = 0;
-+  /** The first column the preedit occupies, as of the last `resolve`. */
++  /** The first column the prefix and preedit occupy, as of the last `resolve`. */
 +  public start = 0;
-+  /** The preedit cells left after clipping to the row, as of the last `resolve`. */
++  /** The prefix and preedit cells left after clipping to the row, as of the last `resolve`. */
 +  public visibleWidth = 0;
++  /** The visible prefix cells, as of the last `resolve`; the preedit starts after them. */
++  public visiblePrefixWidth = 0;
 +  private _cells: IGridPreeditCell[] = [];
 +  private _width = 0;
++  private _prefixCells: IGridPreeditCell[] = [];
++  private _prefixWidth = 0;
++  private _allCells: IGridPreeditCell[] = [];
 +  private _caret?: number;
 +  private _firstVisible = 0;
 +  private _tailSource = 0;
@@ -1459,6 +1693,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..a1c14a0a31769235df91f13b89c62ed6
 +  private readonly _line = new BufferLine(0);
 +  private readonly _work = new CellData();
 +  private readonly _preeditAttr = new AttributeData();
++  private readonly _prefixAttr = new AttributeData();
 +  private readonly _fillAttr = new AttributeData();
 +
 +  constructor(
@@ -1473,6 +1708,24 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..a1c14a0a31769235df91f13b89c62ed6
 +  public setText(text: string): void {
 +    this.text = text;
 +    this._caret = undefined;
++    this._cells = this._layout(text);
++    this._width = this._cells.reduce((sum, cell) => sum + cell.width, 0);
++    this._allCells = this._prefixCells.concat(this._cells);
++  }
++
++  /** Draws `text` before the preedit, as committed cells. */
++  public setPrefix(text: string): void {
++    this._prefixCells = this._layout(text);
++    this._prefixWidth = this._prefixCells.reduce((sum, cell) => sum + cell.width, 0);
++    this._allCells = this._prefixCells.concat(this._cells);
++  }
++
++  /** The cell width `text` takes, laid out as the buffer would store it. */
++  public measure(text: string): number {
++    return this._layout(text).reduce((sum, cell) => sum + cell.width, 0);
++  }
++
++  private _layout(text: string): IGridPreeditCell[] {
 +    const cells: IGridPreeditCell[] = [];
 +    let preceding = 0;
 +    let offset = 0;
@@ -1498,8 +1751,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..a1c14a0a31769235df91f13b89c62ed6
 +      }
 +      cells.push({ codepoints: [code], width: Math.min(2, Math.max(1, width)), end: offset });
 +    }
-+    this._cells = cells;
-+    this._width = cells.reduce((sum, cell) => sum + cell.width, 0);
++    return cells;
 +  }
 +
 +  /** Moves the caret to a UTF-16 offset inside the preedit, or its end; returns whether it moved. */
@@ -1513,7 +1765,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..a1c14a0a31769235df91f13b89c62ed6
 +        }
 +        caret += cell.width;
 +      }
-     }
++    }
 +    if (caret === this._caret) {
 +      return false;
 +    }
@@ -1522,7 +1774,8 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..a1c14a0a31769235df91f13b89c62ed6
 +  }
 +
 +  public resolve(anchor: { x: number, y: number } | undefined, hidesTail: boolean): IImePreedit | undefined {
-+    if (this._width === 0) {
++    const total = this._prefixWidth + this._width;
++    if (total === 0) {
 +      return undefined;
 +    }
 +    const buffer = this._bufferService.buffer;
@@ -1532,17 +1785,18 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..a1c14a0a31769235df91f13b89c62ed6
 +    const room = Math.max(1, cols - 1);
 +    let first = 0;
 +    let hidden = 0;
-+    while (this._width - hidden > room && first < this._cells.length - 1) {
-+      hidden += this._cells[first++].width;
++    while (total - hidden > room && first < this._allCells.length - 1) {
++      hidden += this._allCells[first++].width;
 +    }
 +    this._firstVisible = first;
-+    this.visibleWidth = this._width - hidden;
++    this.visibleWidth = total - hidden;
++    this.visiblePrefixWidth = Math.max(0, this._prefixWidth - hidden);
 +    this._tailSource = cursorX;
 +    this._hidesTail = hidesTail;
 +    // End-aligned against the right edge so the caret stays on screen.
 +    this.start = Math.max(0, Math.min(cursorX, cols - this.visibleWidth - 1));
 +    this.row = buffer.ybase + (anchor?.y ?? buffer.y);
-+    const caret = Math.max(0, Math.min(this.visibleWidth, (this._caret ?? this._width) - hidden));
++    const caret = Math.max(0, Math.min(this.visibleWidth, this._prefixWidth + (this._caret ?? this._width) - hidden));
 +    this.cursorX = Math.min(this.start + caret, cols - 1);
 +    return this;
 +  }
@@ -1569,17 +1823,18 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..a1c14a0a31769235df91f13b89c62ed6
 +      }
 +    }
 +    let x = start;
-+    for (let i = this._firstVisible; i < this._cells.length; i++) {
-+      const cell = this._cells[i];
++    for (let i = this._firstVisible; i < this._allCells.length; i++) {
++      const cell = this._allCells[i];
 +      if (x + cell.width > cols) {
 +        break;
 +      }
-+      line.setCellFromCodepoint(x, cell.codepoints[0], cell.width, this._preeditAttr);
++      const attr = i < this._prefixCells.length ? this._prefixAttr : this._preeditAttr;
++      line.setCellFromCodepoint(x, cell.codepoints[0], cell.width, attr);
 +      for (let j = 1; j < cell.codepoints.length; j++) {
 +        line.addCodepointToCell(x, cell.codepoints[j], 0);
 +      }
 +      if (cell.width === 2) {
-+        line.setCellFromCodepoint(x + 1, 0, 0, this._preeditAttr);
++        line.setCellFromCodepoint(x + 1, 0, 0, attr);
 +      }
 +      x += cell.width;
 +    }
@@ -1595,11 +1850,18 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..a1c14a0a31769235df91f13b89c62ed6
 +
 +  /** Default foreground over the cursor cell's background, so the preedit sits inside TUI boxes. */
 +  private _resolveAttributes(source: BufferLine): void {
-+    source.loadCell(Math.min(this._tailSource, source.length - 1), this._work);
++    const x = Math.min(this._tailSource, source.length - 1);
++    source.loadCell(x, this._work);
++    // An inverse cell is an app-drawn caret; the box around it is what the preedit sits in.
++    if (this._work.isInverse() && x > 0) {
++      source.loadCell(x - 1, this._work);
++    }
 +    const bg = this._work.isInverse() ? 0 : this._work.bg & (Attributes.CM_MASK | Attributes.RGB_MASK);
 +    this._preeditAttr.fg = FgFlags.UNDERLINE;
 +    this._preeditAttr.bg = bg;
 +    this._preeditAttr.updateExtended();
++    this._prefixAttr.fg = 0;
++    this._prefixAttr.bg = bg;
 +    this._fillAttr.fg = 0;
 +    this._fillAttr.bg = bg;
 +  }
@@ -1609,8 +1871,8 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..a1c14a0a31769235df91f13b89c62ed6
 +    this._work.content = 1 << Content.WIDTH_SHIFT;
 +    this._work.combinedData = '';
 +    line.setCell(x, this._work);
-   }
- }
++  }
++}
 diff --git a/src/browser/renderer/dom/DomRenderer.ts b/src/browser/renderer/dom/DomRenderer.ts
 index 657217f7104c97ce54b98e88b381b325b061604c..6ea7804bcce45c3ec803c59cd1f079e4e48dcdb6 100644
 --- a/src/browser/renderer/dom/DomRenderer.ts
