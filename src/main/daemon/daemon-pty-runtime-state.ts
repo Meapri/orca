@@ -65,6 +65,8 @@ export type DaemonPtyAdapterOptions = {
   retireSessionsLostWithDaemon?: boolean
 }
 
+export type DaemonSessionShellIdentity = { pid: number; incarnationId?: string }
+
 export type DaemonRespawnReason =
   | 'daemon_died'
   | 'unhealthy_resolver'
@@ -118,8 +120,8 @@ export abstract class DaemonPtyRuntimeState {
   protected sessionsAwaitingDaemonRecovery = new Set<string>()
   protected sessionIncarnations = new Map<string, string>()
   // Shell PIDs the daemon reported, kept to prove an unobserved exit on this same host.
-  protected sessionShellPids = new Map<string, number>()
-  protected lostSessionShellPids = new Map<string, { pid: number; incarnationId?: string }>()
+  protected sessionShellPids = new Map<string, DaemonSessionShellIdentity>()
+  protected lostSessionShellPids = new Map<string, DaemonSessionShellIdentity>()
   protected readonly retireSessionsLostWithDaemon: boolean
   protected pendingSpawnOperationsBySessionId = new Map<string, Set<PendingDaemonSpawnOperation>>()
   protected pendingClaimSpawnOperations = new Set<PendingDaemonSpawnOperation>()

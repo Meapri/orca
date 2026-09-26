@@ -138,7 +138,7 @@ export abstract class DaemonPtyProcessInspection extends DaemonPtyBufferSnapshot
         alive.push(session.sessionId)
         // Why: track background sessions in the checkpoint set so disconnectOnly's final checkpoint doesn't leave stale recovery data.
         this.activeSessionIds.add(session.sessionId)
-        this.recordSessionShellPid(session.sessionId, session.pid)
+        this.recordSessionShellPid(session.sessionId, session.pid, session.incarnationId)
         await this.reconcileLiveSessionHistory(session).catch((err) =>
           console.warn('[history] live-session reconciliation failed:', session.sessionId, err)
         )

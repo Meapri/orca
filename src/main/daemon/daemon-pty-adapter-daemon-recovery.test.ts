@@ -460,6 +460,44 @@ describe('DaemonPtyAdapter (IPtyProvider)', () => {
       }
     })
 
+    it('exits an adopted session it only knew from an inventory once its shell is gone', async () => {
+      let respawnServer: DaemonServer | undefined
+      const respawnFn = vi.fn(async () => {
+        respawnServer = new DaemonServer({
+          socketPath,
+          tokenPath,
+          spawnSubprocess: () => createMockSubprocess()
+        })
+        await respawnServer.start()
+      })
+      // The previous runtime spawned it; this one (after a restart) never re-attaches it.
+      const previous = new DaemonPtyAdapter({ socketPath, tokenPath })
+      const adopted = await previous.spawn({ cols: 80, rows: 24 })
+      await previous.disconnectOnly()
+      const successor = new DaemonPtyAdapter({
+        socketPath,
+        tokenPath,
+        respawn: respawnFn,
+        retireSessionsLostWithDaemon: true
+      })
+      const exits: { id: string; incarnationId?: string }[] = []
+      successor.onExit((payload) => exits.push(payload))
+      try {
+        expect((await successor.listProcesses()).map((entry) => entry.id)).toContain(adopted.id)
+        await server.shutdown()
+
+        await successor.spawn({ cols: 80, rows: 24 })
+
+        await waitFor(() => exits.length > 0)
+        expect(exits).toEqual([
+          expect.objectContaining({ id: adopted.id, incarnationId: adopted.incarnationId })
+        ])
+      } finally {
+        successor.dispose()
+        await respawnServer?.shutdown()
+      }
+    })
+
     it('propagates the error when no respawn callback is provided', async () => {
       const noRespawnAdapter = new DaemonPtyAdapter({ socketPath, tokenPath })
 

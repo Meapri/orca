@@ -24,6 +24,9 @@ export abstract class DaemonPtySessionInventory extends DaemonPtyProcessInspecti
     // Why: snapshotted before the request so ids spawned mid-flight can never
     // be reconciled away below.
     const preRequestActiveIds = new Set(this.activeSessionIds)
+    // Why the recorded PIDs too: an adopted daemon's headless sessions are known only from
+    // inventories, never re-attached, so they are absent from activeSessionIds.
+    const preRequestShellIds = new Set(this.sessionShellPids.keys())
     try {
       // Why retry: this inventory is what destructive teardown consults, and a
       // dead host pipe surfaced as `connect ENOENT \\?\\pipe\\orca-terminal-host-...`
@@ -54,7 +57,7 @@ export abstract class DaemonPtySessionInventory extends DaemonPtyProcessInspecti
           continue
         }
         aliveSessionIds.add(session.sessionId)
-        this.recordSessionShellPid(session.sessionId, session.pid)
+        this.recordSessionShellPid(session.sessionId, session.pid, session.incarnationId)
         const { worktreeId } = parsePtySessionId(session.sessionId)
         processes.push(
           admission.admit({
@@ -77,12 +80,16 @@ export abstract class DaemonPtySessionInventory extends DaemonPtyProcessInspecti
       for (const id of preRequestActiveIds) {
         if (!aliveSessionIds.has(id)) {
           this.activeSessionIds.delete(id)
-          if (this.retireSessionsLostWithDaemon) {
+        }
+      }
+      if (this.retireSessionsLostWithDaemon) {
+        for (const id of preRequestShellIds) {
+          if (!aliveSessionIds.has(id)) {
             this.markSessionLostFromInventory(id)
           }
         }
+        this.retireLostSessionsVerifiedGone(aliveSessionIds)
       }
-      this.retireLostSessionsVerifiedGone(aliveSessionIds)
       this.publishAuditObservation(
         recordAuthenticatedInventory(this.auditContext, this.exactDaemonIncarnation)
       )
@@ -143,13 +150,11 @@ export abstract class DaemonPtySessionInventory extends DaemonPtyProcessInspecti
   }
 
   protected markSessionLostFromInventory(sessionId: string): void {
-    const pid = this.sessionShellPids.get(sessionId)
+    const identity = this.sessionShellPids.get(sessionId)
     this.sessionShellPids.delete(sessionId)
-    if (pid === undefined || this.lostSessionShellPids.size >= MAX_LOST_SESSION_SHELL_PIDS) {
-      return
+    if (identity && this.lostSessionShellPids.size < MAX_LOST_SESSION_SHELL_PIDS) {
+      this.lostSessionShellPids.set(sessionId, identity)
     }
-    const incarnationId = this.sessionIncarnations.get(sessionId)
-    this.lostSessionShellPids.set(sessionId, { pid, ...(incarnationId ? { incarnationId } : {}) })
   }
 
   /**
