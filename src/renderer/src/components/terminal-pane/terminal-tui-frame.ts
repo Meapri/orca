@@ -31,7 +31,7 @@ export type TerminalTuiFrameRow =
   | { kind: 'content'; frame: TerminalTuiFrame; runId: number }
   | { kind: 'edge'; frame: TerminalTuiFrame; runId: number; divider: boolean }
 
-type RowShape =
+type FrameRowRole =
   | { kind: 'content'; left: number; right: number | null }
   | { kind: 'edge'; left: number; right: number | null; divider: boolean }
 
@@ -51,7 +51,7 @@ function lastInkColumn(row: TerminalCopyRow): number {
   return row.cells.findLastIndex((cell) => cell.width > 0 && !isBlankCell(cell.chars))
 }
 
-function classifyRow(row: TerminalCopyRow): RowShape | null {
+function classifyRow(row: TerminalCopyRow): FrameRowRole | null {
   const left = firstInkColumn(row)
   if (left === -1) {
     return null
@@ -76,10 +76,10 @@ function classifyRow(row: TerminalCopyRow): RowShape | null {
   return { kind: 'edge', left, right: closesRight ? last : null, divider: !isCorner }
 }
 
-type Run = { left: number; right: number | null; rowIndexes: number[]; shapes: RowShape[] }
+type Run = { left: number; right: number | null; rowIndexes: number[]; roles: FrameRowRole[] }
 
-function sameFrame(run: Run, shape: RowShape): boolean {
-  return run.left === shape.left && run.right === shape.right
+function sameFrame(run: Run, role: FrameRowRole): boolean {
+  return run.left === role.left && run.right === role.right
 }
 
 function interiorSideColumns(row: TerminalCopyRow, frame: TerminalTuiFrame): number[] {
@@ -110,7 +110,7 @@ function looksLikeTable(rows: readonly TerminalCopyRow[], run: Run): boolean {
   const seenSideColumns = new Set<number>()
   for (let index = 0; index < run.rowIndexes.length; index++) {
     const row = rows[run.rowIndexes[index]]
-    if (run.shapes[index].kind === 'edge') {
+    if (run.roles[index].kind === 'edge') {
       if (hasInteriorJunction(row, frame)) {
         return true
       }
@@ -131,7 +131,7 @@ function looksLikeTable(rows: readonly TerminalCopyRow[], run: Run): boolean {
 }
 
 function isValidRun(rows: readonly TerminalCopyRow[], run: Run): boolean {
-  const contentRows = run.shapes.filter((shape) => shape.kind === 'content').length
+  const contentRows = run.roles.filter((role) => role.kind === 'content').length
   if (contentRows === 0) {
     return false
   }
@@ -143,7 +143,7 @@ function isValidRun(rows: readonly TerminalCopyRow[], run: Run): boolean {
   if (run.right === null) {
     const sideChars = new Set(
       run.rowIndexes
-        .filter((_rowIndex, index) => run.shapes[index].kind === 'content')
+        .filter((_rowIndex, index) => run.roles[index].kind === 'content')
         .map((rowIndex) => cellChars(rows[rowIndex], run.left))
     )
     if (sideChars.size !== 1) {
@@ -166,17 +166,17 @@ export function detectTerminalTuiFrames(
   let current: Run | null = null
   rows.forEach((row, index) => {
     const inWrapChain = row.isWrapped || rows[index + 1]?.isWrapped === true
-    const shape = inWrapChain ? null : classifyRow(row)
-    if (!shape) {
+    const role = inWrapChain ? null : classifyRow(row)
+    if (!role) {
       current = null
       return
     }
-    if (current && sameFrame(current, shape)) {
+    if (current && sameFrame(current, role)) {
       current.rowIndexes.push(index)
-      current.shapes.push(shape)
+      current.roles.push(role)
       return
     }
-    current = { left: shape.left, right: shape.right, rowIndexes: [index], shapes: [shape] }
+    current = { left: role.left, right: role.right, rowIndexes: [index], roles: [role] }
     runs.push(current)
   })
   runs.forEach((run, runId) => {
@@ -185,10 +185,10 @@ export function detectTerminalTuiFrames(
     }
     const frame = { left: run.left, right: run.right }
     run.rowIndexes.forEach((rowIndex, index) => {
-      const shape = run.shapes[index]
+      const role = run.roles[index]
       result[rowIndex] =
-        shape.kind === 'edge'
-          ? { kind: 'edge', frame, runId, divider: shape.divider }
+        role.kind === 'edge'
+          ? { kind: 'edge', frame, runId, divider: role.divider }
           : { kind: 'content', frame, runId }
     })
   })
