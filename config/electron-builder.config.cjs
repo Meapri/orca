@@ -190,6 +190,7 @@ module.exports = {
     '!src{,/**/*}',
     '!out/orcad{,/**/*}',
     '!out/orcad-template{,/**/*}',
+    '!out/orcad-release{,/**/*}',
     '!out/.orcad-*{,/**/*}',
     '!config{,/**/*}',
     '!docs{,/**/*}',

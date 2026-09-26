@@ -1,0 +1,5 @@
+# BuildKit reads this beside the Dockerfile; the context is the repository root.
+*
+!config/orcad-host/orcad-install.sh
+!out/orcad-release/*.tar.gz
+!out/orcad-release/*.tar.gz.sha256

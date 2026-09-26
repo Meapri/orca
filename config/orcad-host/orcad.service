@@ -1,0 +1,47 @@
+# Managed by orcad-install.sh (service-install renders @...@ placeholders); edit orcad.env instead.
+#
+# orcad as a systemd *user* service. The user manager must outlive SSH logins, and the
+# terminal daemon's own orca-daemon-*.scope lives under it, so enable lingering once:
+#   sudo loginctl enable-linger "$USER"
+# Reference: docs/reference/headless-linux-server.md, docs/reference/orcad-operations.md
+[Unit]
+Description=Orca headless runtime (orcad)
+Documentation=https://github.com/stablyai/orca/blob/main/docs/reference/headless-linux-server.md
+After=network-online.target
+Wants=network-online.target
+# A permanent startup fault stops after 5 tries in 5 minutes instead of spinning.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+# Optional, only once this orcad build speaks sd_notify (not assumed by this unit):
+#Type=notify
+#NotifyAccess=main
+#WatchdogSec=60
+Environment=ORCAD_BASE=@ORCAD_BASE@
+Environment=ORCA_USER_DATA=@ORCA_USER_DATA@
+Environment=ORCAD_BIND=127.0.0.1
+Environment=ORCAD_PORT=6768
+Environment=ORCAD_READINESS_FILE=%t/orcad/readiness.json
+EnvironmentFile=-@ORCAD_ENV_FILE@
+RuntimeDirectory=orcad
+# `run` resolves orcad-current to its real versioned dir and execs the bundled runtime,
+# so the unit's main PID is orcad itself and SIGTERM reaches it directly.
+ExecStart=/bin/sh @ORCAD_BASE@/orcad-current/deploy/orcad-install.sh run
+Restart=always
+RestartSec=5
+# 78 (EX_CONFIG): bind address, data root or instance lock fault. Restarting cannot fix it.
+RestartPreventExitStatus=78
+# The daemon launch retries on a cold host; readiness can take tens of seconds.
+TimeoutStartSec=180
+# orcad's own graceful stop gives up after 15s.
+TimeoutStopSec=30
+# SIGTERM only to orcad; its cgroup remainder is reaped after it exits. Live terminals are
+# preserved by the daemon's separate orca-daemon-*.scope, not by any KillMode — an unscoped
+# fallback daemon (cgroupUnit null) dies with this unit whatever this is set to.
+KillMode=mixed
+# No UMask=: the daemon and its PTYs inherit it; orcad makes its data root 0700 itself.
+
+[Install]
+WantedBy=default.target
