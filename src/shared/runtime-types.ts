@@ -99,8 +99,6 @@ export {
 } from './runtime-session-contracts'
 export {
   TERMINAL_PTY_DEGRADATION_CAPABILITY,
-  TERMINAL_RESOURCE_LIMITS_DEGRADATION_CAPABILITY,
-  TERMINAL_RESOURCE_LIMITS_UNAVAILABLE_CODE,
   TERMINAL_UNAVAILABLE_ERROR_CODE,
   terminalUnavailableMessage
 } from './runtime-capability-degradation'

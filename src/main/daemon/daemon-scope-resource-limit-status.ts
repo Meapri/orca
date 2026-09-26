@@ -8,7 +8,7 @@ import {
   TERMINAL_RESOURCE_LIMITS_UNAVAILABLE_CODE,
   type RuntimeDegradation,
   type RuntimeTerminalResourceLimitsReason as TerminalResourceLimitsUnavailableReason
-} from '../../shared/runtime-types'
+} from '../../shared/runtime-capability-degradation'
 
 export type TerminalResourceLimitsShortfall = {
   reason: TerminalResourceLimitsUnavailableReason
