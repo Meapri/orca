@@ -1,4 +1,9 @@
 import type { IUnicodeHandling, IUnicodeVersionProvider } from '@xterm/xterm'
+import {
+  isCodepointInRanges,
+  POST_UNICODE11_WIDE_EMOJI_RANGES,
+  TEXT_DEFAULT_EMOJI_RANGES
+} from './terminal-emoji-width-ranges'
 
 type XtermTerminalWithUnicodeCore = {
   unicode: IUnicodeHandling
@@ -12,6 +17,7 @@ type XtermTerminalWithUnicodeCore = {
 const ORCA_UNICODE_VERSION = 'orca-11-zwj'
 const UNICODE11_VERSION = '11'
 const ZERO_WIDTH_JOINER = 0x200d
+const VARIATION_SELECTOR_16 = 0xfe0f
 
 function extractWidth(properties: number): 0 | 1 | 2 {
   return ((properties >> 1) & 3) as 0 | 1 | 2
@@ -25,13 +31,32 @@ function createProperties(charKind: number, width: 0 | 1 | 2, shouldJoin: boolea
   return ((charKind & 0xffffff) << 3) | ((width & 3) << 1) | (shouldJoin ? 1 : 0)
 }
 
+function isTextDefaultEmoji(codepoint: number): boolean {
+  if (codepoint < 0x80) {
+    return codepoint === 0x23 || codepoint === 0x2a || (codepoint >= 0x30 && codepoint <= 0x39)
+  }
+  // Why: CJK and most BMP text sit between the two table clusters; skip the search for them.
+  if (codepoint < 0xa9 || (codepoint > 0x2b07 && codepoint < 0x1f170) || codepoint > 0x1f6f3) {
+    return false
+  }
+  return isCodepointInRanges(codepoint, TEXT_DEFAULT_EMOJI_RANGES)
+}
+
+function isPostUnicode11WideEmoji(codepoint: number): boolean {
+  return (
+    codepoint >= 0x1f6d6 &&
+    codepoint <= 0x1faf8 &&
+    isCodepointInRanges(codepoint, POST_UNICODE11_WIDE_EMOJI_RANGES)
+  )
+}
+
 class OrcaUnicodeProvider implements IUnicodeVersionProvider {
   public readonly version = ORCA_UNICODE_VERSION
 
   public constructor(private readonly baseProvider: IUnicodeVersionProvider) {}
 
   public wcwidth(codepoint: number): 0 | 1 | 2 {
-    return this.baseProvider.wcwidth(codepoint)
+    return isPostUnicode11WideEmoji(codepoint) ? 2 : this.baseProvider.wcwidth(codepoint)
   }
 
   public charProperties(codepoint: number, preceding: number): number {
@@ -48,7 +73,26 @@ class OrcaUnicodeProvider implements IUnicodeVersionProvider {
       return createProperties(codepoint, precedingWidth, true)
     }
 
-    return this.baseProvider.charProperties(codepoint, preceding)
+    if (
+      codepoint === VARIATION_SELECTOR_16 &&
+      precedingWidth === 1 &&
+      isTextDefaultEmoji(precedingKind)
+    ) {
+      // Why: VS16 selects emoji presentation (❤️, 1️⃣), which modern CLIs and
+      // terminals budget as two cells; xterm keeps the one-cell text width.
+      return createProperties(VARIATION_SELECTOR_16, 2, true)
+    }
+
+    if (isPostUnicode11WideEmoji(codepoint)) {
+      return createProperties(0, 2, false)
+    }
+
+    const properties = this.baseProvider.charProperties(codepoint, preceding)
+    if (extractWidth(properties) === 1 && isTextDefaultEmoji(codepoint)) {
+      // Why: remember the base so a following VS16 can widen it; width and join are unchanged.
+      return createProperties(codepoint, 1, (properties & 1) !== 0)
+    }
+    return properties
   }
 }
 
