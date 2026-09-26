@@ -196,6 +196,8 @@ The harness covers the terminal stream and the structured agent-session surface.
 **not** cover the session-tab sync channel, legacy agent-session publications, file or Git
 RPCs, mobile/E2EE framing, or the relay transport. A change on those paths still needs its
 own reasoning against the three rules above.
+[multi-client-state-authority.md](./multi-client-state-authority.md) records that reasoning for
+the closed-surface refusal and the resume redirect.
 
 ## Worked example: `agentWait` on terminal and worker reads
 
