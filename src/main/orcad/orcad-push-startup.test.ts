@@ -29,7 +29,20 @@ vi.mock('./orcad-daemon-supervision', () => ({
   startOrcadDaemon: async () => {},
   stopOrcadDaemon: async () => {}
 }))
-vi.mock('./orcad-health', () => ({ collectOrcadHealth: async () => ({}) }))
+vi.mock('./orcad-health', () => ({
+  collectOrcadHealth: async () => ({
+    terminalDaemon: {
+      state: 'absent',
+      ownsFreshSessions: false,
+      pid: null,
+      buildVersion: null,
+      entryPath: null,
+      protocolVersion: null,
+      cgroupUnit: null,
+      selfTest: { ok: false, coverage: 'pty-spawn', verdict: 'no-daemon', durationMs: 0 }
+    }
+  })
+}))
 vi.mock('../daemon/daemon-init', () => ({ daemonOwnsFreshPersistentPtys: () => false }))
 vi.mock('../ipc/pty', () => ({
   registerHeadlessPtyRuntime: async () => {},
@@ -72,6 +85,9 @@ vi.mock('../runtime/orca-runtime', () => ({
       return 'headless-runtime'
     }
     rehydrateClientHostedBrowserPages() {}
+    getStatus() {
+      return { degradations: [] }
+    }
     async refreshRestoredOrchestrationAuthority() {}
     async reconcileLegacyWorkerTerminals() {}
     setMobilePushRegistrar(

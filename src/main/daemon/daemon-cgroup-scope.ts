@@ -114,6 +114,45 @@ function runSystemdRunVersionProbe(
   return { code, timedOut }
 }
 
+/** Why the durable scope is or is not available; `orca serve doctor` turns each into a fix. */
+export type DurableDaemonScopeSupport =
+  | 'supported'
+  | 'not_linux'
+  | 'no_systemd'
+  | 'no_user_bus'
+  | 'systemd_run_unavailable'
+
+export function describeDurableDaemonScopeSupport(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+  canonicalRuntimeDir: string | null = CANONICAL_USER_RUNTIME_DIR,
+  systemdBootPath: string = SYSTEMD_BOOT_PATH,
+  runVersionProbe: SystemdRunVersionProbe = runSystemdRunVersionProbe
+): DurableDaemonScopeSupport {
+  if (platform !== 'linux') {
+    return 'not_linux'
+  }
+  if (!existsSync(systemdBootPath)) {
+    // Not booted under systemd (e.g. a plain container without systemd as PID 1) — a unit
+    // restart isn't the failure mode there, and systemd-run has nothing to talk to anyway.
+    return 'no_systemd'
+  }
+  if (!resolveUserRuntimeDir(env, canonicalRuntimeDir)) {
+    // No reachable user bus/session at the real per-UID path or the process's own env var —
+    // systemd-run --user would just fail to connect.
+    return 'no_user_bus'
+  }
+  try {
+    const probe = runVersionProbe(SYSTEMD_RUN_BINARY, SYSTEMD_RUN_PROBE_TIMEOUT_MS)
+    // A non-zero exit is data here rather than a throw, and a timeout kill leaves an exit behind
+    // that answers nothing — both mean "cannot be trusted to place the daemon in a scope".
+    return probe.code === 0 && !probe.timedOut ? 'supported' : 'systemd_run_unavailable'
+  } catch {
+    // Throws only when the binary could not be started at all.
+    return 'systemd_run_unavailable'
+  }
+}
+
 export function isDurableDaemonScopeSupported(
   env: NodeJS.ProcessEnv = process.env,
   platform: NodeJS.Platform = process.platform,
@@ -121,28 +160,15 @@ export function isDurableDaemonScopeSupported(
   systemdBootPath: string = SYSTEMD_BOOT_PATH,
   runVersionProbe: SystemdRunVersionProbe = runSystemdRunVersionProbe
 ): boolean {
-  if (platform !== 'linux') {
-    return false
-  }
-  if (!existsSync(systemdBootPath)) {
-    // Not booted under systemd (e.g. a plain container without systemd as PID 1) — a unit
-    // restart isn't the failure mode there, and systemd-run has nothing to talk to anyway.
-    return false
-  }
-  if (!resolveUserRuntimeDir(env, canonicalRuntimeDir)) {
-    // No reachable user bus/session at the real per-UID path or the process's own env var —
-    // systemd-run --user would just fail to connect.
-    return false
-  }
-  try {
-    const probe = runVersionProbe(SYSTEMD_RUN_BINARY, SYSTEMD_RUN_PROBE_TIMEOUT_MS)
-    // A non-zero exit is data here rather than a throw, and a timeout kill leaves an exit behind
-    // that answers nothing — both mean "cannot be trusted to place the daemon in a scope".
-    return probe.code === 0 && !probe.timedOut
-  } catch {
-    // Throws only when the binary could not be started at all.
-    return false
-  }
+  return (
+    describeDurableDaemonScopeSupport(
+      env,
+      platform,
+      canonicalRuntimeDir,
+      systemdBootPath,
+      runVersionProbe
+    ) === 'supported'
+  )
 }
 
 export type DurableDaemonScopeCommand = {

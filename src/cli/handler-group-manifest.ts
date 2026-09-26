@@ -18,6 +18,11 @@ export const HANDLER_GROUPS: readonly HandlerGroup[] = [
     load: async () => (await import('./handlers/core.js')).CORE_HANDLERS
   },
   {
+    name: 'serve-admin',
+    keys: ['serve status', 'serve doctor', 'serve pairing'],
+    load: async () => (await import('./handlers/serve-admin.js')).SERVE_ADMIN_HANDLERS
+  },
+  {
     name: 'account',
     keys: ['account add', 'account list'],
     load: async () => (await import('./handlers/account.js')).ACCOUNT_HANDLERS
