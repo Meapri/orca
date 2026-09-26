@@ -43,6 +43,10 @@ vi.mock('./orcad-health', () => ({
     }
   })
 }))
+// Why: this suite proves push wiring; the headless parity steps have their own suite.
+vi.mock('./orcad-headless-parity', () => ({
+  installOrcadHeadlessParity: () => ({ startScheduledWork() {}, uninstall() {} })
+}))
 vi.mock('../daemon/daemon-init', () => ({ daemonOwnsFreshPersistentPtys: () => false }))
 vi.mock('../ipc/pty', () => ({
   registerHeadlessPtyRuntime: async () => {},

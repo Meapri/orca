@@ -32,6 +32,8 @@ import {
   AgentStatusObservedPaneIdentities,
   recordObservedAgentStatusPaneIdentity
 } from '../runtime/agent-status-observed-pane-identity'
+import { installFirstWorkRenameSubscription } from '../agent-hooks/first-work-rename-subscription'
+import { firstWorkRenameDeps } from '../agent-hooks/first-work-rename-runtime'
 
 export function getDesktopWindowStatus(): RuntimeDesktopWindowStatus {
   const activation = state.desktopActivationGate
@@ -167,6 +169,7 @@ export function initializeMainProcessRuntime(): OrcaRuntimeService {
   agentHookServer.subscribeEnrichedStatus((enriched) =>
     recordObservedAgentStatusPaneIdentity(observedPaneIdentities, enriched.paneKey, runtime)
   )
+  installFirstWorkRenameSubscription(agentHookServer, () => firstWorkRenameDeps(store, runtime))
   // Why before anything can attach: a client host that reattaches to a restarted runtime is only
   // handed its pages back if the runtime found them first.
   runtime.rehydrateClientHostedBrowserPages()

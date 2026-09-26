@@ -373,7 +373,6 @@ describe('agent status producer census', () => {
     try {
       installMainWindowAgentStatusListeners({
         window: window as never,
-        maybeAutoRenameBranchOnFirstWork: () => {},
         onRecordAgentState: () => {}
       })
       for (const listener of listeners) {

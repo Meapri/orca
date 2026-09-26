@@ -26,6 +26,7 @@ import {
 import { takeSystemdNotifyEnvironment, type SystemdNotifyEnvironment } from './orcad-systemd-notify'
 import { parseArgs } from './orcad-command-arguments'
 import { applyOrcadResourceLimits } from './orcad-resource-limit-flags'
+import type { OrcadHeadlessParity } from './orcad-headless-parity'
 import {
   changedAiVaultSearchSettings,
   type AiVaultSearchSettings
@@ -155,6 +156,7 @@ async function startOrcadRuntime(
     await import('../agent-hooks/hook-status-session-tabs-republish')
   const { AgentStatusObservedPaneIdentities, AgentStatusObservedPaneIdentityCapture } =
     await import('../runtime/agent-status-observed-pane-identity')
+  const { installOrcadHeadlessParity } = await import('./orcad-headless-parity')
 
   let rpc: InstanceType<typeof OrcaRuntimeRpcServer> | null = null
   let profileStoreForShutdown:
@@ -163,12 +165,15 @@ async function startOrcadRuntime(
   let uninstallHookStatusRepublish = (): void => {}
   let uninstallObservedStatusIdentity = (): void => {}
   let healthSurface: ReturnType<typeof createOrcadHealthSurface> | null = null
+  let headlessParity: OrcadHeadlessParity | null = null
   registerCleanup(async () => {
     try {
       await healthSurface?.stop()
       await rpc?.stop()
     } finally {
       try {
+        // Why first: an automation tick must not start a run the final flush below cannot record.
+        headlessParity?.uninstall()
         // Stop accepting RPC writes before the final persistence barrier. A SQLite-backed
         // orcad has no JSON mirror to absorb a debounced write after SIGTERM.
         if (profileStoreForShutdown) {
@@ -307,6 +312,14 @@ async function startOrcadRuntime(
   await runtime.refreshRestoredOrchestrationAuthority()
   await runtime.reconcileLegacyWorkerTerminals()
 
+  // Why before the RPC server binds: until a graph is published `session.tabs.createTerminal`
+  // refuses with runtime_unavailable and `session.tabs.listAll` never answers (#17846).
+  headlessParity = installOrcadHeadlessParity({
+    runtime,
+    store: profileStore,
+    agentHookServer
+  })
+
   // Recovery binds terminal and dispatch identities; only now can startup observations be fenced.
   observedStatusCapture.attach(runtime)
 
@@ -335,6 +348,7 @@ async function startOrcadRuntime(
       : {})
   })
   await rpc.start()
+  headlessParity.startScheduledWork()
   const pushService = DesktopPushService.create({
     runtime,
     runtimeRpc: rpc,

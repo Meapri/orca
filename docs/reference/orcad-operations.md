@@ -521,6 +521,12 @@ added), `pairing.expired`, `pairing.superseded`, `device.revoked`, `device.rotat
 `auth.failed.suppressed` (how many were dropped). Records carry ids, scope, label and fixed reason
 strings, never tokens or pairing URLs. The desktop app does not write this log.
 
+## Feature parity with `orca serve`
+
+Which paired-client features orcad still lacks relative to the Electron-hosted `orca serve`, and
+which startup steps it now performs the same way, is tracked in
+[orcad-feature-parity.md](./orcad-feature-parity.md).
+
 ## What is not covered
 
 Named here so nothing reads as implemented that is not:

@@ -730,10 +730,12 @@ its own `orca`.
   `ws://` through an HTTPS-only endpoint.
 - Hostnames, IPv4, bracketed IPv6, and raw IPv6 literals are supported. IPv6
   still requires an IPv6-reachable listener/network path.
-- Background push notifications to a paired phone do not fire from a headless
-  server: agent-completion detection runs in the desktop renderer, which is not started in serve
-  mode, so nothing reaches the push gateway even though the phone
-  registers successfully.
+- Background push notifications to a paired phone fire from a headless server
+  for "agent finished" and "agent needs input", derived from agent hook status
+  (a finish is announced after a 1.5s quiet window). A pane with no hook status
+  (hooks disabled, or an agent without managed hooks) produces none, and terminal
+  bells are not pushed. The host's notification settings still apply: turning
+  notifications off there also silences the phone.
 - `xvfb-run` and `dbus-run-session -- xvfb-run` remain valid diagnostic launch
   shapes, but neither should be needed when `Xvfb` is installed and no display
   is configured. Repeated D-Bus messages without a ready block indicate startup
