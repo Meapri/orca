@@ -152,6 +152,7 @@ export class RuntimeRpcWebSocketDispatch extends RuntimeRpcRequestAdmission {
         sendBinary,
         outboundBacklogBytes: authenticatedSocket?.outboundBacklogBytes,
         awaitOutboundDelivery: authenticatedSocket?.awaitOutboundDelivery,
+        closeConnection: ws ? (code, reason) => ws.close(code, reason) : undefined,
         registerBinaryStreamHandler: (streamId, handler) =>
           this.registerBinaryStreamHandler(connectionId, streamId, handler),
         registerBinaryMessageHandler: (handler) =>

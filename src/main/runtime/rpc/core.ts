@@ -117,6 +117,9 @@ export type RpcContext = {
   outboundBacklogBytes?: () => number
   // Why: resolves once the peer has received everything sent before the call, kernel queues included.
   awaitOutboundDelivery?: (onDelivered: () => void) => () => void
+  // Why: a stream that lost a frame must reset the whole connection; a silent local close leaves
+  // the client attached to nothing, dropping its input with no error (#20802).
+  closeConnection?: (code: number, reason: string) => void
   // Why: binary terminal frames arrive outside JSON-RPC once a stream is established; handlers register only the stream IDs they created.
   registerBinaryStreamHandler?: (
     streamId: number,

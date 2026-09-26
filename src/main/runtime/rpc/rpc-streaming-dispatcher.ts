@@ -146,6 +146,7 @@ export class RpcStreamingDispatcher {
             sendBinary: options?.sendBinary,
             outboundBacklogBytes: options?.outboundBacklogBytes,
             awaitOutboundDelivery: options?.awaitOutboundDelivery,
+            closeConnection: options?.closeConnection,
             registerBinaryStreamHandler: options?.registerBinaryStreamHandler,
             registerBinaryMessageHandler: options?.registerBinaryMessageHandler,
             legacyCoordinatorRunId,
@@ -197,6 +198,7 @@ export class RpcStreamingDispatcher {
           sendBinary: options?.sendBinary,
           outboundBacklogBytes: options?.outboundBacklogBytes,
           awaitOutboundDelivery: options?.awaitOutboundDelivery,
+          closeConnection: options?.closeConnection,
           registerBinaryStreamHandler: options?.registerBinaryStreamHandler,
           registerBinaryMessageHandler: options?.registerBinaryMessageHandler,
           orchestrationCaller
