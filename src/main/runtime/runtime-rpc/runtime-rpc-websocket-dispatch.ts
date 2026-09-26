@@ -150,6 +150,7 @@ export class RuntimeRpcWebSocketDispatch extends RuntimeRpcRequestAdmission {
         pairing: pairingContext,
         signal: abortRegistration?.signal,
         sendBinary,
+        outboundBacklogBytes: authenticatedSocket?.outboundBacklogBytes,
         registerBinaryStreamHandler: (streamId, handler) =>
           this.registerBinaryStreamHandler(connectionId, streamId, handler),
         registerBinaryMessageHandler: (handler) =>

@@ -39,6 +39,7 @@ export type AuthenticatedMobileSocket = {
   device: E2EEAuthenticatedDevice
   clientCapabilities: readonly RuntimeCapability[]
   transport: MobileSocketTransportMetadata
+  outboundBacklogBytes: () => number
 }
 
 type MobileSocketWiringOptions = {
@@ -175,7 +176,10 @@ export class MobileSocketWiring {
             set clientCapabilities(next: readonly RuntimeCapability[]) {
               channel.clientCapabilities = next
             },
-            transport: metadata
+            transport: metadata,
+            // Why: the owner's JS queue only engages past an 8 MiB native buffer, so the native
+            // count alone already reports any backlog a state stream should yield to.
+            outboundBacklogBytes: () => ws.bufferedAmount
           }
           this.authenticatedSockets.set(ws, socket)
           transport.setClientId(ws, device.deviceToken)

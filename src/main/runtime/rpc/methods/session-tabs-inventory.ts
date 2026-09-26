@@ -2,6 +2,7 @@ import { isDeepStrictEqual } from 'node:util'
 import { SESSION_TABS_AUTHORITATIVE_INVENTORY_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
 import type { RuntimeMobileSessionTabsResult } from '../../../../shared/runtime-types'
 import type { RpcContext } from '../core'
+import { createBackpressuredLatestStatePublisher } from '../backpressured-latest-state-publisher'
 import { projectSessionTabAgentStatus } from './session-tab-agent-status-projection'
 import { projectSessionTabBrowserPlacements } from './session-tab-browser-placement-projection'
 import { createSessionTabsRetirementProofDelta } from './session-tabs-retirement-proof-delta'
@@ -120,6 +121,14 @@ export async function subscribeSessionTabsInventory(
   let censusChangeSequence: number | undefined
   let censusInvalidated = false
   const withProofDelta = createSessionTabsRetirementProofDelta(context.clientCapabilities)
+  // Why: the proof delta is stateful per sent frame, so it runs at send time, never for a parked
+  // frame that a newer one replaces.
+  const emitUpdated = (projected: SessionTabsChange): void =>
+    emit({ type: 'updated', ...withProofDelta(projected) })
+  const updatePublisher = createBackpressuredLatestStatePublisher<SessionTabsChange>({
+    send: emitUpdated,
+    backlogBytes: context.outboundBacklogBytes
+  })
   const projectChange = (snapshot: SessionTabsChange): SessionTabsChange =>
     projectSessionTabsForClient(
       snapshot,
@@ -194,10 +203,13 @@ export async function subscribeSessionTabsInventory(
       deliveredChangeSequenceByWorktree.set(snapshot.worktree, changeSequence)
       return
     }
-    emit({
-      type: 'updated',
-      ...withProofDelta(projected)
-    })
+    if (projected.navigationIntent !== undefined) {
+      // Why: a follow intent is a one-shot instruction, so it must not be superseded while parked.
+      updatePublisher.discard(snapshot.worktree)
+      emitUpdated(projected)
+    } else {
+      updatePublisher.offer(snapshot.worktree, projected)
+    }
     if (projected.removed === true) {
       publishedSnapshotsByWorktree.delete(snapshot.worktree)
       deliveredChangeSequenceByWorktree.delete(snapshot.worktree)
@@ -227,6 +239,7 @@ export async function subscribeSessionTabsInventory(
       context.signal?.removeEventListener('abort', onTransportAbort)
       inventoryController.abort()
       unsubscribe()
+      updatePublisher.dispose()
       clearBufferedChanges()
       publishedSnapshotsByWorktree.clear()
       deliveredChangeSequenceByWorktree.clear()

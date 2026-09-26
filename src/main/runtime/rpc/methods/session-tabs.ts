@@ -1,6 +1,11 @@
 import { resolveRuntimeNavigationTarget } from '../../../../shared/runtime-navigation'
 import { defineMethod, defineStreamingMethod } from '../core'
 import {
+  createBackpressuredLatestStatePublisher,
+  type BackpressuredLatestStatePublisher
+} from '../backpressured-latest-state-publisher'
+import type { RuntimeMobileSessionTabsResult } from '../../../../shared/runtime-types'
+import {
   CreateTerminalTab,
   SessionTabsUnsubscribe,
   WorktreeTabSelector
@@ -97,10 +102,20 @@ export const SESSION_TAB_METHODS = [
     params: WorktreeTabSelector,
     handler: async (
       params,
-      { runtime, connectionId, requestId, pairedDeviceId, clientKind, clientCapabilities },
+      {
+        runtime,
+        connectionId,
+        requestId,
+        pairedDeviceId,
+        clientKind,
+        clientCapabilities,
+        outboundBacklogBytes
+      },
       emit
     ) => {
       let subscribedWorktree: string | null = null
+      let updatePublisher: BackpressuredLatestStatePublisher<RuntimeMobileSessionTabsResult> | null =
+        null
       let unsubscribe = (): void => {}
       let closed = false
       let initialized = false
@@ -119,6 +134,7 @@ export const SESSION_TAB_METHODS = [
         () => {
           closed = true
           unsubscribe()
+          updatePublisher?.dispose()
           if (initialized) {
             emit({ type: 'end' })
           }
@@ -145,20 +161,35 @@ export const SESSION_TAB_METHODS = [
         return
       }
 
-      unsubscribe = runtime.onMobileSessionTabsChanged((snapshot) => {
-        if (snapshot.worktree === subscribedWorktree) {
-          emit({
-            type: 'updated',
-            ...withProofDelta(
-              projectSessionTabsForClient(
-                snapshot,
-                clientKind,
-                clientCapabilities,
-                isStructuredNativeChatEnabled(runtime)
-              )
+      // Why: the proof delta is stateful, so it runs for sent frames only, never superseded ones.
+      const sendUpdated = (snapshot: RuntimeMobileSessionTabsResult): void =>
+        emit({
+          type: 'updated',
+          ...withProofDelta(
+            projectSessionTabsForClient(
+              snapshot,
+              clientKind,
+              clientCapabilities,
+              isStructuredNativeChatEnabled(runtime)
             )
-          })
+          )
+        })
+      const publisher = createBackpressuredLatestStatePublisher<RuntimeMobileSessionTabsResult>({
+        send: sendUpdated,
+        backlogBytes: outboundBacklogBytes
+      })
+      updatePublisher = publisher
+      unsubscribe = runtime.onMobileSessionTabsChanged((snapshot) => {
+        if (snapshot.worktree !== subscribedWorktree) {
+          return
         }
+        if (snapshot.navigationIntent !== undefined) {
+          // Why: a follow intent is one-shot, so it must never be superseded while parked.
+          publisher.discard(snapshot.worktree)
+          sendUpdated(snapshot)
+          return
+        }
+        publisher.offer(snapshot.worktree, snapshot)
       }, pairedDeviceId)
       if (closed) {
         unsubscribe()

@@ -113,6 +113,8 @@ export type RpcContext = {
   pairing?: PairingRpcContext
   // Why: mobile terminal traffic bypasses JSON streaming; undefined on Unix/socket and non-E2EE WebSocket paths.
   sendBinary?: (bytes: Uint8Array<ArrayBufferLike>) => boolean | void
+  // Why: state streams send only their latest frame while this connection's writes are backlogged.
+  outboundBacklogBytes?: () => number
   // Why: binary terminal frames arrive outside JSON-RPC once a stream is established; handlers register only the stream IDs they created.
   registerBinaryStreamHandler?: (
     streamId: number,
