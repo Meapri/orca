@@ -1,4 +1,5 @@
 import type { WebSocket } from 'ws'
+import { BINARY_CIPHERTEXT_SEND } from './ws-transport-compression'
 import {
   createWsOutboundBackpressureQueue,
   type WsOutboundBackpressureQueue
@@ -31,7 +32,7 @@ export function createDesktopMobileE2EEV2OutboundQueue(args: {
       if (item.kind === 'text') {
         args.ws.send(args.session.sealText(item.plaintext))
       } else {
-        args.ws.send(Buffer.from(args.session.sealBinary(item.plaintext)), { binary: true })
+        args.ws.send(Buffer.from(args.session.sealBinary(item.plaintext)), BINARY_CIPHERTEXT_SEND)
       }
     },
     byteLengthOf: (item) => {

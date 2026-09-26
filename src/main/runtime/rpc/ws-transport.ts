@@ -2,6 +2,7 @@
 import { createServer as createHttpsServer, type Server as HttpsServer } from 'node:https'
 import { createServer as createHttpServer, type Server as HttpServer } from 'node:http'
 import { WebSocketServer, type WebSocket } from 'ws'
+import { remoteRuntimePerMessageDeflateOptions } from './ws-transport-compression'
 import type { RpcTransport } from './transport'
 import { createStaticWebClientHandler } from './static-web-client-handler'
 import { RemoteRuntimeServerHeartbeat } from './remote-runtime-server-heartbeat'
@@ -196,7 +197,8 @@ export class WebSocketTransport implements RpcTransport {
 
     const wss = new WebSocketServer({
       server: httpServer,
-      maxPayload: MAX_WS_MESSAGE_BYTES
+      maxPayload: MAX_WS_MESSAGE_BYTES,
+      perMessageDeflate: remoteRuntimePerMessageDeflateOptions()
     })
 
     wss.on('connection', (ws) => {

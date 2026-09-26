@@ -274,6 +274,6 @@ describe('E2EEChannel v2', () => {
     expect(openServerFrame(ctx.ws.sent[3]!.data, 'binary', schedule, 2n)).toEqual(
       new Uint8Array([2])
     )
-    expect(ctx.ws.sent[3]!.options).toEqual({ binary: true })
+    expect(ctx.ws.sent[3]!.options).toEqual({ binary: true, compress: false })
   })
 })
