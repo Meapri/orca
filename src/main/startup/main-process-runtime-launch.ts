@@ -36,7 +36,7 @@ import { CliInstaller } from '../cli/cli-installer'
 import { installLinuxBareOrcaDispatcher } from '../cli/linux-bare-orca-dispatcher'
 import { scheduleAllPendingHistoryTreeRemovals } from '../terminal-history-deletion'
 import { triggerStartupNotificationRegistration } from '../ipc/startup-notification-registration'
-import { startDesktopPushService } from './main-process-push-startup'
+import { startDesktopPushService, startServeAgentNotifications } from './main-process-push-startup'
 import { mainProcessState as state } from './main-process-state'
 import { logStartupMilestone } from './startup-diagnostics'
 import { emitServeBrowserIdentityActionLine } from '../server/serve-stdout-boundary'
@@ -162,9 +162,9 @@ async function launchServeMode(
     console.error('[runtime] Failed to start headless RPC transport:', error)
     throw error
   })
-  // Why: a phone paired to a headless host still registers and unregisters its token;
-  // it simply never receives a push, because nothing dispatches notifications here.
+  // Why: with no renderer, agent notifications for paired phones come from the hook tap.
   startDesktopPushService(runtimeRpc)
+  startServeAgentNotifications()
   settleDesktopActivation()
   // Why: every attempt must reach app.quit(); a page beforeunload can veto an earlier signal.
   registerServeSignalHandlers(process, () => app.quit())
