@@ -18,9 +18,28 @@ export type RemoteRuntimeSocketLivenessOptions = {
   livenessTimeoutMs?: number
 }
 
+// Why: after sleep or a network change a socket can read OPEN while its path is gone; the normal
+// cadence needs ~30-40 s to prove that. A resume probe settles it in one short, explicit window.
+export const REMOTE_RUNTIME_SOCKET_RESUME_PROBE_DEADLINE_MS = 8_000
+
 export type RemoteRuntimeSocketLivenessMonitor = {
   noteActivity: () => void
+  /** Ping now; declare the socket dead unless anything arrives within `deadlineMs`. */
+  probeNow: (deadlineMs?: number) => void
   stop: () => void
+}
+
+const activeMonitors = new Set<RemoteRuntimeSocketLivenessMonitor>()
+
+/** Probe every live remote-runtime socket in this process, e.g. on OS resume or network change. */
+export function probeAllRemoteRuntimeSocketsNow(
+  deadlineMs = REMOTE_RUNTIME_SOCKET_RESUME_PROBE_DEADLINE_MS
+): number {
+  const monitors = Array.from(activeMonitors)
+  for (const monitor of monitors) {
+    monitor.probeNow(deadlineMs)
+  }
+  return monitors.length
 }
 
 export function startRemoteRuntimeSocketLiveness(args: {
@@ -35,6 +54,8 @@ export function startRemoteRuntimeSocketLiveness(args: {
     args.options?.livenessTimeoutMs ?? REMOTE_RUNTIME_SOCKET_LIVENESS_TIMEOUT_MS
   let lastTickAt = now()
   let probeSentAt: number | null = null
+  let activitySinceResumeProbe = false
+  let resumeProbeTimer: ReturnType<typeof setTimeout> | null = null
   let stopped = false
 
   const timer = setInterval(() => {
@@ -72,6 +93,29 @@ export function startRemoteRuntimeSocketLiveness(args: {
     }
     stopped = true
     clearInterval(timer)
+    if (resumeProbeTimer !== null) {
+      clearTimeout(resumeProbeTimer)
+      resumeProbeTimer = null
+    }
+    activeMonitors.delete(monitor)
+  }
+
+  function probeNow(deadlineMs = REMOTE_RUNTIME_SOCKET_RESUME_PROBE_DEADLINE_MS): void {
+    if (stopped || resumeProbeTimer !== null) {
+      return
+    }
+    activitySinceResumeProbe = false
+    tryPing()
+    resumeProbeTimer = setTimeout(() => {
+      resumeProbeTimer = null
+      if (!stopped && !activitySinceResumeProbe) {
+        stop()
+        args.onDead()
+      }
+    }, deadlineMs)
+    // Why: mobile typechecks shared code with DOM timer types where unref is absent.
+    const unrefableProbe = resumeProbeTimer as unknown as { unref?: () => void }
+    unrefableProbe.unref?.()
   }
 
   function tryPing(): void {
@@ -82,10 +126,14 @@ export function startRemoteRuntimeSocketLiveness(args: {
     }
   }
 
-  return {
+  const monitor: RemoteRuntimeSocketLivenessMonitor = {
     noteActivity: () => {
       probeSentAt = null
+      activitySinceResumeProbe = true
     },
+    probeNow,
     stop
   }
+  activeMonitors.add(monitor)
+  return monitor
 }
