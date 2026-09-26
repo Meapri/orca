@@ -237,6 +237,60 @@ because those terminals die with orcad. A daemon that answered and then failed i
 probe is also `degraded`, not `absent`: it still holds live sessions, and calling those
 exited would be the verdict `ssh-execution-boundary.md` forbids guessing.
 
+## Pairing and credential administration
+
+Every paired client holds its own bearer token in `<data-root>/orca-devices.json` (mode `0600`),
+scoped `runtime` (the full RPC surface, used by desktops, the web client and peer hosts) or
+`mobile` (the phone allowlist). A pairing URL carries the endpoint, that token and the host's E2EE
+public key from `<data-root>/orca-e2ee-keypair.json`. **Whoever holds the URL is that device**, so
+treat it like a password.
+
+### Offers expire unclaimed
+
+The offer orcad prints in its readiness payload, and every offer minted with `orca serve pairing
+new`, is a standalone pending entry that stops authenticating after its lifetime (default 15
+minutes; `--pairing-expires <dur>` on orcad, `--expires <dur>` on the CLI, 1m to 7d). Readiness
+reports it as `pairing.expiresAt` (additive). The first client that authenticates with an offer
+claims it: the entry becomes a paired device and no longer expires. Expired offers are dropped on
+startup, on `devices list` and on the next mint.
+
+Claiming is not cryptographic single use. The protocol has no token exchange, so after the claim
+the same URL remains that device's credential; a copy used later is indistinguishable from the
+device. Revoke or rotate a grant whose URL leaked. The desktop's own QR and access-link flows keep
+their open-ended, coalescing offer and never adopt, extend or rotate away a minted one.
+
+### Administering a running server
+
+These commands act only on the Orca runtime on the machine they run on, over its owner-only local
+socket (the same `0600` metadata token every local CLI command uses). A paired client of any scope
+is refused, and `--environment` / `--pairing-code` are rejected rather than ignored. The target is
+`ORCA_USER_DATA_PATH` or `ORCA_USER_DATA` when set; otherwise the first data root with a running
+runtime, the desktop profile before orcad's.
+
+| Command                                                                        | Effect                                                                                                         |
+| ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| `orca serve devices list [--json]`                                             | ids, scope, pending/paired, last use, offer expiry, open connections and the server key fingerprint; no tokens |
+| `orca serve devices revoke <id>`                                               | removes the grant, closes every socket it authenticated, and refuses it on reconnect, including after restart  |
+| `orca serve devices rotate <id>`                                               | runtime grants only: new token for the same device id, old one refused at once; prints the new URL             |
+| `orca serve pairing new [--mobile\|--runtime] [--pairing-address] [--expires]` | mints a fresh offer against the live server                                                                    |
+
+Runtime and mobile offers can coexist: pairing scope is chosen per offer, not per process, so a
+server can take a phone and be saved as an environment by a peer host without a restart
+(`--mobile-pairing` on `orca serve` still only picks which scope the startup offer uses). A mobile
+offer needs `--pairing-address` set to what the phone dials, and pairs on the direct path without
+Orca Relay. On a loopback-pinned orcad the address vouches for a reverse proxy or tunnel; the bind
+is never widened. Mobile pairings cannot be rotated in place because the token also keys the
+phone's Relay and push identity: revoke and pair again.
+
+### Security log
+
+With a data root, orcad appends NDJSON to `<data-root>/logs/security.log`, rotated by size (5 MB,
+five files: `security.log.1` … `.4`). Events: `pairing.offered`, `pairing.consumed` (a device was
+added), `pairing.expired`, `pairing.superseded`, `device.revoked`, `device.rotated`, `auth.failed`
+(E2EE refusals and bad local-socket tokens, at most 20 records a minute) and
+`auth.failed.suppressed` (how many were dropped). Records carry ids, scope, label and fixed reason
+strings, never tokens or pairing URLs. The desktop app does not write this log.
+
 ## What is not covered
 
 Named here so nothing reads as implemented that is not:
@@ -251,8 +305,10 @@ Named here so nothing reads as implemented that is not:
 - **libc slot.** There is no honest health value to publish until native libc detection owns
   it.
 - **`degradations[]`.** The readiness contract does not publish this collection yet.
-- **Credential administration** (list / revoke / rotate devices, expiring pending offers,
-  structured security logging).
+- **Strict single-use pairing offers.** A claimed offer's URL stays the device's bearer
+  credential; closing that needs a protocol-level token exchange that old clients do not speak.
+- **Rotating the host E2EE identity** or a mobile pairing in place, and administering credentials
+  from a paired client (host-only by design).
 - **Pinned-port fail-closed.** A pinned `--port` still falls back to an OS-assigned port on
   conflict.
 - **Reconciling `webClientUrl` with reachability** under the loopback default.

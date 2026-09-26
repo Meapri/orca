@@ -10,6 +10,7 @@
  * the runtime factory, but only when an Electron serve sidecar or an operator-supplied
  * Chromium proves available at startup.
  */
+import { join } from 'node:path'
 import process from 'node:process'
 import { setAppEnvironment, type AppEnvironment } from '../../shared/app-environment'
 import { setSecretStore, type SecretStore } from '../../shared/secret-store'
@@ -90,6 +91,8 @@ export type OrcadOptions = {
   json?: boolean
   noPairing?: boolean
   pairingAddress?: string
+  /** Lifetime of the startup offer; see DEFAULT_PAIRING_OFFER_LIFETIME_MS. */
+  pairingExpiresInMs?: number
   /** Literal IP to bind. Defaults to loopback; see orcad-bind-address.ts. */
   bind?: string
 }
@@ -128,6 +131,8 @@ async function startOrcadRuntime(
   const { startOrcadDaemon, stopOrcadDaemon } = await import('./orcad-daemon-supervision')
   const { daemonOwnsFreshPersistentPtys } = await import('../daemon/daemon-init')
   const { collectOrcadHealth } = await import('./orcad-health')
+  const { SECURITY_LOG_FILENAME } = await import('../runtime/security-event-log')
+  const { DEFAULT_PAIRING_OFFER_LIFETIME_MS } = await import('../../shared/pairing-offer-lifetime')
   // Why importable here: the singleton's module tree never reaches Electron, and orcad supplies
   // its persistence and endpoint paths explicitly below.
   const { agentHookServer } = await import('../agent-hooks/server')
@@ -299,6 +304,7 @@ async function startOrcadRuntime(
     // once a device has connected, so a loopback deployment would silently go wide one
     // restart after its first client paired.
     pinnedBindHost: bindHost,
+    securityLogPath: join(getAppEnvironment().getPath('logs'), SECURITY_LOG_FILENAME),
     ...(options.port !== undefined ? { wsPort: options.port, preferPinnedWsPort: true } : {})
   })
   await rpc.start()
@@ -324,7 +330,10 @@ async function startOrcadRuntime(
     : rpc.createPairingOffer({
         address: options.pairingAddress,
         name: `CLI ${new Date().toLocaleDateString()}`,
-        scope: 'runtime'
+        scope: 'runtime',
+        // Why: this URL lands in a supervisor journal; an unclaimed one must not stay a live credential.
+        // `orca serve pairing new` mints a fresh one on demand, so a short window costs nothing.
+        offerLifetimeMs: options.pairingExpiresInMs ?? DEFAULT_PAIRING_OFFER_LIFETIME_MS
       })
 
   const readiness: ServeReadiness = {
@@ -342,7 +351,8 @@ async function startOrcadRuntime(
           deviceId: offer.deviceId,
           webClientUrl: offer.webClientUrl,
           scope: 'runtime',
-          qr: null
+          qr: null,
+          expiresAt: offer.offerExpiresAt
         }
       : offer,
     // Why in the readiness payload: this is the one message a supervisor and a deploy
