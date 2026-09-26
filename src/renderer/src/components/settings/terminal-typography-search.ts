@@ -97,6 +97,43 @@ const getTerminalTypographySearchEntryCatalog = createLocalizedCatalog(() => [
         'font features'
       )
     ]
+  },
+  {
+    title: translate(
+      'auto.components.settings.terminal.search.fontFallback.title',
+      'Fallback Fonts'
+    ),
+    description: translate(
+      'auto.components.settings.terminal.search.fontFallback.description',
+      'Fonts tried after the terminal font for characters it lacks, such as Korean, Chinese or Japanese.'
+    ),
+    keywords: [
+      ...translateSearchKeyword('auto.components.settings.terminal.search.f66a7cf715', 'terminal'),
+      ...translateSearchKeyword('auto.components.settings.terminal.search.b0bb76ae6b', 'font'),
+      ...translateSearchKeyword(
+        'auto.components.settings.terminal.search.fontFallback.fallback',
+        'fallback'
+      ),
+      ...translateSearchKeyword(
+        'auto.components.settings.terminal.search.fontFallback.cjk',
+        'cjk',
+        {
+          englishOnly: true
+        }
+      ),
+      ...translateSearchKeyword(
+        'auto.components.settings.terminal.search.fontFallback.korean',
+        'korean'
+      ),
+      ...translateSearchKeyword(
+        'auto.components.settings.terminal.search.fontFallback.chinese',
+        'chinese'
+      ),
+      ...translateSearchKeyword(
+        'auto.components.settings.terminal.search.fontFallback.japanese',
+        'japanese'
+      )
+    ]
   }
 ])
 
