@@ -12,6 +12,7 @@ import type { MobileSocketWiring } from '../rpc/mobile-socket-wiring'
 import { RelayRevokeOutbox } from '../relay/relay-revoke-outbox'
 import { PushUnregisterOutbox } from '../push/push-unregister-outbox'
 import { RuntimeBinaryMessageRouter } from '../runtime-binary-message-router'
+import { SecurityEventLog } from '../security-event-log'
 import type { RuntimeMetadataOwnershipWatch } from '../runtime-metadata-ownership-watch'
 import { RUNTIME_METADATA_OWNERSHIP_POLL_MS } from '../runtime-metadata-ownership-watch'
 import {
@@ -59,6 +60,7 @@ export class RuntimeRpcState {
   protected readonly relayRevokeOutbox: RelayRevokeOutbox
   protected readonly pushUnregisterOutbox: PushUnregisterOutbox
   protected deviceRegistry: DeviceRegistry | null = null
+  protected readonly securityEvents: SecurityEventLog | null
   protected e2eeKeypair: E2EEKeypair | null = null
   protected pairingInitializationFailure: PairingOfferUnavailable | null = null
   protected tlsFingerprint: string | null = null
@@ -103,6 +105,7 @@ export class RuntimeRpcState {
     exposeNetworkByDefault = false,
     pinnedBindHost,
     webClientRoot,
+    securityLogPath,
     keepaliveIntervalMs = KEEPALIVE_INTERVAL_MS,
     longPollCap = LONG_POLL_CAP,
     metadataOwnershipPollMs = RUNTIME_METADATA_OWNERSHIP_POLL_MS,
@@ -119,6 +122,7 @@ export class RuntimeRpcState {
     this.exposeNetworkByDefault = exposeNetworkByDefault
     this.pinnedBindHost = pinnedBindHost ?? null
     this.webClientRoot = webClientRoot
+    this.securityEvents = securityLogPath ? new SecurityEventLog(securityLogPath) : null
     this.keepaliveIntervalMs = keepaliveIntervalMs
     this.longPollCap = longPollCap
     this.metadataOwnershipPollMs = metadataOwnershipPollMs

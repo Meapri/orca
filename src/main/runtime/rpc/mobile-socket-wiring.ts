@@ -55,6 +55,8 @@ type MobileSocketWiringOptions = {
   onReady?: (socket: AuthenticatedMobileSocket) => void
   // Why: stale keys and missing registry entries both fail before RPC can explain the re-pair action.
   onUnpairedDeviceAuthFailure?: (metadata: MobileSocketTransportMetadata) => void
+  // Why: every refusal before authentication, with its fixed close reason, for the security log.
+  onAuthenticationFailure?: (metadata: MobileSocketTransportMetadata, reason: string) => void
 }
 
 function toAuthenticatedDevice(device: DeviceEntry): E2EEAuthenticatedDevice {
@@ -73,6 +75,7 @@ export class MobileSocketWiring {
   private readonly onClose: MobileSocketWiringOptions['onClose']
   private readonly onReady: MobileSocketWiringOptions['onReady']
   private readonly onUnpairedDeviceAuthFailure: MobileSocketWiringOptions['onUnpairedDeviceAuthFailure']
+  private readonly onAuthenticationFailure: MobileSocketWiringOptions['onAuthenticationFailure']
   private readonly channels = new Map<WebSocket, E2EEChannel>()
   private readonly connectionIds = new Map<WebSocket, string>()
   private readonly authenticatedSockets = new Map<WebSocket, AuthenticatedMobileSocket>()
@@ -87,6 +90,7 @@ export class MobileSocketWiring {
     this.onClose = options.onClose
     this.onReady = options.onReady
     this.onUnpairedDeviceAuthFailure = options.onUnpairedDeviceAuthFailure
+    this.onAuthenticationFailure = options.onAuthenticationFailure
   }
 
   attachTransport(
@@ -120,6 +124,16 @@ export class MobileSocketWiring {
 
   get connectionCount(): number {
     return this.connectionIds.size
+  }
+
+  countDeviceConnections(deviceToken: string): number {
+    let count = 0
+    for (const socket of this.authenticatedSockets.values()) {
+      if (socket.device.deviceToken === deviceToken) {
+        count += 1
+      }
+    }
+    return count
   }
 
   terminateDeviceConnections(deviceToken: string): number {
@@ -185,6 +199,7 @@ export class MobileSocketWiring {
         },
         onError: (code, reason) => {
           const reportUnpairedDevice = code === 4001 && reason === 'Unauthorized'
+          const failedBeforeAuthentication = !this.authenticatedSockets.has(ws)
           this.channels.get(ws)?.destroy()
           this.channels.delete(ws)
           ws.close(code, reason)
@@ -195,6 +210,9 @@ export class MobileSocketWiring {
               // Why: renderer teardown can make UI delivery throw; auth cleanup must remain authoritative.
               console.error('[mobile] Failed to report unpaired-device auth failure:', error)
             }
+          }
+          if (failedBeforeAuthentication) {
+            this.onAuthenticationFailure?.(metadata, reason)
           }
         }
       })

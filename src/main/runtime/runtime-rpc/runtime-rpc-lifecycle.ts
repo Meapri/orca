@@ -253,7 +253,9 @@ export class RuntimeRpcLifecycle extends RuntimeRpcWebSocketDispatch {
         if (metadata.transport === 'direct') {
           this.unpairedDeviceAuthThrottle?.recordFailure()
         }
-      }
+      },
+      onAuthenticationFailure: (metadata, reason) =>
+        this.securityEvents?.record({ event: 'auth.failed', transport: metadata.transport, reason })
     })
     this.mobileSocketWiring = mobileSocketWiring
     return mobileSocketWiring
