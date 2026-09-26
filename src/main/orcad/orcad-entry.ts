@@ -136,6 +136,7 @@ async function startOrcadRuntime(
     await import('../agent-hooks/hook-status-session-tabs-republish')
   const { AgentStatusObservedPaneIdentities, AgentStatusObservedPaneIdentityCapture } =
     await import('../runtime/agent-status-observed-pane-identity')
+  const { installOrcadHeadlessParity } = await import('./orcad-headless-parity')
 
   let rpc: InstanceType<typeof OrcaRuntimeRpcServer> | null = null
   let profileStoreForShutdown:
@@ -143,6 +144,7 @@ async function startOrcadRuntime(
     | undefined
   let uninstallHookStatusRepublish = (): void => {}
   let uninstallObservedStatusIdentity = (): void => {}
+  let uninstallHeadlessParity = (): void => {}
   registerCleanup(async () => {
     try {
       await rpc?.stop()
@@ -159,6 +161,7 @@ async function startOrcadRuntime(
           // orcad restart goes back to killing every running terminal.
           await stopOrcadDaemon()
         } finally {
+          uninstallHeadlessParity()
           uninstallObservedStatusIdentity()
           uninstallHookStatusRepublish()
           agentHookServer.stop()
@@ -285,6 +288,14 @@ async function startOrcadRuntime(
 
   await runtime.refreshRestoredOrchestrationAuthority()
   await runtime.reconcileLegacyWorkerTerminals()
+
+  // Why before the RPC server binds: until a graph is published `session.tabs.createTerminal`
+  // refuses with runtime_unavailable and `session.tabs.listAll` never answers (#17846).
+  uninstallHeadlessParity = installOrcadHeadlessParity({
+    runtime,
+    store: profileStore,
+    agentHookServer
+  })
 
   // Recovery binds terminal and dispatch identities; only now can startup observations be fenced.
   observedStatusCapture.attach(runtime)

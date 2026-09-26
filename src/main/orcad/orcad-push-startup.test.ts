@@ -72,6 +72,7 @@ vi.mock('../runtime/orca-runtime', () => ({
       return 'headless-runtime'
     }
     rehydrateClientHostedBrowserPages() {}
+    syncWindowGraph() {}
     async refreshRestoredOrchestrationAuthority() {}
     async reconcileLegacyWorkerTerminals() {}
     setMobilePushRegistrar(
