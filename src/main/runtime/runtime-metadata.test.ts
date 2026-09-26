@@ -1,6 +1,7 @@
 import { chmodSync, mkdtempSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import nacl from 'tweetnacl'
 import { afterEach, describe, expect, it } from 'vitest'
 import { getRuntimeMetadataPath } from '../../shared/runtime-bootstrap'
 import { encodePairingOffer } from '../../shared/pairing'
@@ -206,6 +207,10 @@ describe('runtime metadata', () => {
       const userDataPath = mkdtempSync(join(tmpdir(), 'orca-runtime-existing-secure-files-'))
       tempDirs.push(userDataPath)
       const keyMaterial = Buffer.from(new Uint8Array(32).fill(1)).toString('base64')
+      // Why: the loader now derives the advertised key from the secret, so the fixture must agree.
+      const derivedPublicKey = Buffer.from(
+        nacl.box.keyPair.fromSecretKey(new Uint8Array(32).fill(1)).publicKey
+      ).toString('base64')
       const pairingCode = encodePairingOffer({
         v: 2,
         endpoint: 'ws://127.0.0.1:6768',
@@ -234,7 +239,7 @@ describe('runtime metadata', () => {
       )
       writeFileSync(
         keypairPath,
-        JSON.stringify({ v: 1, publicKeyB64: keyMaterial, secretKeyB64: keyMaterial })
+        JSON.stringify({ v: 1, publicKeyB64: derivedPublicKey, secretKeyB64: keyMaterial })
       )
       for (const path of [devicesPath, keypairPath, environmentsPath]) {
         chmodSync(path, 0o644)
@@ -245,7 +250,7 @@ describe('runtime metadata', () => {
         token: 'token',
         scope: 'mobile'
       })
-      expect(loadOrCreateE2EEKeypair(userDataPath).publicKeyB64).toBe(keyMaterial)
+      expect(loadOrCreateE2EEKeypair(userDataPath).publicKeyB64).toBe(derivedPublicKey)
       expect(listEnvironments(userDataPath)[0]?.id).toBe(environment.id)
 
       for (const path of [devicesPath, keypairPath, environmentsPath]) {
