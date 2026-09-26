@@ -153,8 +153,9 @@ describe('ExternalChromiumBrowserProcess tab cap', () => {
     clock += 10
     await commands.browserTabCreate({ page: 'c', url: 'https://c.test' })
 
-    const listed = (await commands.browserTabList({})) as { tabs: { browserPageId: string }[] }
-    expect(listed.tabs.map((tab) => tab.browserPageId).sort()).toEqual(['a', 'c'])
+    await expect(commands.browserTabList({})).resolves.toMatchObject({
+      tabs: [{ browserPageId: 'a' }, { browserPageId: 'c' }]
+    })
     expect(provider.reclaimedTabCount()).toBe(1)
     await expect(commands.browserSnapshot({ page: 'b' })).rejects.toMatchObject({
       code: 'browser_no_tab'
