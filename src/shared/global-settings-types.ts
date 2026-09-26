@@ -108,6 +108,8 @@ export type GlobalSettings = {
   primarySelectionMiddleClickPasteDefaultedForTerminalDefaults?: boolean
   terminalFontSize: number
   terminalFontFamily: string
+  /** Comma-separated font stack tried after `terminalFontFamily` and before Orca's built-in fallbacks. */
+  terminalFontFallbackFamily?: string
   terminalFontWeight: number
   terminalFontWeightBold: number
   terminalLineHeight: number

@@ -61,6 +61,8 @@ export function buildDefaultSettings(args: {
       args.primarySelectionMiddleClickPaste,
     terminalFontSize: 14,
     terminalFontFamily: args.terminalFontFamily,
+    // Why empty: the built-in per-OS Latin/symbol/CJK chain applies unless the user adds a stack.
+    terminalFontFallbackFamily: '',
     terminalFontWeight: DEFAULT_TERMINAL_FONT_WEIGHT,
     terminalFontWeightBold: DEFAULT_TERMINAL_FONT_WEIGHT_BOLD,
     terminalLineHeight: 1,

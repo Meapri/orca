@@ -8752,6 +8752,10 @@
           "f5fa1a08f1": "Bold Font Weight",
           "0e0d1ee15a": "Adjust independently from Font Weight. Some fonts map several values to one face, so lower Font Weight or choose another font if bold looks unchanged."
         },
+        "TerminalFontFallbackSetting": {
+          "title": "Fallback Fonts",
+          "description": "Comma-separated fonts tried after Font Family for characters it lacks, such as Korean, Chinese, Japanese or symbols. Orca already falls back to your system’s CJK fonts."
+        },
         "TerminalFontSizeSetting": {
           "9b5252c85a": "px",
           "0f4c92e595": "Default terminal font size for new panes and live updates.",
@@ -10793,6 +10797,15 @@
               "statusline": "statusline",
               "dim": "dim",
               "colors": "colors"
+            },
+            "fontFallback": {
+              "title": "Fallback Fonts",
+              "description": "Fonts tried after the terminal font for characters it lacks, such as Korean, Chinese or Japanese.",
+              "fallback": "fallback",
+              "cjk": "cjk",
+              "korean": "korean",
+              "chinese": "chinese",
+              "japanese": "japanese"
             }
           },
           "windows": {
