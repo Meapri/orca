@@ -5,6 +5,7 @@ import { RpcDispatcher } from '../rpc/dispatcher'
 import { ALL_RPC_METHODS } from '../rpc/methods'
 import type { RpcTransport } from '../rpc/transport'
 import type { WebSocket } from 'ws'
+import type { WebSocketProbeRequestHandler } from '../rpc/ws-transport-http-server'
 import type { DeviceRegistry } from '../device-registry'
 import type { E2EEKeypair } from '../e2ee-keypair'
 import type { UnpairedDeviceAuthThrottle } from '../rpc/unpaired-device-auth-throttle'
@@ -38,6 +39,8 @@ export class RuntimeRpcState {
   protected readonly enableWebSocket: boolean
   protected readonly wsPort: number
   protected readonly preferPinnedWsPort: boolean
+  protected readonly requirePinnedWsPort: boolean
+  protected readonly httpProbeHandler: WebSocketProbeRequestHandler | undefined
   protected readonly exposeNetworkByDefault: boolean
   protected readonly pinnedBindHost: string | null
   protected readonly webClientRoot: string | undefined
@@ -100,6 +103,8 @@ export class RuntimeRpcState {
     enableWebSocket = false,
     wsPort = DEFAULT_WS_PORT,
     preferPinnedWsPort = false,
+    requirePinnedWsPort = false,
+    httpProbeHandler,
     exposeNetworkByDefault = false,
     pinnedBindHost,
     webClientRoot,
@@ -116,6 +121,8 @@ export class RuntimeRpcState {
     this.enableWebSocket = enableWebSocket
     this.wsPort = wsPort
     this.preferPinnedWsPort = preferPinnedWsPort
+    this.requirePinnedWsPort = requirePinnedWsPort
+    this.httpProbeHandler = httpProbeHandler
     this.exposeNetworkByDefault = exposeNetworkByDefault
     this.pinnedBindHost = pinnedBindHost ?? null
     this.webClientRoot = webClientRoot

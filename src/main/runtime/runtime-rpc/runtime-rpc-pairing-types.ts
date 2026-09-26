@@ -3,6 +3,7 @@ import type { RpcAnyMethodDeclaration } from '../rpc/core'
 import type { DeviceRegistry } from '../device-registry'
 import type { E2EEKeypair } from '../e2ee-keypair'
 import type { MobileSocketTransportMetadata } from '../rpc/mobile-socket-wiring'
+import type { WebSocketProbeRequestHandler } from '../rpc/ws-transport-http-server'
 import type { PairingRelay } from '../../../shared/mobile-relay-pairing-offer'
 import type { MobilePairingConnectionMode } from '../../../shared/mobile-pairing-connection-mode'
 import type { MobileRelayMintFailure } from '../../../shared/mobile-relay-mint-failure'
@@ -36,6 +37,10 @@ export type OrcaRuntimeRpcServerOptions = {
   wsPort?: number
   // Why: true when the caller pinned a port (`orca serve --port`) so bind order prefers it over a stale STA-1511 fallback (#8535).
   preferPinnedWsPort?: boolean
+  // Why: orcad `--port` fails closed — start() rejects rather than serving on another port or socket-only.
+  requirePinnedWsPort?: boolean
+  // Why: unauthenticated supervisor probes (orcad /healthz, /readyz) share the WS listener.
+  httpProbeHandler?: WebSocketProbeRequestHandler
   // Why: STA-2370 — bind the WS listener to all interfaces at startup instead of loopback-until-paired.
   // Only `orca serve` (explicit remote opt-in) and E2E set this; the desktop app widens lazily on pairing.
   exposeNetworkByDefault?: boolean
