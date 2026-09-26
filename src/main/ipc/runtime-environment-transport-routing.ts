@@ -31,6 +31,7 @@ import {
   shouldRouteSubscriptionBySupport,
   subscribeSupportRoutedRuntimeEnvironment
 } from './runtime-environment-support-routing'
+import { failOverRuntimeEnvironmentEndpoint } from './runtime-environment-endpoint-failover'
 
 const DEFAULT_REMOTE_RUNTIME_TIMEOUT_MS = 15_000
 
@@ -57,8 +58,17 @@ export async function getRuntimeEnvironmentStatus(
     timeoutMs,
     ...options
   })
+  const endpoint = getPreferredPairingOffer(environment).endpoint
+  if (!response.ok) {
+    failOverRuntimeEnvironmentEndpoint(
+      userDataPath,
+      environment.id,
+      endpoint,
+      response.error.message
+    )
+  }
   return attachRemoteControlDiagnostics(
-    withTailscaleHintForResponse(response, getPreferredPairingOffer(environment).endpoint),
+    withTailscaleHintForResponse(response, endpoint),
     environment.id
   )
 }
@@ -163,6 +173,7 @@ export async function callRuntimeEnvironment(
     )
   } catch (error) {
     if (error instanceof Error && error.name !== 'AbortError') {
+      failOverRuntimeEnvironmentEndpoint(userDataPath, environment.id, endpoint, error.message)
       error.message = withRemoteRuntimeTailscaleHint(error.message, endpoint)
     }
     throw error

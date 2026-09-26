@@ -130,6 +130,8 @@ export class RuntimeRpcPairing extends RuntimeRpcNetworkExposure {
     // Why: STA-2370 — recorded on the grant so a "This computer only" client reconnecting cannot make the
     // next launch bind every interface. Defaults to network reach, which is what every other caller means.
     reach?: RuntimePairingReach
+    // Why: other places this listener is reachable, tried in order by clients that know the field.
+    alternateEndpoints?: readonly string[]
   }):
     | PairingOfferUnavailable
     | {
@@ -180,7 +182,8 @@ export class RuntimeRpcPairing extends RuntimeRpcNetworkExposure {
       deviceToken: device.token,
       publicKeyB64,
       pairedDeviceId: device.deviceId,
-      scope
+      scope,
+      ...pairingAlternateEndpointsField(endpoint, args.alternateEndpoints)
     })
     return {
       available: true,
@@ -235,4 +238,12 @@ export class RuntimeRpcPairing extends RuntimeRpcNetworkExposure {
     }
     return true
   }
+}
+
+function pairingAlternateEndpointsField(
+  endpoint: string,
+  alternates: readonly string[] | undefined
+): { alternateEndpoints?: string[] } {
+  const distinct = [...new Set(alternates ?? [])].filter((candidate) => candidate !== endpoint)
+  return distinct.length > 0 ? { alternateEndpoints: distinct } : {}
 }

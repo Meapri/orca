@@ -90,6 +90,8 @@ export type OrcadOptions = {
   json?: boolean
   noPairing?: boolean
   pairingAddress?: string
+  /** Every --pairing-address in order; the first equals pairingAddress. */
+  pairingAddresses?: string[]
   /** Literal IP to bind. Defaults to loopback; see orcad-bind-address.ts. */
   bind?: string
 }
@@ -122,7 +124,9 @@ async function startOrcadRuntime(
   const { registerHeadlessPtyRuntime, getLocalPtyProvider, getSshPtyProvider } =
     await import('../ipc/pty')
   const { getAppEnvironment } = await import('../../shared/app-environment')
-  const { resolveAdvertisedPairingEndpoint } = await import('../runtime/pairing-endpoint')
+  const { collectPairingEndpointCandidates } =
+    await import('../runtime/pairing-endpoint-candidates')
+  const { getPairingNetworkInterfaces } = await import('../runtime/pairing-network-interfaces')
   const { ServeReadinessPublisher } = await import('../server/serve-readiness')
   const { createOrcadProfileStateStartup } = await import('./orcad-profile-state-startup')
   const { startOrcadDaemon, stopOrcadDaemon } = await import('./orcad-daemon-supervision')
@@ -312,9 +316,16 @@ async function startOrcadRuntime(
   console.error(`[orcad] ${describeOrcadBindExposure(bindHost)}`)
 
   const boundEndpoint = rpc.getWebSocketEndpoint()
-  const advertised = boundEndpoint
-    ? resolveAdvertisedPairingEndpoint(boundEndpoint, options.pairingAddress)
+  const endpointCandidates = boundEndpoint
+    ? collectPairingEndpointCandidates({
+        boundEndpoint,
+        bindHost,
+        configuredAddresses:
+          options.pairingAddresses ?? (options.pairingAddress ? [options.pairingAddress] : []),
+        interfaces: await getPairingNetworkInterfaces()
+      })
     : null
+  const advertised = endpointCandidates?.primary ?? null
   const offer = options.noPairing
     ? ({
         available: false,
@@ -324,7 +335,8 @@ async function startOrcadRuntime(
     : rpc.createPairingOffer({
         address: options.pairingAddress,
         name: `CLI ${new Date().toLocaleDateString()}`,
-        scope: 'runtime'
+        scope: 'runtime',
+        alternateEndpoints: endpointCandidates?.alternates
       })
 
   const readiness: ServeReadiness = {

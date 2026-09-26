@@ -80,16 +80,18 @@ export function createEnvironmentFromPairingOffer(args: {
     runtimeId: args.runtimeId ?? null,
     ...(args.source ? { source: args.source } : {}),
     ...(args.connectionDependency ? { connectionDependency: args.connectionDependency } : {}),
-    endpoints: [
-      {
-        id: endpointId,
+    // Why: alternates share the offer's credential and key; the primary stays preferred until a
+    // connect to it fails. Older builds reading this store simply use the preferred entry.
+    endpoints: [args.offer.endpoint, ...(args.offer.alternateEndpoints ?? [])]
+      .filter((endpoint, index, all) => all.indexOf(endpoint) === index)
+      .map((endpoint, index) => ({
+        id: index === 0 ? endpointId : `${endpointId}-alt-${index}`,
         kind: 'websocket',
-        label: 'WebSocket',
-        endpoint: args.offer.endpoint,
+        label: index === 0 ? 'WebSocket' : `WebSocket (alternate ${index})`,
+        endpoint,
         deviceToken: args.offer.deviceToken,
         publicKeyB64: args.offer.publicKeyB64
-      }
-    ],
+      })),
     preferredEndpointId: endpointId
   })
 }
