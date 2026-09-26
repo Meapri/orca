@@ -135,6 +135,7 @@ export function createOrcadHealthSurface(options: {
       }
     },
     watchdog,
+    boundEndpoint: () => host?.rpc.getWebSocketEndpoint() ?? null,
     underSystemdService: Boolean(process.env.INVOCATION_ID)
   })
   const notifier = options.systemdNotify

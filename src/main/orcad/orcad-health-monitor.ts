@@ -13,33 +13,21 @@ import {
   hasCriticalDegradation,
   type OrcadDegradation
 } from './orcad-degradations'
-import type { OrcadRuntimeWatchdog, OrcadWatchdogSnapshot } from './orcad-runtime-watchdog'
+import type { OrcadRuntimeWatchdog } from './orcad-runtime-watchdog'
+import type {
+  OrcadReadinessState,
+  OrcadServerHealth,
+  OrcadServerStats,
+  OrcadWatchdogSnapshot
+} from '../../shared/orcad-server-health-contract'
+
+export type {
+  OrcadReadinessState,
+  OrcadServerHealth,
+  OrcadServerStats
+} from '../../shared/orcad-server-health-contract'
 
 const DAEMON_HEALTH_REFRESH_MS = 60_000
-
-export type OrcadServerStats = {
-  startedAt: string
-  uptimeSeconds: number
-  memory: { rssBytes: number; heapUsedBytes: number; heapTotalBytes: number }
-  cpu: { userMs: number; systemMs: number }
-  /** Open authenticated WebSocket connections (direct and relay). */
-  connectedClients: number | null
-  /** Paired devices that have connected at least once. */
-  pairedDevices: number | null
-  /** Live local terminals; null when the listing could not be verified, never guessed as 0. */
-  localTerminals: number | null
-}
-
-export type OrcadReadinessState = 'starting' | 'ready' | 'not_ready'
-
-export type OrcadServerHealth = {
-  state: OrcadReadinessState
-  live: boolean
-  /** When the daemon self-test in `health` last ran. */
-  checkedAt: string
-  health: OrcadHealth
-  stats: OrcadServerStats
-}
 
 export type OrcadHealthMonitorDeps = {
   collectBase: () => Promise<OrcadHealth>
@@ -48,6 +36,7 @@ export type OrcadHealthMonitorDeps = {
     Omit<OrcadServerStats, 'startedAt' | 'uptimeSeconds' | 'memory' | 'cpu'>
   >
   watchdog: Pick<OrcadRuntimeWatchdog, 'snapshot'> | null
+  boundEndpoint?: () => string | null
   platform?: NodeJS.Platform
   underSystemdService?: boolean
   refreshIntervalMs?: number
@@ -132,6 +121,7 @@ export class OrcadHealthMonitor {
     return {
       state: this.readiness().state,
       live: this.liveness().live,
+      boundEndpoint: this.deps.boundEndpoint?.() ?? null,
       checkedAt: new Date(this.checkedAt).toISOString(),
       health: this.withDegradations(base, watchdog),
       stats: {

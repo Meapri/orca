@@ -7,21 +7,16 @@
  */
 import type { RuntimeDegradation } from '../../shared/runtime-types'
 import type { TerminalDaemonHealth } from './orcad-health'
-import type { OrcadWatchdogSnapshot } from './orcad-runtime-watchdog'
+import type {
+  OrcadDegradation,
+  OrcadWatchdogSnapshot
+} from '../../shared/orcad-server-health-contract'
 
-export type OrcadDegradationSeverity = 'critical' | 'warning'
-
-export type OrcadDegradationComponent = 'terminal-daemon' | 'runtime' | 'terminal' | 'browser'
-
-export type OrcadDegradation = {
-  /** Open vocabulary: new codes ship without a schema bump, so render `message`. */
-  code: string
-  severity: OrcadDegradationSeverity
-  component: OrcadDegradationComponent
-  message: string
-  /** The underlying reason word when one exists (daemon verdict, runtime reason). */
-  reason?: string
-}
+export type {
+  OrcadDegradation,
+  OrcadDegradationComponent,
+  OrcadDegradationSeverity
+} from '../../shared/orcad-server-health-contract'
 
 export type OrcadDegradationInputs = {
   terminalDaemon: TerminalDaemonHealth

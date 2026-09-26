@@ -289,6 +289,34 @@ export function acquireOrcadInstanceLock(
   return makeLock(lockPath, record)
 }
 
+export type OrcadInstanceLockInspection =
+  | { state: 'free' }
+  | { state: 'held'; record: OrcadLockRecord }
+  | { state: 'stale'; record: OrcadLockRecord | null }
+  | { state: 'foreign'; record: OrcadLockRecord }
+
+/** Read-only: what the next `acquireOrcadInstanceLock` would find, without taking or reclaiming. */
+export function inspectOrcadInstanceLock(
+  dataRoot: string,
+  hooks: OrcadInstanceLockHooks = {}
+): OrcadInstanceLockInspection {
+  const content = safeRead(join(dataRoot, ORCAD_LOCK_FILE_NAME))
+  if (content === null) {
+    return { state: 'free' }
+  }
+  const record = parseLockRecord(content)
+  if (!record) {
+    return { state: 'stale', record: null }
+  }
+  if (record.identity !== (hooks.identity ?? defaultIdentity)()) {
+    return { state: 'foreign', record }
+  }
+  const alive =
+    (hooks.processIsAlive ?? defaultProcessIsAlive)(record.pid) &&
+    (hooks.startTimeMatches ?? startTimeMatches)(record.pid, record.startedAtMs)
+  return alive ? { state: 'held', record } : { state: 'stale', record }
+}
+
 function safeRead(path: string): string | null {
   try {
     return readFileSync(path, 'utf8')

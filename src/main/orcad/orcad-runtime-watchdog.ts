@@ -10,25 +10,17 @@
  *   fs call while the event loop itself looks idle.
  */
 
-export type OrcadWatchdogProbeState = 'pending' | 'ok' | 'failing'
+import type {
+  OrcadWatchdogProbeSnapshot,
+  OrcadWatchdogSnapshot
+} from '../../shared/orcad-server-health-contract'
 
-export type OrcadWatchdogProbeSnapshot = {
-  state: OrcadWatchdogProbeState
-  consecutiveFailures: number
-  lastOkAt: number | null
-  lastDurationMs: number | null
-  lastError: string | null
-}
-
-/** `wedged` means a probe failed repeatedly: liveness fails and systemd pings stop. */
-export type OrcadWatchdogVerdict = 'responsive' | 'lagging' | 'wedged'
-
-export type OrcadWatchdogSnapshot = {
-  verdict: OrcadWatchdogVerdict
-  eventLoop: { lagMs: number; maxLagMs: number; windowMs: number; warnMs: number }
-  runtimeProbe: OrcadWatchdogProbeSnapshot
-  threadpoolProbe: OrcadWatchdogProbeSnapshot
-}
+export type {
+  OrcadWatchdogProbeSnapshot,
+  OrcadWatchdogProbeState,
+  OrcadWatchdogSnapshot,
+  OrcadWatchdogVerdict
+} from '../../shared/orcad-server-health-contract'
 
 export type OrcadWatchdogOptions = {
   probeRuntime: () => Promise<void>

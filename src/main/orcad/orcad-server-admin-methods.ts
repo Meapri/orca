@@ -9,9 +9,13 @@ import { z } from 'zod'
 import { defineMethod } from '../runtime/rpc/core'
 import type { ServePairingReadiness } from '../server/serve-readiness'
 import type { OrcadServerHealth } from './orcad-health-monitor'
+import {
+  ORCAD_SERVER_HEALTH_METHOD,
+  ORCAD_SERVER_PAIRING_OFFER_METHOD
+} from '../../shared/orcad-server-health-contract'
 
-export const SERVER_HEALTH_METHOD = 'server.health'
-export const SERVER_PAIRING_OFFER_METHOD = 'server.pairingOffer'
+export const SERVER_HEALTH_METHOD = ORCAD_SERVER_HEALTH_METHOD
+export const SERVER_PAIRING_OFFER_METHOD = ORCAD_SERVER_PAIRING_OFFER_METHOD
 
 const ServerHealthParams = z.object({
   fresh: z.boolean().optional(),

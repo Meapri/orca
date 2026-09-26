@@ -7,6 +7,7 @@ import {
   buildLegacyScopeMigrationCommand,
   buildDurableDaemonScopeCommand,
   daemonScopeUnitName,
+  describeDurableDaemonScopeSupport,
   detectOwnCgroupScopeUnit,
   isDurableDaemonScopeSupported,
   migrateLegacyDaemonScope,
@@ -67,6 +68,31 @@ afterEach(() => {
   for (const dir of fakeSystemdBootDirs.splice(0)) {
     rmSync(dir, { recursive: true, force: true })
   }
+})
+
+describe('describeDurableDaemonScopeSupport', () => {
+  const working = () => ({ code: 0, timedOut: false })
+
+  it('names the first missing prerequisite so doctor can print its fix', () => {
+    const bootPath = fakeSystemdBootPath()
+    expect(describeDurableDaemonScopeSupport({}, 'darwin')).toBe('not_linux')
+    expect(
+      describeDurableDaemonScopeSupport({}, 'linux', null, '/definitely/not/systemd-boot', working)
+    ).toBe('no_systemd')
+    expect(
+      describeDurableDaemonScopeSupport({}, 'linux', fakeRuntimeDirWithoutBus(), bootPath, working)
+    ).toBe('no_user_bus')
+    const perUidDir = fakeRuntimeDirWithBus()
+    expect(
+      describeDurableDaemonScopeSupport({}, 'linux', perUidDir, bootPath, () => ({
+        code: 1,
+        timedOut: false
+      }))
+    ).toBe('systemd_run_unavailable')
+    expect(describeDurableDaemonScopeSupport({}, 'linux', perUidDir, bootPath, working)).toBe(
+      'supported'
+    )
+  })
 })
 
 describe('isDurableDaemonScopeSupported', () => {
