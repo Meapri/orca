@@ -106,7 +106,7 @@ export function openTerminal(
     () => pane.webglAddon != null
   )
 
-  // Store so disposePane() can remove it and avoid a memory leak.
+  // Store so disposePane() can remove its listeners and avoid a memory leak.
   pane.compositionHandler = installTerminalImeCandidateAnchor(terminal)
 
   pane.focusClassSyncCleanup = attachDomRendererFocusClassSync(terminal.element)
@@ -224,11 +224,8 @@ export function disposePane(
     /* ignore */
   }
   pane.arabicShapingJoinerCleanup = null
-  if (pane.compositionHandler) {
-    pane.terminal.element?.removeEventListener('compositionstart', pane.compositionHandler)
-    pane.terminal.element?.removeEventListener('compositionupdate', pane.compositionHandler)
-    pane.compositionHandler = null
-  }
+  pane.compositionHandler?.()
+  pane.compositionHandler = null
   try {
     clearPendingSplitScrollRestore(pane)
   } catch {

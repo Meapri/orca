@@ -21,13 +21,36 @@ cursor row only in what the DOM or WebGL renderer draws: underlined, over the
 cursor cell's background, the committed tail pushed right, end-aligned at the
 right edge, the cursor at the IME caret. It never reaches the buffer, selection,
 serialize output, or the pty, and commit bytes and `xterm-composition-*` events
-are unchanged. The composer placeholder mask and Cursor Agent anchor feed it
+are unchanged. The composer placeholder mask and the app-caret anchor feed it
 through `terminal-ime-grid-preedit.ts` instead of styling the overlay.
 
 `terminal-ime-xterm-grid-preedit.test.ts` covers the model; the e2e
 `terminal-ime-grid-preedit.spec.ts` reads the renderer's frame. The overlay
 sections below describe the fallback path (setting off), which the overlay
 geometry specs pin explicitly.
+
+### Where the preedit goes in agent TUIs
+
+Rules come from the captured `src/main/runtime/__fixtures__/*-ime-*.txt`
+transcripts, never from agent names. When the cursor is shown (Claude Code,
+Codex, Grok) it is the input position. When an app hides it (cursor-agent parks
+it at column 0 below its box), the input position is the app's own caret: a
+lone inverse-video cell (`resolveAppDrawnImeCaret`); a run of inverse cells is a
+highlight. Within one composition the last caret found is kept through a
+repaint that briefly paints none, and xterm keeps the preedit on the last shown
+cursor while a frame hides the cursor mid-repaint.
+
+### Commit held until echo
+
+A TUI repaints 15–110 ms after the IME commits, so xterm keeps each commit drawn
+(plain, not underlined, cursor after it) at the input position and lays the next
+preedit after it. Each hold ends when the input position advances past it, and
+all end when it moves anywhere else, on a key the app handles itself
+(Backspace, arrows, Enter), on blur, or after 250 ms (an app that never echoes,
+such as a password prompt). The held text is exactly what was sent; nothing
+extra reaches the pty. `terminal-ime-xterm-grid-preedit-echo.test.ts` and the
+cursor-agent replay in `terminal-ime-candidate-anchor-grid-preedit.test.ts`
+cover it.
 
 ## Preedit cell advances (#19315)
 
