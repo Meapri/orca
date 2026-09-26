@@ -4,14 +4,14 @@ import { Terminal as HeadlessTerminal } from '@xterm/headless'
 import { AGENT_TASK_COMPLETE_NOTIFICATION_GRACE_MS } from '../agent-task-complete-policy'
 import { getTerminalPaneProgress } from './terminal-progress-store'
 
-type StoreShape = {
+type MockAppStoreState = {
   activeWorktreeId: string | null
   activeTabId: string | null
   terminalLayoutsByTabId: Record<string, { activeLeafId: string }>
   settings: { experimentalTerminalAttention: boolean }
 }
 
-const storeState = vi.hoisted((): { current: StoreShape } => ({
+const storeState = vi.hoisted((): { current: MockAppStoreState } => ({
   current: {
     activeWorktreeId: 'wt-other',
     activeTabId: null,

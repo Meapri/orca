@@ -9,8 +9,11 @@ type CursorMotionRun = {
   idleRenders: number
 }
 
-type ProbeWindow = Window & {
-  __cursorMotionProbe?: (kind: 'typed' | 'untyped' | 'jump') => Promise<CursorMotionRun>
+declare global {
+  // oxlint-disable-next-line typescript-eslint/consistent-type-definitions -- declaration merging requires interface
+  interface Window {
+    __cursorMotionProbe?: (kind: 'typed' | 'untyped' | 'jump') => Promise<CursorMotionRun>
+  }
 }
 
 async function installProbe(page: Page): Promise<void> {
@@ -22,7 +25,7 @@ async function installProbe(page: Page): Promise<void> {
     }
     const nextFrame = (): Promise<void> =>
       new Promise((resolve) => requestAnimationFrame(() => resolve()))
-    ;(window as ProbeWindow).__cursorMotionProbe = async (kind) => {
+    window.__cursorMotionProbe = async (kind) => {
       const state = window.__store!.getState()
       const tabId =
         state.activeTabType === 'terminal'
@@ -95,7 +98,7 @@ async function forceWebglWithCursorAnimation(page: Page): Promise<void> {
 }
 
 function runProbe(page: Page, kind: 'typed' | 'untyped' | 'jump'): Promise<CursorMotionRun> {
-  return page.evaluate((probeKind) => (window as ProbeWindow).__cursorMotionProbe!(probeKind), kind)
+  return page.evaluate((probeKind) => window.__cursorMotionProbe!(probeKind), kind)
 }
 
 test.describe('terminal cursor animation', () => {

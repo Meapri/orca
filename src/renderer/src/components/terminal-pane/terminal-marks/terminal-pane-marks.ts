@@ -65,9 +65,9 @@ type InstallOptions = {
   decorationsEnabled: () => boolean
 }
 
-const marksByTerminal = new WeakMap<object, TerminalPaneMarks>()
+const marksByTerminal = new WeakMap<TerminalMarksHost, TerminalPaneMarks>()
 
-export function getTerminalPaneMarks(terminal: object): TerminalPaneMarks | null {
+export function getTerminalPaneMarks(terminal: TerminalMarksHost): TerminalPaneMarks | null {
   return marksByTerminal.get(terminal) ?? null
 }
 

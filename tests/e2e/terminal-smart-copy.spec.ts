@@ -15,11 +15,16 @@ import { ensureTerminalVisible, waitForActiveWorktree, waitForSessionReady } fro
 const FIXTURE_PATH = path.join(process.cwd(), 'tests/e2e/fixtures/terminal-smart-copy-fixture.cjs')
 const COPY_CHORD = process.platform === 'darwin' ? 'Meta+c' : 'Control+Shift+c'
 
+declare global {
+  // Main-process capture of terminal clipboard writes for this spec.
+  var __smartCopyWrites: string[] | undefined
+}
+
 // Substitute only the terminal clipboard write; never overwrite the user's system clipboard.
 async function captureTerminalClipboard(electronApp: ElectronApplication): Promise<void> {
   await electronApp.evaluate(({ ipcMain }) => {
     const writes: string[] = []
-    Reflect.set(globalThis, '__smartCopyWrites', writes)
+    globalThis.__smartCopyWrites = writes
     ipcMain.removeHandler('clipboard:writeTerminalText')
     ipcMain.handle('clipboard:writeTerminalText', (_event, text: string) => {
       writes.push(text)
@@ -28,10 +33,7 @@ async function captureTerminalClipboard(electronApp: ElectronApplication): Promi
 }
 
 function readTerminalClipboardWrites(electronApp: ElectronApplication): Promise<string[]> {
-  return electronApp.evaluate(() => {
-    const writes: unknown = Reflect.get(globalThis, '__smartCopyWrites')
-    return Array.isArray(writes) ? writes.filter((text) => typeof text === 'string') : []
-  })
+  return electronApp.evaluate(() => globalThis.__smartCopyWrites ?? [])
 }
 
 /** Selects whole buffer rows from the row containing `firstText` through the row containing `lastText`. */

@@ -34,7 +34,7 @@ function isGridPreeditCompositionHelper(value: unknown): value is GridPreeditCom
 }
 
 function gridPreeditCompositionHelper(terminal: Terminal): GridPreeditCompositionHelper | null {
-  const core: unknown = Reflect.get(terminal, '_core')
+  const core: unknown = '_core' in terminal ? terminal._core : undefined
   const helper: unknown = isRecord(core) ? core._compositionHelper : undefined
   if (!isGridPreeditCompositionHelper(helper)) {
     return null

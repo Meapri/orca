@@ -21,24 +21,76 @@ function openTerminal(): { emitted: string[]; terminal: Terminal } {
   return { emitted, terminal }
 }
 
-function readService(owner: unknown, name: string): Record<string, unknown> {
-  const service: unknown = Reflect.get(Object(owner), name)
-  if (typeof service !== 'object' || service === null) {
-    throw new Error(`xterm internal ${name} is unavailable`)
+type MouseReportEvent = {
+  col: number
+  row: number
+  x: number
+  y: number
+  button: number
+  action: number
+  ctrl: boolean
+  alt: boolean
+  shift: boolean
+}
+
+type MouseCoordsElement = {
+  getBoundingClientRect: () => { left: number; top: number }
+  ownerDocument: {
+    defaultView: { getComputedStyle: () => { getPropertyValue: () => string } }
   }
-  return Object(service)
+}
+
+/** The private xterm core services these tests drive directly. */
+type XtermMouseCore = {
+  _mouseService: { _triggerMouseEvent: (event: MouseReportEvent) => boolean }
+  _charSizeService: Record<string, unknown>
+  _mouseCoordsService: {
+    getMouseReportCoords: (
+      event: { clientX: number; clientY: number },
+      element: MouseCoordsElement
+    ) => unknown
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function isXtermMouseCore(value: unknown): value is XtermMouseCore {
+  if (!isRecord(value)) {
+    return false
+  }
+  const { _mouseService: mouse, _charSizeService: charSize, _mouseCoordsService: coords } = value
+  return (
+    isRecord(mouse) &&
+    typeof mouse._triggerMouseEvent === 'function' &&
+    isRecord(charSize) &&
+    isRecord(coords) &&
+    typeof coords.getMouseReportCoords === 'function'
+  )
+}
+
+function readMouseCore(terminal: Terminal): XtermMouseCore {
+  const core: unknown = '_core' in terminal ? terminal._core : undefined
+  if (!isXtermMouseCore(core)) {
+    throw new Error('xterm mouse internals are unavailable')
+  }
+  return core
 }
 
 function triggerMouseReport(terminal: Terminal, col: number, row: number): boolean {
-  const mouseService = readService(Reflect.get(terminal, '_core'), '_mouseService')
-  const trigger: unknown = Reflect.get(mouseService, '_triggerMouseEvent')
-  if (typeof trigger !== 'function') {
-    throw new Error('xterm _triggerMouseEvent is unavailable')
-  }
   return Boolean(
-    Reflect.apply(trigger, mouseService, [
-      { col, row, x: 0, y: 0, button: 4, action: 1, ctrl: false, alt: false, shift: false }
-    ])
+    readMouseCore(terminal)._mouseService._triggerMouseEvent({
+      col,
+      row,
+      x: 0,
+      y: 0,
+      button: 4,
+      action: 1,
+      ctrl: false,
+      alt: false,
+      shift: false
+    })
   )
 }
 
@@ -82,16 +134,13 @@ describe('xterm mouse report coordinates', () => {
 
   it('yields no report coordinates for an element without computed padding', () => {
     const { terminal } = openTerminal()
-    const core = Reflect.get(terminal, '_core')
-    const charSize = readService(core, '_charSizeService')
+    const core = readMouseCore(terminal)
     // Why: happy-dom cannot measure glyphs; give the service a valid cell size.
-    Object.defineProperty(charSize, 'hasValidSize', { configurable: true, value: true })
-    const coordsService = readService(core, '_mouseCoordsService')
-    const getCoords: unknown = Reflect.get(coordsService, 'getMouseReportCoords')
-    if (typeof getCoords !== 'function') {
-      throw new Error('xterm getMouseReportCoords is unavailable')
-    }
-    const detachedLike = {
+    Object.defineProperty(core._charSizeService, 'hasValidSize', {
+      configurable: true,
+      value: true
+    })
+    const detachedLike: MouseCoordsElement = {
       getBoundingClientRect: () => ({ left: 0, top: 0 }),
       ownerDocument: {
         defaultView: { getComputedStyle: () => ({ getPropertyValue: () => '' }) }
@@ -99,7 +148,7 @@ describe('xterm mouse report coordinates', () => {
     }
 
     expect(
-      Reflect.apply(getCoords, coordsService, [{ clientX: 10, clientY: 10 }, detachedLike])
+      core._mouseCoordsService.getMouseReportCoords({ clientX: 10, clientY: 10 }, detachedLike)
     ).toBeUndefined()
   })
 })

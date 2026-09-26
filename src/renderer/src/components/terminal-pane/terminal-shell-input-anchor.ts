@@ -23,9 +23,9 @@ type AnchorState = {
   anchor: { marker: AnchorMarker; x: number; exact: boolean } | null
 }
 
-const anchorStates = new WeakMap<object, AnchorState>()
+const anchorStates = new WeakMap<ShellInputAnchorTerminal, AnchorState>()
 
-function stateFor(terminal: object): AnchorState {
+function stateFor(terminal: ShellInputAnchorTerminal): AnchorState {
   let state = anchorStates.get(terminal)
   if (!state) {
     state = { phase: 'unknown', anchor: null }
@@ -100,7 +100,7 @@ export function observeTerminalUserInputPosition(terminal: ShellInputAnchorTermi
   }
 }
 
-export function getTerminalShellInputAnchor(terminal: object): {
+export function getTerminalShellInputAnchor(terminal: ShellInputAnchorTerminal): {
   phase: TerminalShellPromptPhase
   inputStart: { x: number; y: number } | null
 } {

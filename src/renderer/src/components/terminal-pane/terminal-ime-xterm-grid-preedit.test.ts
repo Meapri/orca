@@ -134,7 +134,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /** happy-dom lays nothing out, so give xterm's measured cell a width to position against. */
 function setCellWidth(terminal: Terminal, width: number): void {
-  const core: unknown = Reflect.get(terminal, '_core')
+  const core: unknown = '_core' in terminal ? terminal._core : undefined
   const renderService = isRecord(core) ? core._renderService : undefined
   const dimensions = isRecord(renderService) ? renderService.dimensions : undefined
   const css = isRecord(dimensions) ? dimensions.css : undefined

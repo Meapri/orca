@@ -21,9 +21,9 @@ type TerminalScrollIntentAnchor = {
 // Why: a pin stores an absolute buffer line, but trimming a full scrollback
 // renumbers every line. An xterm marker follows its line through trims (and
 // reflow), so a later restore lands on the content the user was reading.
-const anchorByTerminal = new WeakMap<object, TerminalScrollIntentAnchor>()
+const anchorByTerminal = new WeakMap<TerminalScrollIntentAnchorTarget, TerminalScrollIntentAnchor>()
 
-function releaseTerminalScrollIntentAnchor(terminal: object): void {
+function releaseTerminalScrollIntentAnchor(terminal: TerminalScrollIntentAnchorTarget): void {
   anchorByTerminal.get(terminal)?.marker.dispose()
   anchorByTerminal.delete(terminal)
 }
@@ -60,7 +60,10 @@ export function anchorPinnedScrollIntent(
 }
 
 /** The pinned line's current buffer index, following any trims since the pin was recorded. */
-export function resolvePinnedViewportY(terminal: object, intent: TerminalScrollIntent): number {
+export function resolvePinnedViewportY(
+  terminal: TerminalScrollIntentAnchorTarget,
+  intent: TerminalScrollIntent
+): number {
   const anchor = anchorByTerminal.get(terminal)
   if (
     !anchor ||
