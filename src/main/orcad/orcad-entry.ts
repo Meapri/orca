@@ -19,8 +19,10 @@ import { describeOrcadBindExposure, resolveOrcadBindHost } from './orcad-bind-ad
 import {
   flushOrcadProfileStoreForShutdown,
   installOrcadShutdownSignals,
+  isOrcadBundledLauncherChild,
   startOrcadWithHost
 } from './orcad-lifecycle'
+import { takeSystemdNotifyEnvironment, type SystemdNotifyEnvironment } from './orcad-systemd-notify'
 import { parseArgs } from './orcad-command-arguments'
 import {
   changedAiVaultSearchSettings,
@@ -106,16 +108,22 @@ export type OrcadHandle = {
  */
 export async function startOrcad(options: OrcadOptions = {}): Promise<OrcadHandle> {
   installOrcadHostAdapters()
+  // Why first: the browser sidecar, the daemon and every PTY inherit this env and must not see the notify socket.
+  const systemdNotify = takeSystemdNotifyEnvironment(process.env, process.platform, [
+    process.pid,
+    ...(isOrcadBundledLauncherChild() ? [process.ppid] : [])
+  ])
   return startOrcadWithHost(
     resolveUserDataPath(),
-    (registerCleanup) => startOrcadRuntime(options, registerCleanup),
+    (registerCleanup) => startOrcadRuntime(options, registerCleanup, systemdNotify),
     () => runOrcadQuitHandlers()
   )
 }
 
 async function startOrcadRuntime(
   options: OrcadOptions,
-  registerCleanup: (cleanup: () => Promise<void>) => void
+  registerCleanup: (cleanup: () => Promise<void>) => void,
+  systemdNotify: SystemdNotifyEnvironment | null
 ): Promise<Pick<OrcadHandle, 'readiness'>> {
   const { OrcaRuntimeService } = await import('../runtime/orca-runtime')
   const { OrcaRuntimeRpcServer } = await import('../runtime/runtime-rpc')
@@ -127,7 +135,8 @@ async function startOrcadRuntime(
   const { createOrcadProfileStateStartup } = await import('./orcad-profile-state-startup')
   const { startOrcadDaemon, stopOrcadDaemon } = await import('./orcad-daemon-supervision')
   const { daemonOwnsFreshPersistentPtys } = await import('../daemon/daemon-init')
-  const { collectOrcadHealth } = await import('./orcad-health')
+  const { buildOrcadPairingReadiness, createOrcadHealthSurface } =
+    await import('./orcad-health-surface')
   // Why importable here: the singleton's module tree never reaches Electron, and orcad supplies
   // its persistence and endpoint paths explicitly below.
   const { agentHookServer } = await import('../agent-hooks/server')
@@ -143,8 +152,10 @@ async function startOrcadRuntime(
     | undefined
   let uninstallHookStatusRepublish = (): void => {}
   let uninstallObservedStatusIdentity = (): void => {}
+  let healthSurface: ReturnType<typeof createOrcadHealthSurface> | null = null
   registerCleanup(async () => {
     try {
+      await healthSurface?.stop()
       await rpc?.stop()
     } finally {
       try {
@@ -290,6 +301,12 @@ async function startOrcadRuntime(
   observedStatusCapture.attach(runtime)
 
   const bindHost = resolveOrcadBindHost(options.bind)
+  healthSurface = createOrcadHealthSurface({
+    userDataPath: runtimeUserDataPath,
+    buildVersion: getAppEnvironment().getVersion(),
+    profileStateAuthority,
+    systemdNotify
+  })
   rpc = new OrcaRuntimeRpcServer({
     runtime,
     userDataPath: runtimeUserDataPath,
@@ -299,6 +316,8 @@ async function startOrcadRuntime(
     // once a device has connected, so a loopback deployment would silently go wide one
     // restart after its first client paired.
     pinnedBindHost: bindHost,
+    methods: healthSurface.methods,
+    httpProbeHandler: healthSurface.httpProbeHandler,
     // Why required: a pinned --port that silently moved leaves every client dialing a dead port.
     ...(options.port !== undefined
       ? { wsPort: options.port, preferPinnedWsPort: true, requirePinnedWsPort: true }
@@ -318,17 +337,13 @@ async function startOrcadRuntime(
   const advertised = boundEndpoint
     ? resolveAdvertisedPairingEndpoint(boundEndpoint, options.pairingAddress)
     : null
-  const offer = options.noPairing
-    ? ({
-        available: false,
-        reason: 'disabled_by_operator',
-        guidance: 'Restart without --no-pairing to create a client pairing offer.'
-      } as const)
-    : rpc.createPairingOffer({
-        address: options.pairingAddress,
-        name: `CLI ${new Date().toLocaleDateString()}`,
-        scope: 'runtime'
-      })
+  const pairing = { noPairing: options.noPairing === true, pairingAddress: options.pairingAddress }
+  healthSurface.attach({
+    rpc,
+    runtimeDegradations: () => runtime.getStatus().degradations ?? [],
+    listLocalTerminals: () => getLocalPtyProvider().listProcesses(),
+    pairing
+  })
 
   const readiness: ServeReadiness = {
     runtimeId: runtime.getRuntimeId(),
@@ -337,26 +352,17 @@ async function startOrcadRuntime(
     // Why 'settled': the WSL CLI reconciliation barrier is a desktop-launch concern.
     // orcad never runs it, so there is no pending repair a client could race.
     managedWslCliReconciliation: 'settled',
-    pairing: offer.available
-      ? {
-          available: true,
-          url: offer.pairingUrl,
-          endpoint: offer.endpoint,
-          deviceId: offer.deviceId,
-          webClientUrl: offer.webClientUrl,
-          scope: 'runtime',
-          qr: null
-        }
-      : offer,
+    pairing: buildOrcadPairingReadiness(rpc, pairing),
     // Why in the readiness payload: this is the one message a supervisor and a deploy
     // transaction both read, and a green orcad with a dead daemon is exactly the
     // looks-healthy-but-useless state they must not activate.
-    health: await collectOrcadHealth(getAppEnvironment().getVersion(), profileStateAuthority)
+    health: await healthSurface.collectInitialHealth()
   }
 
   await new ServeReadinessPublisher().publish(readiness, {
     mode: options.json ? 'json' : 'human'
   })
+  await healthSurface.published()
 
   return { readiness }
 }

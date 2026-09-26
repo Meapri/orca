@@ -18,6 +18,8 @@ import {
   readDaemonPidRecord
 } from '../daemon/daemon-init'
 import type { OrcadProfileStateAuthoritySelection } from './orcad-profile-state-telemetry'
+import type { OrcadDegradation } from './orcad-degradations'
+import type { OrcadWatchdogSnapshot } from './orcad-runtime-watchdog'
 
 /**
  * How much a green self-test actually proves.
@@ -67,6 +69,10 @@ export type OrcadHealth = {
   terminalDaemon: TerminalDaemonHealth
   /** The low-cardinality profile-state authority selected during startup, when available. */
   profileStateAuthority?: OrcadProfileStateAuthoritySelection
+  /** Optional for older readers: absence means "not reported", never "none". See orcad-degradations.ts. */
+  degradations?: OrcadDegradation[]
+  /** Self-watchdog snapshot; absent in the readiness payload, which precedes the first probe. */
+  watchdog?: OrcadWatchdogSnapshot
 }
 
 /**

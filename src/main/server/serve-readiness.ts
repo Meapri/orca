@@ -110,6 +110,9 @@ function renderHumanReadiness(readiness: ServeReadiness): string {
         ` (${daemon.selfTest.coverage}: ${daemon.selfTest.verdict})` +
         `; terminals survive an orcad restart: ${daemon.ownsFreshSessions ? 'yes' : 'NO'}`
     )
+    for (const degradation of readiness.health.degradations ?? []) {
+      lines.push(`Degraded (${degradation.severity}): ${degradation.message}`)
+    }
   }
   if (readiness.pairing.available) {
     if (readiness.pairing.webClientUrl) {
