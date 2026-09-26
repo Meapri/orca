@@ -4,12 +4,27 @@ import { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { getDefaultWorkspaceSession } from '../../shared/constants'
 import { HEADLESS_RUNTIME_WINDOW_ID } from '../../shared/runtime-types'
 import type { EnrichedAgentHookEventPayload } from '../agent-hooks/server/server-types'
+import type * as ManagedAgentHookControls from '../agent-hooks/managed-agent-hook-controls'
 
 vi.mock('../agent-hooks/first-work-rename-runtime', () => ({ firstWorkRenameDeps: () => ({}) }))
 const { diskHygiene } = vi.hoisted(() => {
   const calls: string[] = []
   return { diskHygiene: calls }
 })
+const { hookInstalls } = vi.hoisted(() => {
+  const installs: { shouldContinue?: (agent: string) => boolean }[] = []
+  return { hookInstalls: installs }
+})
+vi.mock('../agent-hooks/managed-agent-hook-controls', async (importOriginal) => ({
+  ...(await importOriginal<typeof ManagedAgentHookControls>()),
+  installManagedAgentHooks: async (
+    _settings: unknown,
+    options: { shouldContinue?: (agent: string) => boolean }
+  ) => {
+    hookInstalls.push(options)
+    return []
+  }
+}))
 vi.mock('../terminal-history-deletion', () => ({
   scheduleAllPendingHistoryTreeRemovals: () => diskHygiene.push('history')
 }))
@@ -89,6 +104,7 @@ describe('installOrcadHeadlessParity', () => {
 
   it('arms scheduled work only when asked, after the transport is up', async () => {
     diskHygiene.length = 0
+    hookInstalls.length = 0
     vi.useFakeTimers()
     try {
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: makeStore returns every read the graph publish reaches.
@@ -105,9 +121,40 @@ describe('installOrcadHeadlessParity', () => {
       })
       expect(diskHygiene).toEqual([])
 
+      expect(hookInstalls).toHaveLength(0)
+
       parity.startScheduledWork()
       await Promise.resolve()
       expect(diskHygiene).toEqual(['history', 'trash'])
+      expect(hookInstalls).toHaveLength(1)
+      expect(hookInstalls[0]?.shouldContinue?.('claude')).toBe(true)
+      parity.uninstall()
+      // A reconcile still running at shutdown stops before its next agent.
+      expect(hookInstalls[0]?.shouldContinue?.('claude')).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('leaves user-global hook config alone when agent status hooks are switched off', () => {
+    hookInstalls.length = 0
+    vi.useFakeTimers()
+    try {
+      const base = makeStore()
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: makeStore returns every read the graph publish reaches.
+      const store = {
+        ...base,
+        getSettings: () => ({ ...base.getSettings(), agentStatusHooksEnabled: false }),
+        listAutomations: () => [],
+        listAutomationRuns: () => []
+      } as never
+      const parity = installOrcadHeadlessParity({
+        runtime: new OrcaRuntimeService(store),
+        store,
+        agentHookServer: makeAgentHookServer()
+      })
+      parity.startScheduledWork()
+      expect(hookInstalls).toHaveLength(0)
       parity.uninstall()
     } finally {
       vi.useRealTimers()

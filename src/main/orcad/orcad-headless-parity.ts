@@ -6,6 +6,11 @@ import { HEADLESS_RUNTIME_WINDOW_ID } from '../../shared/runtime-types'
 import type { AgentHookServer } from '../agent-hooks/server'
 import { installFirstWorkRenameSubscription } from '../agent-hooks/first-work-rename-subscription'
 import { firstWorkRenameDeps } from '../agent-hooks/first-work-rename-runtime'
+import {
+  installManagedAgentHooks,
+  resolveStartupManagedHookAction,
+  shouldContinueManagedHookStartup
+} from '../agent-hooks/managed-agent-hook-controls'
 import { AutomationService } from '../automations/service'
 import { createRuntimeHeadlessAutomationDispatcher } from '../automations/runtime-headless-dispatcher'
 import { createRuntimeAutomationRunTerminalObserver } from '../automations/runtime-terminal-run-observer'
@@ -48,9 +53,22 @@ export function installOrcadHeadlessParity(options: {
     headlessDispatcher: createRuntimeHeadlessAutomationDispatcher(runtime)
   })
   runtime.setAutomationService(automations)
+  let stopped = false
   return {
     startScheduledWork: () => {
       automations.start()
+      // Why: a fresh host has no managed hook scripts, so agents report no status at all — no
+      // notifications, rename or chat transcripts. Serve reconciles them at startup the same way.
+      const settings = store.getSettings()
+      if (resolveStartupManagedHookAction(settings) === 'install') {
+        void installManagedAgentHooks(settings, {
+          shouldHydrateShellPath: true,
+          shouldContinue: (agent) =>
+            shouldContinueManagedHookStartup(stopped, store.getSettings(), agent)
+        }).catch((error: unknown) => {
+          console.warn('[agent-hooks] failed to reconcile managed hooks on startup:', error)
+        })
+      }
       // A quit mid-delete leaves tombstoned history and trashed checkouts that only this reclaims.
       scheduleAllPendingHistoryTreeRemovals()
       void sweepStaleWorktreeTrash(
@@ -60,6 +78,7 @@ export function installOrcadHeadlessParity(options: {
       })
     },
     uninstall: () => {
+      stopped = true
       automations.stop()
       uninstallNotifications()
       uninstallRename()
