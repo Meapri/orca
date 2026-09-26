@@ -1,10 +1,24 @@
 import { describe, expect, it, vi } from 'vitest'
+import { AutomationService } from '../automations/service'
 import { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { getDefaultWorkspaceSession } from '../../shared/constants'
 import { HEADLESS_RUNTIME_WINDOW_ID } from '../../shared/runtime-types'
 import type { EnrichedAgentHookEventPayload } from '../agent-hooks/server/server-types'
 
 vi.mock('../agent-hooks/first-work-rename-runtime', () => ({ firstWorkRenameDeps: () => ({}) }))
+const { diskHygiene } = vi.hoisted(() => {
+  const calls: string[] = []
+  return { diskHygiene: calls }
+})
+vi.mock('../terminal-history-deletion', () => ({
+  scheduleAllPendingHistoryTreeRemovals: () => diskHygiene.push('history')
+}))
+vi.mock('../worktree-trash', () => ({
+  collectWorktreeTrashSweepRoots: () => [],
+  sweepStaleWorktreeTrash: async () => {
+    diskHygiene.push('trash')
+  }
+}))
 
 import { installOrcadHeadlessParity } from './orcad-headless-parity'
 
@@ -61,16 +75,42 @@ describe('installOrcadHeadlessParity', () => {
     const store = makeStore() as never
     const server = makeAgentHookServer()
 
-    const uninstall = installOrcadHeadlessParity({
-      runtime: new OrcaRuntimeService(store),
-      store,
-      agentHookServer: server
-    })
+    const runtime = new OrcaRuntimeService(store)
+    const setAutomationService = vi.spyOn(runtime, 'setAutomationService')
+    const parity = installOrcadHeadlessParity({ runtime, store, agentHookServer: server })
     expect(server.statusListeners.size).toBe(2)
     expect(server.dropListeners.size).toBe(1)
+    expect(setAutomationService.mock.calls[0]?.[0]).toBeInstanceOf(AutomationService)
 
-    uninstall()
+    parity.uninstall()
     expect(server.statusListeners.size).toBe(0)
     expect(server.dropListeners.size).toBe(0)
+  })
+
+  it('arms scheduled work only when asked, after the transport is up', async () => {
+    diskHygiene.length = 0
+    vi.useFakeTimers()
+    try {
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: makeStore returns every read the graph publish reaches.
+      const store = {
+        ...makeStore(),
+        listAutomations: () => [],
+        listAutomationRuns: () => []
+      } as never
+      const runtime = new OrcaRuntimeService(store)
+      const parity = installOrcadHeadlessParity({
+        runtime,
+        store,
+        agentHookServer: makeAgentHookServer()
+      })
+      expect(diskHygiene).toEqual([])
+
+      parity.startScheduledWork()
+      await Promise.resolve()
+      expect(diskHygiene).toEqual(['history', 'trash'])
+      parity.uninstall()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

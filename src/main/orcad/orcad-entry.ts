@@ -22,6 +22,7 @@ import {
   startOrcadWithHost
 } from './orcad-lifecycle'
 import { parseArgs } from './orcad-command-arguments'
+import type { OrcadHeadlessParity } from './orcad-headless-parity'
 import {
   changedAiVaultSearchSettings,
   type AiVaultSearchSettings
@@ -144,12 +145,14 @@ async function startOrcadRuntime(
     | undefined
   let uninstallHookStatusRepublish = (): void => {}
   let uninstallObservedStatusIdentity = (): void => {}
-  let uninstallHeadlessParity = (): void => {}
+  let headlessParity: OrcadHeadlessParity | null = null
   registerCleanup(async () => {
     try {
       await rpc?.stop()
     } finally {
       try {
+        // Why first: an automation tick must not start a run the final flush below cannot record.
+        headlessParity?.uninstall()
         // Stop accepting RPC writes before the final persistence barrier. A SQLite-backed
         // orcad has no JSON mirror to absorb a debounced write after SIGTERM.
         if (profileStoreForShutdown) {
@@ -161,7 +164,6 @@ async function startOrcadRuntime(
           // orcad restart goes back to killing every running terminal.
           await stopOrcadDaemon()
         } finally {
-          uninstallHeadlessParity()
           uninstallObservedStatusIdentity()
           uninstallHookStatusRepublish()
           agentHookServer.stop()
@@ -291,7 +293,7 @@ async function startOrcadRuntime(
 
   // Why before the RPC server binds: until a graph is published `session.tabs.createTerminal`
   // refuses with runtime_unavailable and `session.tabs.listAll` never answers (#17846).
-  uninstallHeadlessParity = installOrcadHeadlessParity({
+  headlessParity = installOrcadHeadlessParity({
     runtime,
     store: profileStore,
     agentHookServer
@@ -313,6 +315,7 @@ async function startOrcadRuntime(
     ...(options.port !== undefined ? { wsPort: options.port, preferPinnedWsPort: true } : {})
   })
   await rpc.start()
+  headlessParity.startScheduledWork()
   const pushService = DesktopPushService.create({
     runtime,
     runtimeRpc: rpc,

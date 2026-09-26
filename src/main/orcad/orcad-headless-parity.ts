@@ -6,15 +6,26 @@ import { HEADLESS_RUNTIME_WINDOW_ID } from '../../shared/runtime-types'
 import type { AgentHookServer } from '../agent-hooks/server'
 import { installFirstWorkRenameSubscription } from '../agent-hooks/first-work-rename-subscription'
 import { firstWorkRenameDeps } from '../agent-hooks/first-work-rename-runtime'
+import { AutomationService } from '../automations/service'
+import { createRuntimeHeadlessAutomationDispatcher } from '../automations/runtime-headless-dispatcher'
+import { createRuntimeAutomationRunTerminalObserver } from '../automations/runtime-terminal-run-observer'
 import { installHostAgentNotifications } from '../notifications/headless-agent-notification-host'
 import type { Store } from '../persistence'
 import type { OrcaRuntimeService } from '../runtime/orca-runtime'
+import { scheduleAllPendingHistoryTreeRemovals } from '../terminal-history-deletion'
+import { collectWorktreeTrashSweepRoots, sweepStaleWorktreeTrash } from '../worktree-trash'
+
+export type OrcadHeadlessParity = {
+  /** Serve arms these only once its RPC transport is up; orcad keeps that order. */
+  startScheduledWork(): void
+  uninstall(): void
+}
 
 export function installOrcadHeadlessParity(options: {
   runtime: OrcaRuntimeService
   store: Store
   agentHookServer: Pick<AgentHookServer, 'subscribeEnrichedStatus' | 'subscribeStatusDrop'>
-}): () => void {
+}): OrcadHeadlessParity {
   const { runtime, store, agentHookServer } = options
   // Same placeholder serve publishes: no renderer will ever publish a graph on this host.
   runtime.syncWindowGraph(HEADLESS_RUNTIME_WINDOW_ID, { tabs: [], leaves: [] })
@@ -28,8 +39,30 @@ export function installOrcadHeadlessParity(options: {
     // orcad cannot host a renderer, so this producer is the only one.
     isRendererAttached: () => false
   })
-  return () => {
-    uninstallNotifications()
-    uninstallRename()
+  // Why: without a service `automation.runNow` refuses and schedules never fire, although orcad
+  // is the runtime authority that owns them. Usage stores are desktop accounts; runs omit usage.
+  const automations = new AutomationService(store, {
+    terminalObserver: createRuntimeAutomationRunTerminalObserver(runtime),
+    onAutomationsChanged: (payload) => runtime.notifyAutomationsChanged(payload),
+    allowRemoteHostScheduling: true,
+    headlessDispatcher: createRuntimeHeadlessAutomationDispatcher(runtime)
+  })
+  runtime.setAutomationService(automations)
+  return {
+    startScheduledWork: () => {
+      automations.start()
+      // A quit mid-delete leaves tombstoned history and trashed checkouts that only this reclaims.
+      scheduleAllPendingHistoryTreeRemovals()
+      void sweepStaleWorktreeTrash(
+        collectWorktreeTrashSweepRoots(store.getRepos(), store.getSettings())
+      ).catch((error: unknown) => {
+        console.warn('[worktrees] Failed to sweep leftover worktree directories:', error)
+      })
+    },
+    uninstall: () => {
+      automations.stop()
+      uninstallNotifications()
+      uninstallRename()
+    }
   }
 }

@@ -30,6 +30,10 @@ vi.mock('./orcad-daemon-supervision', () => ({
   stopOrcadDaemon: async () => {}
 }))
 vi.mock('./orcad-health', () => ({ collectOrcadHealth: async () => ({}) }))
+// Why: this suite proves push wiring; the headless parity steps have their own suite.
+vi.mock('./orcad-headless-parity', () => ({
+  installOrcadHeadlessParity: () => ({ startScheduledWork() {}, uninstall() {} })
+}))
 vi.mock('../daemon/daemon-init', () => ({ daemonOwnsFreshPersistentPtys: () => false }))
 vi.mock('../ipc/pty', () => ({
   registerHeadlessPtyRuntime: async () => {},
@@ -72,7 +76,6 @@ vi.mock('../runtime/orca-runtime', () => ({
       return 'headless-runtime'
     }
     rehydrateClientHostedBrowserPages() {}
-    syncWindowGraph() {}
     async refreshRestoredOrchestrationAuthority() {}
     async reconcileLegacyWorkerTerminals() {}
     setMobilePushRegistrar(
