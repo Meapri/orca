@@ -55,6 +55,10 @@ export function TerminalInteractionSection({
         'auto.components.settings.TerminalPane.16753eea48',
         'Right-click pastes the clipboard. Ctrl+right-click opens the context menu.'
       )
+  const smoothScrollDescription = translate(
+    'auto.components.settings.TerminalPane.smoothScroll.description',
+    'Animate mouse-wheel, Shift+Page Up/Down and jump-to-latest scrolling. Trackpads already scroll continuously; reduced motion turns this off.'
+  )
   return (
     <section key="pane-interaction" className="space-y-3">
       <SettingsSubsectionHeader
@@ -184,6 +188,27 @@ export function TerminalInteractionSection({
               />
             </div>
           </div>
+        </SearchableSetting>
+
+        <SearchableSetting
+          title={translate(
+            'auto.components.settings.TerminalPane.smoothScroll.title',
+            'Smooth Scrolling'
+          )}
+          description={smoothScrollDescription}
+          keywords={['terminal', 'scroll', 'smooth', 'animation', 'wheel', 'page up', 'page down']}
+        >
+          <SettingsSwitchRow
+            label={translate(
+              'auto.components.settings.TerminalPane.smoothScroll.title',
+              'Smooth Scrolling'
+            )}
+            description={smoothScrollDescription}
+            checked={settings.terminalSmoothScroll}
+            onChange={() =>
+              updateSettings({ terminalSmoothScroll: !settings.terminalSmoothScroll })
+            }
+          />
         </SearchableSetting>
 
         {matchesSettingsSearch(searchQuery, getTerminalRightClickToPasteSearchEntry()) ? (

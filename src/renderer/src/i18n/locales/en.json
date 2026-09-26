@@ -8859,6 +8859,10 @@
             "fastDescription": "Extra multiplier while scrolling with a modifier key.",
             "tui": "TUI",
             "tuiDescription": "Discrete wheel reports for full-screen terminal apps."
+          },
+          "smoothScroll": {
+            "description": "Animate mouse-wheel, Shift+Page Up/Down and jump-to-latest scrolling. Trackpads already scroll continuously; reduced motion turns this off.",
+            "title": "Smooth Scrolling"
           }
         },
         "TerminalSettingsPreview": {
@@ -10813,7 +10817,13 @@
             "3ac3ea1cac": "Glides the cursor as you type and fades its blink. Requires GPU rendering.",
             "e2b79d0578": "animation",
             "da61b65178": "smooth",
-            "45087d1a4d": "glide"
+            "45087d1a4d": "glide",
+            "smoothScroll": {
+              "title": "Smooth Scrolling",
+              "description": "Animate mouse-wheel, Shift+Page Up/Down and jump-to-latest scrolling in terminal scrollback."
+            },
+            "smooth": "smooth",
+            "animation": "animation"
           },
           "windows": {
             "search": {
@@ -18171,6 +18181,12 @@
       "placeholder": "Compose input for the terminal. Enter adds a line.",
       "submitOnSend": "Press Enter after sending",
       "cancel": "Cancel"
+    },
+    "terminal-pane": {
+      "jumpToLatest": {
+        "newOutput": "New output",
+        "label": "Jump to latest"
+      }
     }
   },
   "dashboardPopout": {

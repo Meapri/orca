@@ -8635,6 +8635,10 @@
             "fastDescription": "按住修饰键滚动时的额外倍数。",
             "tui": "TUI",
             "tuiDescription": "面向全屏终端应用的离散滚轮报告。"
+          },
+          "smoothScroll": {
+            "title": "平滑滚动",
+            "description": "为鼠标滚轮、Shift+Page Up/Down 和跳到最新的滚动添加动画。触控板本身已连续滚动；开启“减少动态效果”时会关闭。"
           }
         },
         "TerminalSettingsPreview": {
@@ -10578,7 +10582,13 @@
               "statusline": "状态行",
               "dim": "暗淡",
               "colors": "颜色"
-            }
+            },
+            "smoothScroll": {
+              "title": "平滑滚动",
+              "description": "为终端回滚缓冲区中的鼠标滚轮、Shift+Page Up/Down 和跳到最新的滚动添加动画。"
+            },
+            "smooth": "平滑",
+            "animation": "动画"
           },
           "windows": {
             "search": {
@@ -18035,6 +18045,12 @@
       "placeholder": "为终端编写输入。按 Enter 换行。",
       "submitOnSend": "发送后按 Enter",
       "cancel": "取消"
+    },
+    "terminal-pane": {
+      "jumpToLatest": {
+        "newOutput": "新输出",
+        "label": "跳到最新"
+      }
     }
   },
   "dashboardPopout": {

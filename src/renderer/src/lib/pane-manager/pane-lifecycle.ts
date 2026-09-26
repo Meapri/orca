@@ -9,6 +9,7 @@ import { cancelDeferredScrollRestore } from './pane-scroll'
 import { activateOrcaTerminalUnicodeProvider } from '../../../../shared/terminal-unicode-provider'
 import { attachTerminalMouseWheelMultiplier } from './pane-terminal-mouse-wheel'
 import { attachTerminalScrollIntentTracking } from './terminal-scroll-intent-dom-tracking'
+import { attachTerminalSmoothScroll } from './terminal-smooth-scroll'
 import {
   installTerminalLinkifierHoverResetOnMouseLeave,
   installTerminalLinkifierHoverResetOnWindowBlur
@@ -66,6 +67,11 @@ export function openTerminal(
     terminal,
     xtermContainer,
     pane.leafId
+  )
+  pane.terminalSmoothScrollDisposable = attachTerminalSmoothScroll(
+    terminal,
+    xtermContainer,
+    () => pane.terminalSmoothScrollEnabled?.() === true
   )
   // Why: a link streamed into a visible pane under a stationary pointer would
   // otherwise stay un-underlined/un-clickable until the mouse crosses to a new
@@ -203,6 +209,8 @@ export function disposePane(
   pane.focusClassSyncCleanup = null
   pane.terminalScrollIntentDisposable?.dispose()
   pane.terminalScrollIntentDisposable = null
+  pane.terminalSmoothScrollDisposable?.dispose()
+  pane.terminalSmoothScrollDisposable = null
   pane.linkifierHoverResetDisposable?.dispose()
   pane.linkifierHoverResetDisposable = null
   pane.linkifierMouseLeaveResetDisposable?.dispose()

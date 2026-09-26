@@ -3,16 +3,15 @@ import {
   notifyTerminalFollowOutputWaiters
 } from './terminal-follow-output-waiters'
 import { isTerminalScrollIntentRebuildInFlight } from './terminal-scroll-intent-rebuild'
+import { anchorPinnedScrollIntent, resolvePinnedViewportY } from './terminal-scroll-intent-anchor'
 import {
   readKeyedTerminalScrollIntent,
   readKeyedTerminalScrollIntentBinding,
   writeKeyedTerminalScrollIntent,
-  writeKeyedTerminalScrollIntentBinding
-} from './terminal-scroll-intent-key-store'
-import type {
-  TerminalScrollIntent,
-  TerminalScrollIntentKey,
-  TerminalScrollIntentKind
+  writeKeyedTerminalScrollIntentBinding,
+  type TerminalScrollIntent,
+  type TerminalScrollIntentKey,
+  type TerminalScrollIntentKind
 } from './terminal-scroll-intent-key-store'
 import {
   clampTerminalViewportY,
@@ -87,6 +86,7 @@ function writeIntentSnapshot(
   const intent = { kind, ...snapshot, revision: nextTerminalScrollIntentRevision }
   nextTerminalScrollIntentRevision += 1
   terminalScrollIntentByTerminal.set(terminal, intent)
+  anchorPinnedScrollIntent(terminal, intent)
   const key = terminalScrollIntentKeyByTerminal.get(terminal)
   if (key) {
     writeKeyedTerminalScrollIntent(key, intent)
@@ -324,7 +324,7 @@ export function enforceTerminalCurrentScrollIntent(terminal: TerminalScrollInten
   const snapshot = {
     kind: existing.kind,
     bufferType: existing.bufferType,
-    viewportY: existing.viewportY,
+    viewportY: resolvePinnedViewportY(terminal, existing),
     baseY: existing.baseY,
     revision: existing.revision
   }
