@@ -23,7 +23,7 @@ import { probeProcess, type DaemonIsolation, type HostTerminalCensus } from './h
 import { snapshotPresent, stateWrittenSince } from './host-install-state'
 
 /** The symlink the service unit starts through; outside the version-dir namespace, so no GC owns it. */
-export const ORCAD_CURRENT_LINK_NAME = 'orcad-current'
+const ORCAD_CURRENT_LINK_NAME = 'orcad-current'
 
 export function planHostRollback(input: {
   base: string

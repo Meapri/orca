@@ -5,9 +5,10 @@
  * `sh -c` instead of over SSH) is what keeps a snapshot taken by one path restorable by the
  * other.
  */
-import { existsSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { runProcessSync } from '../../../shared/child-process/run-process'
+import { writeFileAtomically } from '../../codex-accounts/fs-utils'
 import {
   ORCAD_ACTIVATION_FILENAME,
   ORCAD_STATE_SNAPSHOT_DIR,
@@ -35,9 +36,9 @@ import { getRemoteHostPlatform, type RemoteHostPlatform } from '../../ssh/ssh-re
 const LOCAL_POSIX_HOST: RemoteHostPlatform = getRemoteHostPlatform('linux-x64')
 
 /** Written between stop and commit so a failed activation knows which snapshot is its own. */
-export const HOST_PENDING_ACTIVATION_FILENAME = '.orcad-pending-activation.json'
+const HOST_PENDING_ACTIVATION_FILENAME = '.orcad-pending-activation.json'
 
-export function activationRecordPath(base: string): string {
+function activationRecordPath(base: string): string {
   return join(base, ORCAD_ACTIVATION_FILENAME)
 }
 
@@ -51,15 +52,10 @@ export function readActivationRecord(base: string): OrcadActivationRecord {
   return parsed.state === 'ok' ? parsed.record : emptyOrcadActivationRecord()
 }
 
-/** Temp name then rename, so a crash never leaves a half-written record. */
-export function writeFileAtomically(path: string, contents: string): void {
-  const partial = `${path}.partial-${process.pid}`
-  writeFileSync(partial, contents, { mode: 0o600 })
-  renameSync(partial, path)
-}
-
 export function writeActivationRecord(base: string, record: OrcadActivationRecord): void {
-  writeFileAtomically(activationRecordPath(base), serializeOrcadActivationRecord(record))
+  writeFileAtomically(activationRecordPath(base), serializeOrcadActivationRecord(record), {
+    mode: 0o600
+  })
 }
 
 function runShell(command: string): string {
@@ -67,7 +63,7 @@ function runShell(command: string): string {
   return result.stdout
 }
 
-export function snapshotDirPath(base: string, dirName: string): string {
+function snapshotDirPath(base: string, dirName: string): string {
   return join(base, ORCAD_STATE_SNAPSHOT_DIR, dirName)
 }
 
@@ -116,7 +112,8 @@ export function captureHostSnapshot(input: {
   }
   writeFileAtomically(
     join(input.base, HOST_PENDING_ACTIVATION_FILENAME),
-    `${JSON.stringify(pending)}\n`
+    `${JSON.stringify(pending)}\n`,
+    { mode: 0o600 }
   )
   return pending
 }

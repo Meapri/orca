@@ -30,7 +30,7 @@ import {
 } from './host-install-state'
 import { planHostRollback, pruneHostInstall } from './host-install-rollback'
 
-export const HOST_INSTALL_EXIT = { ok: 0, usage: 2, noop: 10, refused: 20, rejected: 30 } as const
+const HOST_INSTALL_EXIT = { ok: 0, usage: 2, noop: 10, refused: 20, rejected: 30 } as const
 
 export type HostInstallOutcome = { exitCode: number; output: Record<string, unknown> }
 
