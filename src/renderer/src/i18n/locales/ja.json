@@ -18023,6 +18023,10 @@
             "spaces": "スペース"
           }
         }
+      },
+      "TerminalRendering": {
+        "imePreeditInGrid": "IME の変換中テキストをターミナルのセルに描画",
+        "imePreeditInGridDescription": "入力メソッド（韓国語、日本語、中国語）で変換中のテキストを、カーソル位置のターミナルのセルとして描画します。オフにするとフローティングオーバーレイを使用します。"
       }
     },
     "terminalComposer": {
