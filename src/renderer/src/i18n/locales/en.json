@@ -3270,7 +3270,7 @@
             "missing": {
               "tui": {
                 "title": "This ZCode build has no terminal UI",
-                "description": "Orca's hooks installed correctly \u2014 the zcode on your PATH just cannot open a session. The ZCode desktop app bundles the agent runtime without its terminal UI. Install a zcode that ships the TUI, then run zcode outside Orca to confirm."
+                "description": "Orca's hooks installed correctly — the zcode on your PATH just cannot open a session. The ZCode desktop app bundles the agent runtime without its terminal UI. Install a zcode that ships the TUI, then run zcode outside Orca to confirm."
               }
             }
           },
@@ -18103,6 +18103,17 @@
         "copySessionId": "Copy Session ID",
         "copySessionIdSuccess": "Session ID copied",
         "copySessionIdError": "Unable to copy session ID"
+      },
+      "marks": {
+        "commandOutputCopied": "Command output copied",
+        "commandOutputCopyFailed": "Unable to copy command output",
+        "copyCommandOutput": "Copy Command Output",
+        "selectCommandOutput": "Select Command Output",
+        "removeBookmark": "Remove Bookmark",
+        "bookmarkLine": "Bookmark Line",
+        "bookmarks": "Bookmarks",
+        "blankLine": "Blank line",
+        "lineNumber": "Line {{value0}}"
       }
     },
     "settings": {
@@ -18120,6 +18131,20 @@
             "whitespace": "whitespace",
             "spaces": "spaces"
           }
+        }
+      },
+      "TerminalCommandMarks": {
+        "title": "Show Command Marks",
+        "description": "Mark each prompt and submitted line in the terminal gutter and scrollbar, with failed commands in red. Jumping between prompts works either way.",
+        "search": {
+          "prompt": "prompt",
+          "marks": "marks",
+          "command": "command",
+          "jump": "jump",
+          "gutter": "gutter",
+          "scrollbar": "scrollbar",
+          "osc133": "osc 133",
+          "shellIntegration": "shell integration"
         }
       }
     }

@@ -30,6 +30,8 @@ import type { TerminalPaneManagerOptionsContext } from './terminal-pane-mount-co
 import { installTerminalPaneInputHandling } from './terminal-pane-pane-input'
 import { installTerminalPaneLinkHandling } from './terminal-pane-pane-links'
 import { scheduleRuntimeGraphSync } from '@/runtime/sync-runtime-graph'
+import { installTerminalPaneMarks } from './terminal-marks/terminal-pane-marks'
+import { getTerminalBufferPositionForMouseEvent } from './terminal-mouse-buffer-position'
 
 export type PaneCreatedSetupContext = TerminalPaneManagerOptionsContext
 
@@ -140,7 +142,18 @@ export function createTerminalPaneCreatedHandler(
       })
     )
     refs.osc7DisposablesRef.current.set(pane.id, osc7Disposable)
-
+    refs.commandMarksDisposablesRef.current.set(
+      pane.id,
+      installTerminalPaneMarks({
+        terminal: pane.terminal,
+        container: pane.container,
+        resolveContextMenuLine: (event) => {
+          const position = getTerminalBufferPositionForMouseEvent(pane.terminal, event)
+          return position ? position.y - 1 : null
+        },
+        decorationsEnabled: () => settingsRef.current?.terminalCommandMarks !== false
+      })
+    )
     installTerminalPaneInputHandling({
       pane,
       managerRef,

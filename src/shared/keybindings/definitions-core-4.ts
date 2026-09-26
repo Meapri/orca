@@ -66,5 +66,30 @@ export const KEYBINDING_DEFINITION_CORE_4: readonly KeybindingDefinition[] = [
     },
     // Why: macOS uses Shift+Space as an input-source shortcut; Orca otherwise rejects Shift-only bindings to avoid stealing typed text.
     allowShiftOnlyKeybindings: true
+  },
+  {
+    id: 'terminal.previousPrompt',
+    title: 'Jump to previous prompt',
+    group: 'Terminal Panes',
+    scope: 'terminal',
+    searchKeywords: ['shortcut', 'terminal', 'prompt', 'command', 'mark', 'previous', 'jump'],
+    // Why: Cmd+↑/↓ already scroll to top/bottom on macOS; Mod+Alt pairs with Mod+Alt+←/→ history.
+    defaultBindings: platformBindings(['Mod+Alt+ArrowUp'])
+  },
+  {
+    id: 'terminal.nextPrompt',
+    title: 'Jump to next prompt',
+    group: 'Terminal Panes',
+    scope: 'terminal',
+    searchKeywords: ['shortcut', 'terminal', 'prompt', 'command', 'mark', 'next', 'jump'],
+    defaultBindings: platformBindings(['Mod+Alt+ArrowDown'])
+  },
+  {
+    id: 'terminal.toggleBookmark',
+    title: 'Bookmark terminal line',
+    group: 'Terminal Panes',
+    scope: 'terminal',
+    searchKeywords: ['shortcut', 'terminal', 'bookmark', 'mark', 'line', 'pin'],
+    defaultBindings: platformBindings([])
   }
 ]

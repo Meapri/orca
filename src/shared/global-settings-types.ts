@@ -199,6 +199,8 @@ export type GlobalSettings = {
   terminalAllowOsc52Clipboard: boolean
   /** One-shot stamp: profiles saved under the old off default get flipped on once, after which an explicit opt-out sticks. */
   terminalAllowOsc52ClipboardDefaultedOnForAllUsers?: boolean
+  /** Gutter and scrollbar ticks for prompt / submitted-input marks (OSC 133); navigation works either way. Default on. */
+  terminalCommandMarks?: boolean
   /** Experimental Claude Agent Teams; native panes use a tmux-compatible shim so teammate output stays on the normal PTY path. */
   claudeAgentTeamsMode?: ClaudeAgentTeamsMode
   /** Where the repo setup script runs on workspace create; defaults to a background "Setup" tab to keep the main terminal usable. */

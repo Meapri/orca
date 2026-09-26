@@ -25,6 +25,8 @@ export function useTerminalPaneLifecycleRefs() {
     selectionCaptureTimersRef: useRef(new Map<number, number>()),
     osc52DisposablesRef: useRef(new Map<number, IDisposable>()),
     osc7DisposablesRef: useRef(new Map<number, IDisposable>()),
+    commandMarksDisposablesRef: useRef(new Map<number, IDisposable>()),
+    oscNotificationDisposablesRef: useRef(new Map<number, IDisposable>()),
     mouseHideDisposablesRef: useRef(new Map<number, IDisposable>()),
     imeCompositionDisposablesRef: useRef(new Map<number, IDisposable>()),
     imeNativeTextForwarderDisposablesRef: useRef(new Map<number, IDisposable>()),

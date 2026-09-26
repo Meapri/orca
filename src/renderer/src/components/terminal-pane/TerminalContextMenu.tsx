@@ -34,6 +34,8 @@ import { isMacPlatform, nativeChatToggleShortcutLabel } from '../native-chat/nat
 import { AgentSessionContinuationMenuItem } from './AgentSessionContinuationMenuItem'
 import type { TerminalQuickCommandMenuHost } from '@/hooks/use-terminal-quick-command-hosts'
 import { TerminalQuickCommandsSubmenu } from './TerminalQuickCommandsSubmenu'
+import { TerminalMarksMenuItems } from './TerminalMarksMenuItems'
+import type { Terminal } from '@xterm/xterm'
 
 type TerminalContextMenuProps = {
   open: boolean
@@ -76,6 +78,7 @@ type TerminalContextMenuProps = {
   onCopyPaneId: () => void
   canCopyAgentSessionId: boolean
   onCopyAgentSessionId: () => void
+  getMenuTerminal: () => Terminal | null
 }
 
 export default function TerminalContextMenu(props: TerminalContextMenuProps): React.JSX.Element {
@@ -164,7 +167,8 @@ function TerminalContextMenuItems({
   onCopyTerminalId,
   onCopyPaneId,
   canCopyAgentSessionId,
-  onCopyAgentSessionId
+  onCopyAgentSessionId,
+  getMenuTerminal
 }: TerminalContextMenuProps): React.JSX.Element {
   // Why: one primary binding prevents Windows/Linux shortcut labels from forcing row wraps.
   const shortcuts = useMemo(
@@ -212,6 +216,7 @@ function TerminalContextMenuItems({
         onClose={() => onOpenChange(false)}
         onAdd={onAddQuickCommand}
       />
+      <TerminalMarksMenuItems getTerminal={getMenuTerminal} keybindings={keybindings} />
       {canContinueAgentSessionInNewSession ? (
         <AgentSessionContinuationMenuItem onSelect={onContinueAgentSessionInNewSession} />
       ) : null}

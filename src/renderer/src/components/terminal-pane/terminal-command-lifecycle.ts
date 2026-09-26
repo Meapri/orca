@@ -24,9 +24,9 @@ export function createTerminalCommandLifecycle(options: TerminalCommandLifecycle
   return {
     handlePtyData: scanner.scan,
     attachXtermConsumer(terminal) {
-      // Why: swallow OSC 133 so shell-integration markers never paint —
-      // rendering hygiene that applies regardless of side-effect authority.
-      const disposable = terminal.parser.registerOscHandler(133, () => true)
+      // Why: xterm never paints an unhandled OSC; returning false keeps this
+      // (re)registration from shadowing older OSC 133 observers (command marks).
+      const disposable = terminal.parser.registerOscHandler(133, () => false)
       disposables.push(disposable)
       return disposable
     },

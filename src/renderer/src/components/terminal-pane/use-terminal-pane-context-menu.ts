@@ -1,4 +1,5 @@
 import { useCallback, useRef } from 'react'
+import type { Terminal } from '@xterm/xterm'
 import type { ManagedPane, PaneManager } from '@/lib/pane-manager/pane-manager'
 import type { PtyTransport } from './pty-transport'
 import type { PaneCwdMap } from './resolve-split-cwd'
@@ -76,6 +77,7 @@ type TerminalMenuState = {
   onSetTitle: () => void
   onClearPaneTitle: () => void
   runForPane: <Result>(paneId: number, action: () => Result) => Result
+  getMenuTerminal: () => Terminal | null
 }
 
 export function useTerminalPaneContextMenu({
@@ -302,6 +304,7 @@ export function useTerminalPaneContextMenu({
     onToggleExpand,
     onSetTitle: handleSetTitle,
     onClearPaneTitle: handleClearPaneTitle,
-    runForPane
+    runForPane,
+    getMenuTerminal: () => resolveMenuPane()?.terminal ?? null
   }
 }

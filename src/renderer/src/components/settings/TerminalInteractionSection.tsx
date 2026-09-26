@@ -5,6 +5,7 @@ import { Label } from '../ui/label'
 import { ScrollSpeedSlider } from './TerminalScrollSpeedSlider'
 import { SettingsSubsectionHeader, SettingsSwitchRow } from './SettingsFormControls'
 import { SearchableSetting } from './SearchableSetting'
+import { TerminalCommandMarksSetting } from './TerminalCommandMarksSetting'
 import { matchesSettingsSearch } from './settings-search'
 import { getTerminalRightClickToPasteSearchEntry } from './terminal-windows-search'
 import { OSC52_CLIPBOARD_SETTING_ID } from '../terminal-pane/osc52-clipboard-setting-anchor'
@@ -356,6 +357,8 @@ export function TerminalInteractionSection({
             }
           />
         </SearchableSetting>
+
+        <TerminalCommandMarksSetting settings={settings} updateSettings={updateSettings} />
       </div>
     </section>
   )

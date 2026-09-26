@@ -9,6 +9,7 @@ import {
   syncTerminalScrollIntentFromViewport
 } from '@/lib/pane-manager/terminal-scroll-intent'
 import type { resolveTerminalKeyboardShortcutAction } from './terminal-keyboard-shortcut-matching'
+import { getTerminalPaneMarks } from './terminal-marks/terminal-pane-marks'
 
 type TerminalShortcutAction = NonNullable<ReturnType<typeof resolveTerminalKeyboardShortcutAction>>
 
@@ -79,7 +80,25 @@ export function dispatchTerminalShortcutAction(
     event.stopImmediatePropagation()
     return
   }
+  if (action.type === 'navigatePrompt') {
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    const pane = manager.getActivePane() ?? manager.getPanes()[0]
+    if (pane) {
+      getTerminalPaneMarks(pane.terminal)?.navigatePrompt(action.direction)
+    }
+    return
+  }
   if (event.repeat) {
+    return
+  }
+  if (action.type === 'toggleBookmark') {
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    const pane = manager.getActivePane() ?? manager.getPanes()[0]
+    if (pane) {
+      getTerminalPaneMarks(pane.terminal)?.toggleBookmark()
+    }
     return
   }
 
