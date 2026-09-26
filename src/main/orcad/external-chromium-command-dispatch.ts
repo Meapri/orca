@@ -91,7 +91,7 @@ export class ExternalChromiumCommandDispatch {
 
     const page = await this.tabs.resolveTargetPage(host, params)
     this.onTargetPage(page)
-    this.reclaimer.touch(page)
+    this.reclaimer.touch(page.publicPageId)
     await this.session.selectPage(page.agentPageId)
     if (method === 'browserSnapshot') {
       return this.snapshot(page)
@@ -147,7 +147,7 @@ export class ExternalChromiumCommandDispatch {
       'browserPageId' in result &&
       typeof result.browserPageId === 'string'
     ) {
-      this.reclaimer.touchById(result.browserPageId)
+      this.reclaimer.touch(result.browserPageId)
     }
   }
 

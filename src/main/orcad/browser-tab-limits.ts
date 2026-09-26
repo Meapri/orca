@@ -1,5 +1,6 @@
 /**
- * Bounds on the tabs an agent can keep open in orcad's external Chromium.
+ * Bounds on the tabs an agent can keep open in orcad's browser provider (external Chromium or
+ * the installed Electron sidecar).
  *
  * Every tab is a renderer process (~100–300 MB). Agents open tabs and rarely close them, and a
  * headless host has no human to notice, so without a cap a long-running host accumulates
@@ -12,7 +13,7 @@ export const DEFAULT_BROWSER_TAB_IDLE_MS = 30 * 60 * 1000
 export const BROWSER_MAX_TABS_ENV = 'ORCA_BROWSER_MAX_TABS'
 export const BROWSER_TAB_IDLE_MINUTES_ENV = 'ORCA_BROWSER_TAB_IDLE_MINUTES'
 
-export type ExternalChromiumTabLimits = {
+export type BrowserTabLimits = {
   /** Most tabs open at once; creating one more reclaims the least recently used. */
   maxTabs: number
   /** Tabs untouched this long are reclaimed; null disables idle reclamation. */
@@ -28,9 +29,7 @@ function parsePositiveInteger(raw: string | undefined): number | null {
   return parsed > 0 ? parsed : null
 }
 
-export function resolveExternalChromiumTabLimits(
-  env: NodeJS.ProcessEnv = process.env
-): ExternalChromiumTabLimits {
+export function resolveBrowserTabLimits(env: NodeJS.ProcessEnv = process.env): BrowserTabLimits {
   const maxTabs = parsePositiveInteger(env[BROWSER_MAX_TABS_ENV]) ?? DEFAULT_BROWSER_MAX_TABS
   const idleRaw = env[BROWSER_TAB_IDLE_MINUTES_ENV]?.trim().toLowerCase()
   if (idleRaw === 'off') {

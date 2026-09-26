@@ -12,7 +12,7 @@ vi.mock('node:fs/promises', () => ({
 }))
 
 import { ExternalChromiumBrowserProcess } from './external-chromium-browser-process'
-import type { ExternalChromiumTabLimits } from './external-chromium-tab-limits'
+import type { BrowserTabLimits } from './browser-tab-limits'
 
 type FakeTab = { tabId: string; url: string }
 
@@ -126,7 +126,7 @@ beforeEach(() => {
   vi.spyOn(console, 'warn').mockImplementation(() => {})
 })
 
-async function startProvider(limits: ExternalChromiumTabLimits = { maxTabs: 2, idleMs: 60_000 }) {
+async function startProvider(limits: BrowserTabLimits = { maxTabs: 2, idleMs: 60_000 }) {
   const provider = new ExternalChromiumBrowserProcess(
     '/opt/orca/agent-browser',
     { executablePath: '/opt/chromium', provider: 'chromium' },

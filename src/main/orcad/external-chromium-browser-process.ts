@@ -11,11 +11,13 @@ export type { ExternalChromiumLaunch } from './external-chromium-browser-session
 import type { ExternalChromiumPageRecord as PageRecord } from './external-chromium-tab-projection'
 import { ExternalChromiumCommandDispatch } from './external-chromium-command-dispatch'
 import { ExternalChromiumTabRegistry } from './external-chromium-tab-registry'
-import { ExternalChromiumTabReclaimer } from './external-chromium-tab-reclamation'
 import {
-  resolveExternalChromiumTabLimits,
-  type ExternalChromiumTabLimits
-} from './external-chromium-tab-limits'
+  createExternalChromiumTabReclaimer,
+  forgetAllExternalChromiumTabs,
+  forgetVanishedExternalChromiumTabs,
+  type ExternalChromiumTabReclaimer
+} from './external-chromium-tab-reclamation'
+import { resolveBrowserTabLimits, type BrowserTabLimits } from './browser-tab-limits'
 import {
   ExternalChromiumBrowserHealth,
   isBrowserDriverFailure
@@ -27,7 +29,7 @@ const MAINTENANCE_INTERVAL_MS = 60_000
 const UNRESPONSIVE_PROBE_TIMEOUT_MS = 5_000
 
 export type ExternalChromiumBrowserProcessOptions = {
-  limits?: ExternalChromiumTabLimits
+  limits?: BrowserTabLimits
   now?: () => number
   maintenanceIntervalMs?: number
 }
@@ -54,10 +56,10 @@ export class ExternalChromiumBrowserProcess {
     this.session = new ExternalChromiumBrowserSession(agentBrowserPath, launch, statePath)
     this.tabs = new ExternalChromiumTabRegistry(this.session)
     const now = options.now ?? Date.now
-    this.reclaimer = new ExternalChromiumTabReclaimer(
+    this.reclaimer = createExternalChromiumTabReclaimer(
       this.session,
       this.tabs,
-      options.limits ?? resolveExternalChromiumTabLimits(),
+      options.limits ?? resolveBrowserTabLimits(),
       now
     )
     this.health = new ExternalChromiumBrowserHealth(now)
@@ -170,7 +172,7 @@ export class ExternalChromiumBrowserProcess {
       return error
     } catch {
       // A crashed renderer answers nothing; close it so its tab stops holding memory.
-      await this.reclaimer.reclaimUnresponsive(page)
+      await this.reclaimer.reclaim(page, 'unresponsive')
       return new BrowserError(
         'browser_tab_closed',
         'Browser tab stopped responding and was closed to reclaim its memory.'
@@ -181,7 +183,7 @@ export class ExternalChromiumBrowserProcess {
   /** The browser tree is gone: forget its tabs and stop advertising it until relaunched. */
   private markCrashed(): void {
     this.available = false
-    this.reclaimer.forgetAll()
+    forgetAllExternalChromiumTabs(this.tabs, this.reclaimer)
     console.warn(
       `[orcad] External browser stopped responding (${this.health.lastCrash() ?? 'unknown'}); ` +
         'it will be relaunched on the next command or maintenance tick.'
@@ -223,7 +225,11 @@ export class ExternalChromiumBrowserProcess {
     try {
       const tabs = await this.session.readTabs()
       this.health.recordSuccess()
-      this.reclaimer.forgetVanished(new Set(tabs.map((tab) => tab.tabId)))
+      forgetVanishedExternalChromiumTabs(
+        this.tabs,
+        this.reclaimer,
+        new Set(tabs.map((tab) => tab.tabId))
+      )
       await this.reclaimer.reclaimIdle()
     } catch (error) {
       if (isBrowserDriverFailure(error) && this.health.recordDriverFailure(error)) {

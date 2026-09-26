@@ -15,7 +15,7 @@ import {
   TERMINAL_NICE_ENV,
   TERMINAL_OOM_SCORE_ADJ_ENV
 } from '../daemon/pty-subprocess/pty-child-scheduling-policy'
-import { BROWSER_MAX_TABS_ENV, BROWSER_TAB_IDLE_MINUTES_ENV } from './external-chromium-tab-limits'
+import { BROWSER_MAX_TABS_ENV, BROWSER_TAB_IDLE_MINUTES_ENV } from './browser-tab-limits'
 
 export const ORCAD_RESOURCE_LIMIT_ENV: Readonly<Record<string, string>> = {
   'terminal-memory-high': TERMINAL_SCOPE_LIMIT_ENV.MemoryHigh,
