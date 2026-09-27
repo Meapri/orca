@@ -18,9 +18,9 @@ import {
 } from './terminal-theme-search'
 import {
   getTerminalCursorSearchEntries,
-  getTerminalRenderingSearchEntries,
   getTerminalTypographySearchEntries
 } from './terminal-typography-search'
+import { getTerminalRenderingSearchEntries } from './terminal-rendering-search'
 import {
   getTerminalRightClickToPasteSearchEntry,
   getTerminalWindowsPowershellImplementationSearchEntry,
@@ -36,9 +36,9 @@ import { createLocalizedCatalog } from '@/i18n/localized-catalog'
 export {
   getTerminalAdvancedTypographySearchEntries,
   getTerminalTypographySearchEntries,
-  getTerminalRenderingSearchEntries,
   getTerminalCursorSearchEntries
 } from './terminal-typography-search'
+export { getTerminalRenderingSearchEntries } from './terminal-rendering-search'
 export {
   getTerminalPaneAppearanceSearchEntries,
   getTerminalPaneInteractionSearchEntries

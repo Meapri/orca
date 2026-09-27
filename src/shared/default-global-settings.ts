@@ -81,6 +81,7 @@ export function buildDefaultSettings(args: {
     terminalCursorStyleDefaultedToBlock: true,
     terminalCursorBlink: true,
     terminalImePreeditInGrid: true,
+    terminalFitWideGlyphs: true,
     // Why on: the glide only follows local typing and snaps for output, TUIs and reduced motion.
     terminalCursorAnimation: true,
     terminalThemeDark: 'Ghostty Default Style Dark',
