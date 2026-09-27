@@ -89,7 +89,10 @@ describe('web runtime endpoint failover', () => {
 
   it('decodes alternates from a newer host and ignores them when an older host omits the field', () => {
     const withAlternates = parseWebPairingInput(
-      encodeOffer({ ...pairing, alternateEndpoints: ['http://100.64.0.5:6768', 42, pairing.endpoint] })
+      encodeOffer({
+        ...pairing,
+        alternateEndpoints: ['http://100.64.0.5:6768', 42, pairing.endpoint]
+      })
     )
     expect(withAlternates?.alternateEndpoints).toEqual(['ws://100.64.0.5:6768'])
     const { alternateEndpoints: _omitted, ...legacy } = pairing

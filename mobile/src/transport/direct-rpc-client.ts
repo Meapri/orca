@@ -19,7 +19,6 @@ import { RpcSessionLivenessWatchdog } from './rpc-session-liveness-watchdog'
 import { isStaleForegroundDial } from './rpc-stale-dial'
 import type { ConnectionState, ForegroundNudgeReason, RpcResponse } from './types'
 import { negotiateMobileRuntimeCapabilities } from './mobile-runtime-capability-negotiation'
-import { PairingEndpointRotation } from '../../../src/shared/pairing-endpoint-failover'
 
 const LIVENESS_REQUEST_ID_PREFIX = 'mobile-liveness-'
 
@@ -38,9 +37,6 @@ export class DirectRpcClient implements RpcClient {
   private intentionallyClosed = false
   private authenticationGeneration = 0
   private livenessSession: RpcClientSocketSession | null = null
-  private readonly endpoints: PairingEndpointRotation
-  private dialEndpoint: string
-  private dialOpened = false
 
   constructor(
     private readonly endpoint: string,
@@ -48,8 +44,6 @@ export class DirectRpcClient implements RpcClient {
     serverPublicKeyB64: string,
     private readonly options: ConnectOptions
   ) {
-    this.endpoints = new PairingEndpointRotation([endpoint, ...(options.alternateEndpoints ?? [])])
-    this.dialEndpoint = this.endpoints.current()
     this.connectionLog = new DirectConnectionLog(endpoint, options.onLog)
     this.reconnect = new RpcClientReconnectSchedule({
       openConnection: () => this.openConnection(),
@@ -87,11 +81,7 @@ export class DirectRpcClient implements RpcClient {
       onTimeout: this.connectionLog.livenessTimeout
     })
     this.socketFactory = new RpcClientSocketFactory({
-      resolveEndpoint: () => {
-        this.dialEndpoint = this.endpoints.current()
-        this.dialOpened = false
-        return this.dialEndpoint
-      },
+      dial: { ...options, endpoint },
       deviceToken,
       serverPublicKeyB64,
       getCurrentSocket: () => this.socketSession?.socket ?? null,
@@ -100,23 +90,14 @@ export class DirectRpcClient implements RpcClient {
       getLastConnectedAt: () => this.getLastConnectedAt(),
       isIntentionallyClosed: () => this.intentionallyClosed,
       emitLog: this.connectionLog.emit,
-      onHandshakeStarted: () => {
-        this.dialOpened = true
-        this.connectionState.publish('handshaking')
-      },
+      onHandshakeStarted: () => this.connectionState.publish('handshaking'),
       onAuthenticated: (session) => this.handleAuthenticated(session),
       onAuthRejected: (reason) => this.authenticationRetry.reject(reason),
       onRpcResponse: (response) => this.handleRpcResponse(response),
       onBinary: (bytes) => this.streams.handleBinary(bytes),
       onAuthenticatedInbound: (session) => this.liveness.noteAuthenticatedInbound(session),
-      onClosed: (session, closeCode) => {
-        this.noteDialClosed(session)
-        this.socketClose.handle(session, closeCode)
-      },
-      onForcedClose: (session) => {
-        this.noteDialClosed(session)
-        this.socketClose.forceClose(session)
-      }
+      onClosed: (session, closeCode) => this.socketClose.handle(session, closeCode),
+      onForcedClose: (session) => this.socketClose.forceClose(session)
     })
     this.authenticationRetry = new RpcClientAuthenticationRetry({
       endpoint,
@@ -254,8 +235,6 @@ export class DirectRpcClient implements RpcClient {
         this.requests.sendAuthenticatedRequest(method, params, 5_000),
       current: () => this.socketSession === session && this.authenticationGeneration === generation,
       onReady: () => {
-        this.endpoints.noteConnected(this.dialEndpoint)
-        this.options.onEndpointConnected?.(this.dialEndpoint)
         this.reconnect.authenticated()
         this.authenticationRetry.accepted()
         this.connectionState.publish('connected')
@@ -264,13 +243,6 @@ export class DirectRpcClient implements RpcClient {
       },
       onFailure: () => this.socketClose.forceClose(session)
     })
-  }
-
-  // Why only an unopened dial: an address whose socket opened proves it reaches the host.
-  private noteDialClosed(session: RpcClientSocketSession): void {
-    if (session === this.socketSession && !this.dialOpened) {
-      this.endpoints.noteConnectFailure(this.dialEndpoint)
-    }
   }
 
   private handleRpcResponse(response: RpcResponse): void {

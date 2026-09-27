@@ -19,11 +19,7 @@ import type { WebRuntimeTransportSubscription } from './web-runtime-subscription
 import { WebRuntimeSubscriptionRegistry } from './web-runtime-subscription-registry'
 import { WebRuntimeRequestRegistry } from './web-runtime-request-registry'
 import { WebRuntimeConnectionWaiters } from './web-runtime-connection-waiters'
-import {
-  listPairingDialEndpoints,
-  PairingEndpointRotation
-} from '../../../shared/pairing-endpoint-failover'
-import { REMOTE_RUNTIME_SOCKET_RESUME_PROBE_DEADLINE_MS } from '../../../shared/remote-runtime-socket-liveness'
+import { WebRuntimeEndpointPass } from './web-runtime-endpoint-pass'
 import { registerWebRuntimeResumeTarget } from './web-runtime-resume-signals'
 
 const CONNECT_TIMEOUT_MS = 12_000
@@ -46,11 +42,7 @@ export class WebRuntimeConnectionTransport {
   private readonly subscriptionRegistry: WebRuntimeSubscriptionRegistry
   private readonly requestRegistry: WebRuntimeRequestRegistry
   private readonly connectionWaiters: WebRuntimeConnectionWaiters
-  private readonly endpoints: PairingEndpointRotation
-  // Why: one pass tries each paired address once before the backoff applies, so an unreachable
-  // primary costs one connect timeout rather than a whole backoff ladder.
-  private readonly unansweredThisPass = new Set<string>()
-  private dialEndpoint: string
+  readonly endpoints: WebRuntimeEndpointPass
   private readonly unregisterResumeTarget: () => void
 
   constructor(
@@ -64,8 +56,7 @@ export class WebRuntimeConnectionTransport {
     } = {}
   ) {
     this.serverPublicKey = publicKeyFromBase64(pairing.publicKeyB64)
-    this.endpoints = new PairingEndpointRotation(listPairingDialEndpoints(pairing))
-    this.dialEndpoint = this.endpoints.current()
+    this.endpoints = new WebRuntimeEndpointPass(pairing)
     this.unregisterResumeTarget = registerWebRuntimeResumeTarget(this)
     this.connectionWaiters = new WebRuntimeConnectionWaiters({
       endpoint: pairing.endpoint,
@@ -135,10 +126,9 @@ export class WebRuntimeConnectionTransport {
       setConnected: () => {
         this.clearHandshakeTimer()
         this.reconnectAttempt = 0
-        this.unansweredThisPass.clear()
-        this.endpoints.noteConnected(this.dialEndpoint)
+        this.endpoints.noteConnected()
         this.setState('connected')
-        this.lifecycle.onEndpointConnected?.(this.dialEndpoint)
+        this.lifecycle.onEndpointConnected?.(this.endpoints.dialed)
       },
       setAuthFailed: () => {
         this.intentionallyClosed = true
@@ -168,7 +158,8 @@ export class WebRuntimeConnectionTransport {
       return
     }
     this.setState('disconnected')
-    if (unanswered && this.tryNextEndpointNow()) {
+    if (unanswered && this.endpoints.advanceAfterUnanswered()) {
+      this.openConnection()
       return
     }
     this.scheduleReconnect()
@@ -180,30 +171,16 @@ export class WebRuntimeConnectionTransport {
       return
     }
     if (this.state === 'connected') {
-      this.heartbeat.probeNow(REMOTE_RUNTIME_SOCKET_RESUME_PROBE_DEADLINE_MS)
+      this.heartbeat.probeNow()
       return
     }
     if (this.reconnectTimer) {
       window.clearTimeout(this.reconnectTimer)
       this.reconnectTimer = null
       this.reconnectAttempt = 0
-      this.unansweredThisPass.clear()
+      this.endpoints.restartPass()
       this.openConnection()
     }
-  }
-
-  private tryNextEndpointNow(): boolean {
-    this.unansweredThisPass.add(this.dialEndpoint)
-    if (!this.endpoints.noteConnectFailure(this.dialEndpoint)) {
-      return false
-    }
-    if (this.unansweredThisPass.has(this.endpoints.current())) {
-      // Why: every address went unanswered this pass; the backoff decides when to start the next.
-      this.unansweredThisPass.clear()
-      return false
-    }
-    this.openConnection()
-    return true
   }
 
   setState(next: WebRuntimeConnectionState): void {
@@ -223,9 +200,8 @@ export class WebRuntimeConnectionTransport {
       return
     }
     let socket: WebSocket
-    this.dialEndpoint = this.endpoints.current()
     try {
-      socket = new WebSocket(this.dialEndpoint)
+      socket = new WebSocket(this.endpoints.beginDial())
     } catch (error) {
       this.requestRegistry.rejectAll(error instanceof Error ? error.message : String(error))
       this.scheduleReconnect()
@@ -268,26 +244,10 @@ export class WebRuntimeConnectionTransport {
     socket.onclose = () => this.handleSocketClosed(socket)
     socket.onerror = () => {
       // Why: while another paired address is still untried, the connect is not yet a failure.
-      if (this.state === 'connecting' && !this.hasUntriedEndpoint()) {
+      if (this.state === 'connecting' && !this.endpoints.hasUntried()) {
         this.connectionWaiters.rejectUnavailable()
       }
     }
-  }
-
-  /** The pairing re-ordered so the address that last answered is dialed first. */
-  currentPairing(): WebPairingOffer {
-    const endpoint = this.endpoints.current()
-    const alternateEndpoints = this.endpoints.alternatesAfter(endpoint)
-    const { alternateEndpoints: _previous, ...pairing } = this.pairing
-    return {
-      ...pairing,
-      endpoint,
-      ...(alternateEndpoints.length > 0 ? { alternateEndpoints } : {})
-    }
-  }
-
-  private hasUntriedEndpoint(): boolean {
-    return this.endpoints.size > this.unansweredThisPass.size + 1
   }
 
   sendEncrypted(message: unknown): boolean {

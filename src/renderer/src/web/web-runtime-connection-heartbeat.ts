@@ -1,4 +1,5 @@
 import { installWindowVisibilityInterval } from '../lib/window-visibility-interval'
+import { REMOTE_RUNTIME_SOCKET_RESUME_PROBE_DEADLINE_MS } from '../../../shared/remote-runtime-socket-liveness'
 
 const HEARTBEAT_INTERVAL_MS = 10_000
 const HEARTBEAT_IDLE_MS = 25_000
@@ -34,7 +35,7 @@ export class WebRuntimeConnectionHeartbeat {
    * OPEN with its path gone, and the idle window needs ~45 s to prove that. One probe with a short
    * deadline settles it; a live socket answers and nothing else changes.
    */
-  probeNow(deadlineMs: number): void {
+  probeNow(deadlineMs = REMOTE_RUNTIME_SOCKET_RESUME_PROBE_DEADLINE_MS): void {
     const socket = this.options.getSocket()
     if (
       this.resumeProbeTimer !== null ||

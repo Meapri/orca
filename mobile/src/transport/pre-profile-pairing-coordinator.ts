@@ -33,10 +33,7 @@ import { redactSocketEndpoint } from './socket-event-debug'
 import { assertCommittedInstall, relayHost } from './pairing-relay-host'
 import { recordHostDescriptorFromStatus } from './host-descriptor-recorder'
 import type { HostStatusReply } from './host-status-reply-schema'
-import {
-  listPairingDialEndpoints,
-  PairingEndpointRotation
-} from '../../../src/shared/pairing-endpoint-failover'
+import { withPairedEndpoints } from './pairing-host-endpoints'
 
 export type PreProfilePairingAttempt = {
   readonly result: Promise<{ hostId: string }>
@@ -306,25 +303,6 @@ function baseHost(
     deviceToken: offer.deviceToken,
     publicKeyB64: offer.publicKeyB64,
     lastConnected
-  }
-}
-
-/** Stores the offer's other addresses as alternates, preferring whichever answered during pairing. */
-function withPairedEndpoints(
-  host: HostProfile,
-  offer: PairingOffer,
-  answeredEndpoint: string | null
-): HostProfile {
-  const endpoints = listPairingDialEndpoints(offer)
-  if (endpoints.length < 2) {
-    return host
-  }
-  const preferred =
-    answeredEndpoint && endpoints.includes(answeredEndpoint) ? answeredEndpoint : offer.endpoint
-  return {
-    ...host,
-    endpoint: preferred,
-    alternateEndpoints: new PairingEndpointRotation(endpoints).alternatesAfter(preferred)
   }
 }
 

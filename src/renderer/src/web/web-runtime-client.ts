@@ -117,7 +117,7 @@ export class WebRuntimeClient {
       })
     }
     // Why current, not the construction pairing: after a failover the child must not redial the dead primary first.
-    const client = new WebRuntimeClient(this.transport.currentPairing())
+    const client = new WebRuntimeClient(this.transport.endpoints.currentPairing())
     this.childClients.add(client)
     const closeChild = (notifySubscriptions = false): void => {
       this.childClients.delete(client)

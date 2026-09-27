@@ -84,13 +84,13 @@ export function createEnvironmentFromPairingOffer(args: {
     // Why: alternates share the offer's credential and key; the primary stays preferred until a
     // connect to it fails. Older builds reading this store simply use the preferred entry.
     endpoints: listPairingDialEndpoints(args.offer).map((endpoint, index) => ({
-        id: index === 0 ? endpointId : `${endpointId}-alt-${index}`,
-        kind: 'websocket',
-        label: index === 0 ? 'WebSocket' : `WebSocket (alternate ${index})`,
-        endpoint,
-        deviceToken: args.offer.deviceToken,
-        publicKeyB64: args.offer.publicKeyB64
-      })),
+      id: index === 0 ? endpointId : `${endpointId}-alt-${index}`,
+      kind: 'websocket',
+      label: index === 0 ? 'WebSocket' : `WebSocket (alternate ${index})`,
+      endpoint,
+      deviceToken: args.offer.deviceToken,
+      publicKeyB64: args.offer.publicKeyB64
+    })),
     preferredEndpointId: endpointId
   })
 }
