@@ -173,6 +173,12 @@ export class OrcaRuntimeWithListManagedWorktrees extends OrcaRuntimeWithRestoreS
 
   async sleepManagedWorktree(worktreeSelector: string): Promise<{ worktreeId: string }> {
     const worktree = await this.resolveWorktreeSelector(worktreeSelector)
+    if (!this.getAvailableAuthoritativeWindow() && this.headlessAgentResumeHost) {
+      // Why: no renderer will run the desktop sleep flow here, so the host captures the
+      // agents' resume records and parks the PTYs itself instead of a silent no-op.
+      await this.headlessAgentResumeHost.sleepWorktree(worktree.id)
+      return { worktreeId: worktree.id }
+    }
     // Why: sleep is renderer-initiated on desktop (it tears down tab state
     // before killing PTYs). The notifier tells the renderer to run its own
     // sleep flow so all cleanup happens in the correct order.

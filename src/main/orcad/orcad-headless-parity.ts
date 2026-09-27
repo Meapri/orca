@@ -5,6 +5,10 @@
 import { HEADLESS_RUNTIME_WINDOW_ID } from '../../shared/runtime-types'
 import type { AgentHookServer } from '../agent-hooks/server'
 import { installFirstWorkRenameSubscription } from '../agent-hooks/first-work-rename-subscription'
+import {
+  installHeadlessSleepingAgentHost,
+  type HeadlessSleepingAgentStatusSource
+} from '../agent-hooks/headless-sleeping-agent-host'
 import { firstWorkRenameDeps } from '../agent-hooks/first-work-rename-runtime'
 import {
   installManagedAgentHooks,
@@ -29,7 +33,8 @@ export type OrcadHeadlessParity = {
 export function installOrcadHeadlessParity(options: {
   runtime: OrcaRuntimeService
   store: Store
-  agentHookServer: Pick<AgentHookServer, 'subscribeEnrichedStatus' | 'subscribeStatusDrop'>
+  agentHookServer: Pick<AgentHookServer, 'subscribeEnrichedStatus' | 'subscribeStatusDrop'> &
+    HeadlessSleepingAgentStatusSource
 }): OrcadHeadlessParity {
   const { runtime, store, agentHookServer } = options
   // Same placeholder serve publishes: no renderer will ever publish a graph on this host.
@@ -53,6 +58,12 @@ export function installOrcadHeadlessParity(options: {
     headlessDispatcher: createRuntimeHeadlessAutomationDispatcher(runtime)
   })
   runtime.setAutomationService(automations)
+  // Why: nothing else records or replays an idle agent's resume identity on this host (#21743).
+  const sleepingAgents = installHeadlessSleepingAgentHost({
+    server: agentHookServer,
+    store,
+    runtime
+  })
   let stopped = false
   return {
     startScheduledWork: () => {
@@ -71,6 +82,9 @@ export function installOrcadHeadlessParity(options: {
       }
       // A quit mid-delete leaves tombstoned history and trashed checkouts that only this reclaims.
       scheduleAllPendingHistoryTreeRemovals()
+      void sleepingAgents.resumeAfterRestart().catch((error: unknown) => {
+        console.warn('[agent-resume] cold restore after restart failed:', error)
+      })
       void sweepStaleWorktreeTrash(
         collectWorktreeTrashSweepRoots(store.getRepos(), store.getSettings())
       ).catch((error: unknown) => {
@@ -79,6 +93,8 @@ export function installOrcadHeadlessParity(options: {
     },
     uninstall: () => {
       stopped = true
+      // Why first: shutdown's own PTY teardown must not read as agents to resume.
+      sleepingAgents.uninstall()
       automations.stop()
       uninstallNotifications()
       uninstallRename()

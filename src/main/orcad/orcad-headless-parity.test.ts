@@ -67,7 +67,9 @@ function makeAgentHookServer() {
     subscribeStatusDrop: (listener: (paneKey: string) => void) => {
       dropListeners.add(listener)
       return () => dropListeners.delete(listener)
-    }
+    },
+    subscribePaneStatusClear: () => () => {},
+    getStatusSnapshot: () => []
   }
 }
 
@@ -85,21 +87,25 @@ describe('installOrcadHeadlessParity', () => {
     expect(status.authoritativeWindowId).toBe(HEADLESS_RUNTIME_WINDOW_ID)
   })
 
-  it('subscribes the rename and notification consumers, and removes them on uninstall', () => {
+  it('subscribes the rename, notification and sleeping-agent consumers, and removes them on uninstall', () => {
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: makeStore returns every read the graph publish reaches.
     const store = makeStore() as never
     const server = makeAgentHookServer()
 
     const runtime = new OrcaRuntimeService(store)
     const setAutomationService = vi.spyOn(runtime, 'setAutomationService')
+    const setResumeHost = vi.spyOn(runtime, 'setHeadlessAgentResumeHost')
     const parity = installOrcadHeadlessParity({ runtime, store, agentHookServer: server })
-    expect(server.statusListeners.size).toBe(2)
+    expect(server.statusListeners.size).toBe(3)
     expect(server.dropListeners.size).toBe(1)
     expect(setAutomationService.mock.calls[0]?.[0]).toBeInstanceOf(AutomationService)
+    expect(setResumeHost.mock.calls[0]?.[0]).not.toBeNull()
 
     parity.uninstall()
     expect(server.statusListeners.size).toBe(0)
     expect(server.dropListeners.size).toBe(0)
+    // Why: shutdown's own PTY teardown must not reach a resume host.
+    expect(setResumeHost.mock.calls.at(-1)?.[0]).toBeNull()
   })
 
   it('arms scheduled work only when asked, after the transport is up', async () => {
