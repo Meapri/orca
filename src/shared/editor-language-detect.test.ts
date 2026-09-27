@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { detectLanguage } from './language-detect'
+import { detectLanguage } from './editor-language-detect'
 
 describe('detectLanguage', () => {
   it('maps .vue files to the custom vue language id', () => {
