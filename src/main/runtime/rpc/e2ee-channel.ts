@@ -20,6 +20,11 @@ import { parseRuntimeClientCapabilities } from './runtime-client-capabilities'
 import type { RuntimeCapability } from '../../../shared/protocol-version'
 import type { EventProps } from '../../../shared/telemetry-events'
 import { track } from '../../telemetry/client'
+import {
+  compressE2EETextPayload,
+  E2EE_TEXT_DEFLATE_CAPABILITY,
+  type E2EETextReply
+} from '../../../shared/e2ee-text-compression'
 
 type OutboundBudgetEmitter = EventProps<'remote_outbound_budget_close'>['emitter']
 
@@ -60,7 +65,7 @@ export class E2EEChannel {
   private messageHandler:
     | ((
         plaintext: string,
-        encryptedReply: (response: string) => void,
+        encryptedReply: E2EETextReply,
         encryptedBinaryReply: (response: Uint8Array<ArrayBufferLike>) => boolean | void
       ) => void)
     | null = null
@@ -88,7 +93,7 @@ export class E2EEChannel {
   onMessage(
     handler: (
       plaintext: string,
-      encryptedReply: (response: string) => void,
+      encryptedReply: E2EETextReply,
       encryptedBinaryReply: (response: Uint8Array<ArrayBufferLike>) => boolean | void
     ) => void
   ): void {
@@ -146,7 +151,7 @@ export class E2EEChannel {
     }
 
     // Why: streaming emits can outlive destroy(), so late replies must not encrypt with a cleared key.
-    const encryptedReply = (response: string) => {
+    const encryptedReply: E2EETextReply = (response, options) => {
       if (!this.sharedKey || this.ws.readyState !== this.ws.OPEN) {
         return
       }
@@ -155,7 +160,7 @@ export class E2EEChannel {
         return
       }
       this.outbound.enqueueLegacyText(
-        encrypt(response, this.sharedKey),
+        this.encryptLegacyText(response, this.sharedKey, options?.compressible === true),
         () => Boolean(this.sharedKey),
         () => this.closeForOutboundBudget('queue')
       )
@@ -175,6 +180,21 @@ export class E2EEChannel {
       return true
     }
     this.messageHandler?.(plaintext, encryptedReply, encryptedBinaryReply)
+  }
+
+  // Why opt-in per reply: runtime-rpc-compressible-methods.ts decides which payloads may be deflated.
+  private encryptLegacyText(
+    response: string,
+    sharedKey: Uint8Array,
+    compressible: boolean
+  ): string {
+    if (compressible && this.clientCapabilities.includes(E2EE_TEXT_DEFLATE_CAPABILITY)) {
+      const compressed = compressE2EETextPayload(response)
+      if (compressed) {
+        return Buffer.from(encryptBytes(compressed, sharedKey)).toString('base64')
+      }
+    }
+    return encrypt(response, sharedKey)
   }
 
   private trackDecryptFailure(): void {

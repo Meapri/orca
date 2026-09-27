@@ -3,7 +3,8 @@ import WebSocket from 'ws'
 import { abortSignalReason } from './abort-signal-reason'
 import type { PairingOffer } from './pairing'
 import { scheduleOrphanedRemoteRuntimeSocketClose } from './remote-runtime-abort-orphaned-socket'
-import { decrypt, encrypt } from './e2ee-crypto'
+import { encrypt } from './e2ee-crypto'
+import { decryptE2EEText } from './e2ee-text-compression'
 import {
   serializeRemoteRuntimePayload,
   serializeRemoteRuntimeRpcRequest
@@ -32,7 +33,7 @@ import {
   type RemoteRuntimeRequestReadyWaiter
 } from './remote-runtime-request-ready-waiters'
 import { openRemoteRuntimeWebSocket } from './remote-runtime-request-websocket'
-import { remoteRuntimeClientCapabilities } from './remote-runtime-client-capabilities'
+import { nodeRemoteRuntimeClientCapabilities } from './remote-runtime-node-client-capabilities'
 import type { RuntimeCapability } from './protocol-version'
 type ConnectionState = 'closed' | 'awaiting_ready' | 'awaiting_authenticated' | 'ready'
 const IDLE_CLOSE_MS = 60_000
@@ -205,7 +206,7 @@ export class RemoteRuntimeRequestConnection {
     if (!sharedKey) {
       return
     }
-    const plaintext = decrypt(frame, sharedKey)
+    const plaintext = decryptE2EEText(frame, sharedKey)
     if (plaintext === null) {
       this.close(
         invalidRemoteRuntimeResponseError('Remote Orca runtime returned an undecryptable frame.')
@@ -237,7 +238,7 @@ export class RemoteRuntimeRequestConnection {
         serializeRemoteRuntimePayload({
           type: 'e2ee_auth',
           deviceToken: this.pairing.deviceToken,
-          clientCapabilities: remoteRuntimeClientCapabilities(this.additionalClientCapabilities)
+          clientCapabilities: nodeRemoteRuntimeClientCapabilities(this.additionalClientCapabilities)
         }),
         sharedKey
       )
