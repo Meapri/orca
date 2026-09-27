@@ -1981,10 +1981,10 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..efb5006ad88e62e96a785f34634f0ac1
    }
  }
 diff --git a/src/browser/renderer/dom/DomRenderer.ts b/src/browser/renderer/dom/DomRenderer.ts
-index 657217f7104c97ce54b98e88b381b325b061604c..7dd9f672ae767ce1229416d528f9a5c38de9613f 100644
+index 657217f7104c97ce54b98e88b381b325b061604c..fcbe8487607479c6aea5a71c20079b0c15986dfe 100644
 --- a/src/browser/renderer/dom/DomRenderer.ts
 +++ b/src/browser/renderer/dom/DomRenderer.ts
-@@ -11,7 +11,8 @@ import { createSelectionRenderModel } from '../shared/SelectionRenderModel';
+@@ -11,10 +11,11 @@ import { createSelectionRenderModel } from '../shared/SelectionRenderModel';
  import { TextBlinkStateManager } from '../shared/TextBlinkStateManager';
  import { IRenderDimensions, IRenderer, IRequestRedrawEvent, ISelectionRenderModel } from '../shared/Types';
  import { ICharSizeService, ICoreBrowserService, IThemeService } from '../../services/Services';
@@ -1993,7 +1993,11 @@ index 657217f7104c97ce54b98e88b381b325b061604c..7dd9f672ae767ce1229416d528f9a5c3
 +import { IBufferLine } from '../../../common/buffer/Types';
  import { color } from '../../../common/Color';
  import { Disposable, toDisposable } from '../../../common/Lifecycle';
- import { IBufferService, ICoreService, IInstantiationService, IOptionsService } from '../../../common/services/Services';
+-import { IBufferService, ICoreService, IInstantiationService, IOptionsService } from '../../../common/services/Services';
++import { IBufferService, ICoreService, IInstantiationService, IOptionsService, IUnicodeService } from '../../../common/services/Services';
+ import { Emitter } from '../../../common/Event';
+ import { addDisposableListener } from '../../Dom';
+ 
 @@ -54,6 +55,8 @@ export class DomRenderer extends Disposable implements IRenderer {
    private _textBlinkStateManager: TextBlinkStateManager;
    private _rowHasBlinkingCells: boolean[] = [];
@@ -2003,7 +2007,25 @@ index 657217f7104c97ce54b98e88b381b325b061604c..7dd9f672ae767ce1229416d528f9a5c3
  
    public dimensions: IRenderDimensions;
  
-@@ -214,6 +217,10 @@ export class DomRenderer extends Disposable implements IRenderer {
+@@ -74,7 +77,8 @@ export class DomRenderer extends Disposable implements IRenderer {
+     @IBufferService private readonly _bufferService: IBufferService,
+     @ICoreService private readonly _coreService: ICoreService,
+     @ICoreBrowserService private readonly _coreBrowserService: ICoreBrowserService,
+-    @IThemeService private readonly _themeService: IThemeService
++    @IThemeService private readonly _themeService: IThemeService,
++    @IUnicodeService unicodeService: IUnicodeService
+   ) {
+     super();
+     this._rowContainer = this._document.createElement('div');
+@@ -94,6 +98,7 @@ export class DomRenderer extends Disposable implements IRenderer {
+     this._injectCss(this._themeService.colors);
+ 
+     this._rowFactory = instantiationService.createInstance(DomRendererRowFactory, document);
++    this._rowFactory.unicodeService = unicodeService;
+ 
+     this._element.classList.add(Constants.TERMINAL_CLASS_PREFIX + this._terminalClass);
+     this._screenElement.appendChild(this._rowContainer);
+@@ -214,6 +219,10 @@ export class DomRenderer extends Disposable implements IRenderer {
        `}` +
        `${this._terminalSelector} span.${RowCss.BLINK_HIDDEN_CLASS} {` +
        ` visibility: hidden;` +
@@ -2014,7 +2036,7 @@ index 657217f7104c97ce54b98e88b381b325b061604c..7dd9f672ae767ce1229416d528f9a5c3
        `}`;
      // Blink animation
      const blinkAnimationUnderlineId = `blink_underline_${this._terminalClass}`;
-@@ -526,8 +533,19 @@ export class DomRenderer extends Disposable implements IRenderer {
+@@ -526,8 +535,19 @@ export class DomRenderer extends Disposable implements IRenderer {
  
    public renderRows(start: number, end: number): void {
      const buffer = this._bufferService.buffer;
@@ -2036,7 +2058,7 @@ index 657217f7104c97ce54b98e88b381b325b061604c..7dd9f672ae767ce1229416d528f9a5c3
      const cursorBlink = this._coreService.decPrivateModes.cursorBlink ?? this._optionsService.rawOptions.cursorBlink;
      const cursorStyle = this._coreService.decPrivateModes.cursorStyle ?? this._optionsService.rawOptions.cursorStyle;
      const cursorInactiveStyle = this._optionsService.rawOptions.cursorInactiveStyle;
-@@ -545,9 +563,10 @@ export class DomRenderer extends Disposable implements IRenderer {
+@@ -545,9 +565,10 @@ export class DomRenderer extends Disposable implements IRenderer {
          this._setRowBlinkState(y, false);
          continue;
        }
@@ -2048,7 +2070,7 @@ index 657217f7104c97ce54b98e88b381b325b061604c..7dd9f672ae767ce1229416d528f9a5c3
            row,
            row === cursorAbsoluteY,
            cursorStyle,
-@@ -559,7 +578,9 @@ export class DomRenderer extends Disposable implements IRenderer {
+@@ -559,7 +580,9 @@ export class DomRenderer extends Disposable implements IRenderer {
            this._widthCache,
            -1,
            -1,
@@ -2059,7 +2081,7 @@ index 657217f7104c97ce54b98e88b381b325b061604c..7dd9f672ae767ce1229416d528f9a5c3
          )
        );
        this._setRowBlinkState(y, rowInfo.hasBlinkingCells);
-@@ -567,6 +588,12 @@ export class DomRenderer extends Disposable implements IRenderer {
+@@ -567,6 +590,12 @@ export class DomRenderer extends Disposable implements IRenderer {
      this._updateTextBlinkState();
    }
  
@@ -2072,7 +2094,7 @@ index 657217f7104c97ce54b98e88b381b325b061604c..7dd9f672ae767ce1229416d528f9a5c3
    private get _terminalSelector(): string {
      return `.${Constants.TERMINAL_CLASS_PREFIX}${this._terminalClass}`;
    }
-@@ -604,8 +631,10 @@ export class DomRenderer extends Disposable implements IRenderer {
+@@ -604,8 +633,10 @@ export class DomRenderer extends Disposable implements IRenderer {
  
      cols = Math.min(cols, this._bufferService.cols);
      const buffer = this._bufferService.buffer;
@@ -2085,7 +2107,7 @@ index 657217f7104c97ce54b98e88b381b325b061604c..7dd9f672ae767ce1229416d528f9a5c3
      const cursorBlink = this._optionsService.rawOptions.cursorBlink;
      const cursorStyle = this._optionsService.rawOptions.cursorStyle;
      const cursorInactiveStyle = this._optionsService.rawOptions.cursorInactiveStyle;
-@@ -624,9 +653,10 @@ export class DomRenderer extends Disposable implements IRenderer {
+@@ -624,9 +655,10 @@ export class DomRenderer extends Disposable implements IRenderer {
          this._setRowBlinkState(i, false);
          continue;
        }
@@ -2097,7 +2119,7 @@ index 657217f7104c97ce54b98e88b381b325b061604c..7dd9f672ae767ce1229416d528f9a5c3
            row,
            row === cursorAbsoluteY,
            cursorStyle,
-@@ -638,7 +668,9 @@ export class DomRenderer extends Disposable implements IRenderer {
+@@ -638,7 +670,9 @@ export class DomRenderer extends Disposable implements IRenderer {
            this._widthCache,
            enabled ? (i === y ? x : 0) : -1,
            enabled ? ((i === y2 ? x2 : cols) - 1) : -1,
@@ -2109,9 +2131,18 @@ index 657217f7104c97ce54b98e88b381b325b061604c..7dd9f672ae767ce1229416d528f9a5c3
        );
        this._setRowBlinkState(i, rowInfo.hasBlinkingCells);
 diff --git a/src/browser/renderer/dom/DomRendererRowFactory.ts b/src/browser/renderer/dom/DomRendererRowFactory.ts
-index 6ae089a4387de14488f39f5dab7024cffdcd9d10..0085d0e6b75b1cb4599c15cb48b9cfb278cc00fa 100644
+index 6ae089a4387de14488f39f5dab7024cffdcd9d10..541e0b09ea71e792a5fe963984ae016a0b4fb0f0 100644
 --- a/src/browser/renderer/dom/DomRendererRowFactory.ts
 +++ b/src/browser/renderer/dom/DomRendererRowFactory.ts
+@@ -8,7 +8,7 @@ import { IBufferLine, ICellData } from '../../../common/buffer/Types';
+ import { INVERTED_DEFAULT_COLOR } from '../shared/Constants';
+ import { WHITESPACE_CELL_CHAR, Attributes } from '../../../common/buffer/Constants';
+ import { CellData } from '../../../common/buffer/CellData';
+-import { ICoreService, IDecorationService, IOptionsService } from '../../../common/services/Services';
++import { ICoreService, IDecorationService, IOptionsService, IUnicodeService } from '../../../common/services/Services';
+ import { channels, color } from '../../../common/Color';
+ import { ICharacterJoinerService, ICoreBrowserService, IThemeService } from '../../services/Services';
+ import { JoinedCellData } from '../../services/CharacterJoinerService';
 @@ -31,7 +31,8 @@ export const enum RowCss {
    CURSOR_STYLE_BLOCK_CLASS = 'xterm-cursor-block',
    CURSOR_STYLE_OUTLINE_CLASS = 'xterm-cursor-outline',
@@ -2122,7 +2153,16 @@ index 6ae089a4387de14488f39f5dab7024cffdcd9d10..0085d0e6b75b1cb4599c15cb48b9cfb2
  }
  
  
-@@ -73,14 +74,17 @@ export class DomRendererRowFactory {
+@@ -43,6 +44,8 @@ export class DomRendererRowFactory {
+   private _columnSelectMode: boolean = false;
+ 
+   public defaultSpacing = 0;
++  /** Orca: set by DomRenderer; without it (hand-built factories) wide glyphs stay unfitted. */
++  public unicodeService: IUnicodeService | undefined;
+ 
+   constructor(
+     private readonly _document: Document,
+@@ -73,14 +76,17 @@ export class DomRendererRowFactory {
      widthCache: WidthCache,
      linkStart: number,
      linkEnd: number,
@@ -2142,18 +2182,20 @@ index 6ae089a4387de14488f39f5dab7024cffdcd9d10..0085d0e6b75b1cb4599c15cb48b9cfb2
      const colors = this._themeService.colors;
  
      let lineLength = lineData.getNoBgTrimmedLength();
-@@ -181,6 +185,10 @@ export class DomRendererRowFactory {
+@@ -181,6 +187,12 @@ export class DomRendererRowFactory {
  
        // lookup char render width and calc spacing
        spacing = width * cellWidth - widthCache.get(chars, cell.isBold(), cell.isItalic());
-+      // Orca: enlarged and centered wide glyphs carry their own spacing, so they never merge.
++      // Orca: enlarged and centered wide glyphs carry their own spacing, so they never merge. Like
++      // the WebGL atlas, only fit cells exactly as wide as their first code point.
 +      const wideGlyph = width > 1 && !isJoined && !cell.isInvisible() && this._optionsService.rawOptions.fitWideGlyphs
++        && width === this.unicodeService?.wcwidth(chars.codePointAt(0) ?? 0)
 +        ? widthCache.getWideGlyphFit(chars, cell.isBold(), cell.isItalic(), width * cellWidth)
 +        : undefined;
  
        if (!charElement) {
          charElement = this._document.createElement('span');
-@@ -212,6 +220,7 @@ export class DomRendererRowFactory {
+@@ -212,6 +224,7 @@ export class DomRendererRowFactory {
            && !isJoined
            && !isDecorated
            && isValidJoinRange
@@ -2161,7 +2203,7 @@ index 6ae089a4387de14488f39f5dab7024cffdcd9d10..0085d0e6b75b1cb4599c15cb48b9cfb2
          ) {
            // no span alterations, thus only account chars skipping all code below
            if (cell.isInvisible()) {
-@@ -252,7 +261,8 @@ export class DomRendererRowFactory {
+@@ -252,7 +265,8 @@ export class DomRendererRowFactory {
          }
        }
  
@@ -2171,7 +2213,7 @@ index 6ae089a4387de14488f39f5dab7024cffdcd9d10..0085d0e6b75b1cb4599c15cb48b9cfb2
          classes.push(RowCss.CURSOR_CLASS);
          if (this._coreBrowserService.isFocused) {
            if (cursorBlink) {
-@@ -299,6 +309,10 @@ export class DomRendererRowFactory {
+@@ -299,6 +313,10 @@ export class DomRendererRowFactory {
          classes.push(RowCss.DIM_CLASS);
        }
  
@@ -2182,7 +2224,7 @@ index 6ae089a4387de14488f39f5dab7024cffdcd9d10..0085d0e6b75b1cb4599c15cb48b9cfb2
        if (cell.isInvisible()) {
          text = WHITESPACE_CELL_CHAR;
        } else {
-@@ -469,13 +483,25 @@ export class DomRendererRowFactory {
+@@ -469,13 +487,25 @@ export class DomRendererRowFactory {
        }
  
        // exclude conditions for cell merging - never merge these
@@ -2319,10 +2361,10 @@ index d45938515e7a9903de0da0d61716fd42e4deea0c..2c27821c0dd07c03de24798547631d3c
  }
 diff --git a/src/browser/renderer/shared/WideGlyphFit.ts b/src/browser/renderer/shared/WideGlyphFit.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..254f950077fe22222a7ffddc7f49fdca4ad928c5
+index 0000000000000000000000000000000000000000..fbd9855c62cbfbdab1fa867269f2860d46c89fbd
 --- /dev/null
 +++ b/src/browser/renderer/shared/WideGlyphFit.ts
-@@ -0,0 +1,129 @@
+@@ -0,0 +1,131 @@
 +/**
 + * Copyright (c) 2026 The xterm.js authors. All rights reserved.
 + * @license MIT
@@ -2393,7 +2435,7 @@ index 0000000000000000000000000000000000000000..254f950077fe22222a7ffddc7f49fdca
 +  return { width: metrics.width, ascent: metrics.actualBoundingBoxAscent, descent: metrics.actualBoundingBoxDescent };
 +}
 +
-+/** Largest scale that keeps `ink` within the span and the line box's full height. */
++/** Largest scale that keeps `ink` within the span and the line box's full height; below 1 when it cannot fit. */
 +function maxScale(ink: IInkExtent, box: IWideGlyphBox): number {
 +  const height = ink.ascent + ink.descent;
 +  return Math.min(box.span / ink.width, height > 0 ? (box.ascent + box.descent) / height : Infinity);
@@ -2424,12 +2466,14 @@ index 0000000000000000000000000000000000000000..254f950077fe22222a7ffddc7f49fdca
 +      return { scale: 1, offset: (box.span - glyph.width) / 2, shift: 0 };
 +    }
 +    // Also bound by the glyph itself: a code point the samples miss may come from another face.
++    // Never shrinks: a glyph taller than the line box keeps its size and overflows it, as unfitted.
 +    const scale = Math.max(1, Math.min(face.scale, maxScale(glyph, box)));
-+    // The face's shift, not the glyph's, keeps every glyph of the face on one baseline.
-+    const shift = Math.min(
++    // The face's shift, not the glyph's, keeps every glyph of the face on one baseline; it only
++    // ever lowers, so an overflowing glyph never rises above where it draws unfitted.
++    const shift = Math.max(0, Math.min(
 +      Math.max(baselineShift(face.ink, scale, box), glyph.ascent * scale - box.ascent),
 +      box.descent - glyph.descent * scale
-+    );
++    ));
 +    return { scale, offset: (box.span - glyph.width * scale) / 2, shift };
 +  }
 +
