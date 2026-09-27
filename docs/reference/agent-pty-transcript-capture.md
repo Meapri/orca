@@ -105,6 +105,11 @@ text is tested on something no pane ever sees.
 `src/main/runtime/terminal-interactive-wait-visibility.test.ts` (cursor-agent) and
 `src/main/runtime/antigravity-readiness-transcripts.test.ts` (Antigravity) are the two consumers.
 
+The `*-ime-*.txt` captures (cursor-agent, Claude Code, Codex, Grok) are replayed into xterm
+itself by the terminal IME anchor tests, because that rule reads cell attributes and the cursor,
+not text. They were driven with `--send` (committed Hangul syllables, Latin, Backspace,
+Left/Right) and stopped with `--duration` before anything was submitted.
+
 ## Worked example: the Antigravity captures
 
 The six committed `antigravity-*.txt` fixtures were recorded this way on macOS against
