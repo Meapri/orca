@@ -1,27 +1,112 @@
+diff --git a/src/browser/AdoptedCaret.ts b/src/browser/AdoptedCaret.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..e81b1d0fdda4ca270264a569e391b53554fdafcb
+--- /dev/null
++++ b/src/browser/AdoptedCaret.ts
+@@ -0,0 +1,70 @@
++/**
++ * Copyright (c) 2026 The xterm.js authors. All rights reserved.
++ * @license MIT
++ */
++
++import { IAdoptedCaret } from './Types';
++import { IBufferLine } from '../common/buffer/Types';
++import { BufferLine } from '../common/buffer/BufferLine';
++import { CellData } from '../common/buffer/CellData';
++import { FgFlags } from '../common/buffer/Constants';
++import { IBufferService, ICoreService } from '../common/services/Services';
++
++/** Where the embedder found the app's caret, in viewport-independent screen coordinates. */
++export type AdoptedCaretSource = () => { x: number, y: number } | undefined;
++
++/**
++ * Orca: a caret an app draws itself (an inverse cell) while it hides the real cursor, adopted so
++ * the renderers draw the terminal cursor there instead. Only what is drawn changes.
++ */
++export class AdoptedCaret implements IAdoptedCaret {
++  public row = 0;
++  public x = 0;
++  private _source: AdoptedCaretSource | undefined;
++  private readonly _line = new BufferLine(0);
++  private readonly _work = new CellData();
++
++  constructor(
++    private readonly _bufferService: IBufferService,
++    private readonly _coreService: ICoreService
++  ) {}
++
++  public setSource(source: AdoptedCaretSource | undefined): void {
++    this._source = source;
++  }
++
++  /** The adopted caret, or `undefined` while the real cursor is shown or none is adopted. */
++  public resolve(): IAdoptedCaret | undefined {
++    // Asked first so the source sees every pass, including ones with the cursor shown.
++    const at = this._source?.();
++    if (!at || !this._coreService.isCursorHidden) {
++      return undefined;
++    }
++    if (at.x < 0 || at.x >= this._bufferService.cols || at.y < 0 || at.y >= this._bufferService.rows) {
++      return undefined;
++    }
++    this.x = at.x;
++    this.row = this._bufferService.buffer.ybase + at.y;
++    return this;
++  }
++
++  public composeLine(source: IBufferLine): IBufferLine {
++    if (!(source instanceof BufferLine) || this.x >= source.length) {
++      return source;
++    }
++    source.loadCell(this.x, this._work);
++    if (!this._work.isInverse()) {
++      return source;
++    }
++    const line = this._line;
++    line.copyFrom(source);
++    // A wide cell's trailing half carries the inverse too.
++    const end = Math.min(this.x + Math.max(this._work.getWidth(), 1), source.length);
++    for (let x = this.x; x < end; x++) {
++      line.loadCell(x, this._work);
++      this._work.fg &= ~FgFlags.INVERSE;
++      line.setCell(x, this._work);
++    }
++    return line;
++  }
++}
 diff --git a/src/browser/CoreBrowserTerminal.ts b/src/browser/CoreBrowserTerminal.ts
-index 67893b7966eb095db4459b8837de9766921f36c5..507e78f5fd3ea06e114f73dd4df8970b3b562710 100644
+index 67893b7966eb095db4459b8837de9766921f36c5..c520337a9d869af93cbedfdd3d44d4de72d3ab9f 100644
 --- a/src/browser/CoreBrowserTerminal.ts
 +++ b/src/browser/CoreBrowserTerminal.ts
-@@ -25,7 +25,7 @@ import { IDecoration, IDecorationOptions, IDisposable, ILinkProvider, IMarker, I
+@@ -25,7 +25,8 @@ import { IDecoration, IDecorationOptions, IDisposable, ILinkProvider, IMarker, I
  import { copyHandler, handlePasteEvent, moveTextAreaUnderMouseCursor, paste, rightClickHandler } from './Clipboard';
  import * as Strings from './LocalizableStrings';
  import { OscLinkProvider } from './OscLinkProvider';
 -import { CharacterJoinerHandler, CustomKeyEventHandler, CustomWheelEventHandler, IBrowser, IBufferRange, ICompositionHelper, ILinkifier2, ITerminal } from './Types';
-+import { CharacterJoinerHandler, CustomKeyEventHandler, CustomWheelEventHandler, IBrowser, IBufferRange, ICompositionHelper, IImePreedit, ILinkifier2, ITerminal } from './Types';
++import { CharacterJoinerHandler, CustomKeyEventHandler, CustomWheelEventHandler, IAdoptedCaret, IBrowser, IBufferRange, ICompositionHelper, IImePreedit, ILinkifier2, ITerminal } from './Types';
++import { AdoptedCaret, AdoptedCaretSource } from './AdoptedCaret';
  import { Viewport } from './Viewport';
  import { BufferDecorationRenderer } from './decorations/BufferDecorationRenderer';
  import { OverviewRulerRenderer } from './decorations/OverviewRulerRenderer';
-@@ -72,6 +72,9 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
+@@ -72,6 +73,17 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
  
    private readonly _linkifier: MutableDisposable<ILinkifier2> = this._register(new MutableDisposable());
    public get linkifier(): ILinkifier2 | undefined { return this._linkifier.value; }
 +  public get imePreedit(): IImePreedit | undefined {
 +    return this._compositionHelper instanceof CompositionHelper ? this._compositionHelper.imePreedit : undefined;
 +  }
++  private _adoptedCaret: AdoptedCaret | undefined;
++  public get adoptedCaret(): IAdoptedCaret | undefined { return this._adoptedCaret?.resolve(); }
++  /** Orca: lets the embedder name the cell an app draws its caret in; `undefined` stops adopting. */
++  public setAdoptedCaretSource(source: AdoptedCaretSource | undefined): void {
++    this._adoptedCaret ??= new AdoptedCaret(this._bufferService, this.coreService);
++    this._adoptedCaret.setSource(source);
++    this.refresh(0, this.rows - 1);
++  }
    private _overviewRulerRenderer: OverviewRulerRenderer | undefined;
    private _viewport: Viewport | undefined;
  
-@@ -325,6 +328,9 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
+@@ -325,6 +337,9 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
    private _handleTextAreaBlur(): void {
      // Text can safely be removed on blur. Doing it earlier could interfere with
      // screen readers reading it out.
@@ -31,7 +116,7 @@ index 67893b7966eb095db4459b8837de9766921f36c5..507e78f5fd3ea06e114f73dd4df8970b
      this.textarea!.value = '';
      this.refresh(this.buffer.y, this.buffer.y);
      if (this.coreService.decPrivateModes.sendFocus) {
-@@ -425,7 +431,18 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
+@@ -425,7 +440,18 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
        this._compositionHelper!.updateCompositionElements();
      }));
      this._register(addDisposableListener(this.textarea!, 'compositionupdate', (e: CompositionEvent) => this._compositionHelper!.compositionupdate(e)));
@@ -51,7 +136,7 @@ index 67893b7966eb095db4459b8837de9766921f36c5..507e78f5fd3ea06e114f73dd4df8970b
      this._register(addDisposableListener(this.textarea!, 'input', (ev: InputEvent) => this._inputEvent(ev), true));
      this._register(this.onRender(() => this._compositionHelper!.updateCompositionElements()));
    }
-@@ -552,6 +569,16 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
+@@ -552,6 +578,16 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
      this._compositionView = this._document.createElement('div');
      this._compositionView.classList.add('composition-view');
      this._compositionHelper = this._instantiationService.createInstance(CompositionHelper, this.textarea, this._compositionView);
@@ -68,7 +153,7 @@ index 67893b7966eb095db4459b8837de9766921f36c5..507e78f5fd3ea06e114f73dd4df8970b
      this._helperContainer.appendChild(this._compositionView);
  
      this._mouseCoordsService = this._instantiationService.createInstance(MouseCoordsService);
-@@ -1009,7 +1036,9 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
+@@ -1009,7 +1045,9 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
  
      this._onKey.fire({ key, domEvent: ev });
      this._showCursor();
@@ -79,7 +164,7 @@ index 67893b7966eb095db4459b8837de9766921f36c5..507e78f5fd3ea06e114f73dd4df8970b
  
      this._keyPressHandled = true;
  
-@@ -1027,6 +1056,15 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
+@@ -1027,6 +1065,15 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
     * @param ev The input event to be handled.
     */
    protected _inputEvent(ev: InputEvent): boolean {
@@ -96,7 +181,7 @@ index 67893b7966eb095db4459b8837de9766921f36c5..507e78f5fd3ea06e114f73dd4df8970b
      // support reading out character input which can doubling up input characters
      // Based on these event traces: https://github.com/xtermjs/xterm.js/issues/3679
 diff --git a/src/browser/Types.ts b/src/browser/Types.ts
-index 497afcf535f3eaca00889525a77e15eb633ccd96..bbe95178f084cfb0d7c1ed5f4a9dc118dab6b646 100644
+index 497afcf535f3eaca00889525a77e15eb633ccd96..7cee04996e9bff6603aec38beb6f93aa8bf78e95 100644
 --- a/src/browser/Types.ts
 +++ b/src/browser/Types.ts
 @@ -4,7 +4,7 @@
@@ -108,13 +193,27 @@ index 497afcf535f3eaca00889525a77e15eb633ccd96..bbe95178f084cfb0d7c1ed5f4a9dc118
  import { ICoreTerminal } from '../common/CoreTerminal';
  import { IDisposable, IRenderDimensions as IRenderDimensionsApi, Terminal as ITerminalApi } from '@xterm/xterm';
  import { channels, css } from '../common/Color';
-@@ -30,6 +30,22 @@ export interface ITerminal extends InternalPassthroughApis, ICoreTerminal {
+@@ -30,6 +30,36 @@ export interface ITerminal extends InternalPassthroughApis, ICoreTerminal {
    onA11yChar: IEvent<string>;
    onA11yTab: IEvent<number>;
    onWillOpen: IEvent<HTMLElement>;
 +
 +  /** The IME preedit the renderer draws into the cell grid, when in-grid preedit is composing. */
 +  readonly imePreedit?: IImePreedit;
++  /** The app-drawn caret the renderer draws the cursor at while the real cursor is hidden. */
++  readonly adoptedCaret?: IAdoptedCaret;
++}
++
++/**
++ * A caret the app draws as an inverse cell after hiding the cursor, adopted by the embedder. Like
++ * `IImePreedit` it exists only in what the renderer draws.
++ */
++export interface IAdoptedCaret {
++  /** The absolute buffer row of the caret cell. */
++  readonly row: number;
++  readonly x: number;
++  /** `line` with the app's inverse cleared at the caret, so only the cursor marks it. */
++  composeLine(line: IBufferLine): IBufferLine;
 +}
 +
 +/**
@@ -131,7 +230,7 @@ index 497afcf535f3eaca00889525a77e15eb633ccd96..bbe95178f084cfb0d7c1ed5f4a9dc118
  }
  
  export type CustomKeyEventHandler = (event: KeyboardEvent) => boolean;
-@@ -41,9 +57,10 @@ export interface ICompositionHelper {
+@@ -41,9 +71,10 @@ export interface ICompositionHelper {
    readonly isComposing: boolean;
    compositionstart(): void;
    compositionupdate(ev: CompositionEvent): void;
@@ -1874,22 +1973,51 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..d4568f948342aa664704995f8a706483
 +  }
 +}
 diff --git a/src/browser/renderer/dom/DomRenderer.ts b/src/browser/renderer/dom/DomRenderer.ts
-index 657217f7104c97ce54b98e88b381b325b061604c..6ea7804bcce45c3ec803c59cd1f079e4e48dcdb6 100644
+index 657217f7104c97ce54b98e88b381b325b061604c..833f6cfbfecbbabcd62ee0b1a8799004485b8b8a 100644
 --- a/src/browser/renderer/dom/DomRenderer.ts
 +++ b/src/browser/renderer/dom/DomRenderer.ts
-@@ -526,8 +526,9 @@ export class DomRenderer extends Disposable implements IRenderer {
+@@ -11,7 +11,8 @@ import { createSelectionRenderModel } from '../shared/SelectionRenderModel';
+ import { TextBlinkStateManager } from '../shared/TextBlinkStateManager';
+ import { IRenderDimensions, IRenderer, IRequestRedrawEvent, ISelectionRenderModel } from '../shared/Types';
+ import { ICharSizeService, ICoreBrowserService, IThemeService } from '../../services/Services';
+-import { ILinkifier2, ILinkifierEvent, ITerminal, ReadonlyColorSet } from '../../Types';
++import { IAdoptedCaret, IImePreedit, ILinkifier2, ILinkifierEvent, ITerminal, ReadonlyColorSet } from '../../Types';
++import { IBufferLine } from '../../../common/buffer/Types';
+ import { color } from '../../../common/Color';
+ import { Disposable, toDisposable } from '../../../common/Lifecycle';
+ import { IBufferService, ICoreService, IInstantiationService, IOptionsService } from '../../../common/services/Services';
+@@ -54,6 +55,8 @@ export class DomRenderer extends Disposable implements IRenderer {
+   private _textBlinkStateManager: TextBlinkStateManager;
+   private _rowHasBlinkingCells: boolean[] = [];
+   private _rowHasBlinkingCellsCount: number = 0;
++  /** The absolute row the last pass drew an adopted caret on, so a moved caret repaints it. */
++  private _adoptedCaretRow: number | undefined;
+ 
+   public dimensions: IRenderDimensions;
+ 
+@@ -526,8 +529,19 @@ export class DomRenderer extends Disposable implements IRenderer {
  
    public renderRows(start: number, end: number): void {
      const buffer = this._bufferService.buffer;
 -    const cursorAbsoluteY = buffer.ybase + buffer.y;
 -    const cursorX = Math.min(buffer.x, this._bufferService.cols - 1);
 +    const preedit = this._terminal.imePreedit;
-+    const cursorAbsoluteY = preedit?.row ?? buffer.ybase + buffer.y;
-+    const cursorX = preedit?.cursorX ?? Math.min(buffer.x, this._bufferService.cols - 1);
++    const adopted = this._terminal.adoptedCaret;
++    const cursorAbsoluteY = preedit?.row ?? adopted?.row ?? buffer.ybase + buffer.y;
++    const cursorX = preedit?.cursorX ?? adopted?.x ?? Math.min(buffer.x, this._bufferService.cols - 1);
++    // Both the row the adopted caret left and the one it is on lose or gain the drawn cursor.
++    for (const caretRow of [this._adoptedCaretRow, adopted?.row]) {
++      const y = caretRow === undefined ? -1 : caretRow - buffer.ydisp;
++      if (y >= 0 && y < this._bufferService.rows) {
++        start = Math.min(start, y);
++        end = Math.max(end, y);
++      }
++    }
++    this._adoptedCaretRow = adopted?.row;
      const cursorBlink = this._coreService.decPrivateModes.cursorBlink ?? this._optionsService.rawOptions.cursorBlink;
      const cursorStyle = this._coreService.decPrivateModes.cursorStyle ?? this._optionsService.rawOptions.cursorStyle;
      const cursorInactiveStyle = this._optionsService.rawOptions.cursorInactiveStyle;
-@@ -545,9 +546,10 @@ export class DomRenderer extends Disposable implements IRenderer {
+@@ -545,9 +559,10 @@ export class DomRenderer extends Disposable implements IRenderer {
          this._setRowBlinkState(y, false);
          continue;
        }
@@ -1897,33 +2025,48 @@ index 657217f7104c97ce54b98e88b381b325b061604c..6ea7804bcce45c3ec803c59cd1f079e4
        rowElement.replaceChildren(
          ...this._rowFactory.createRow(
 -          lineData,
-+          isPreeditRow ? preedit.composeLine(lineData) : lineData,
++          this._composeDrawnLine(lineData, row, preedit, adopted),
            row,
            row === cursorAbsoluteY,
            cursorStyle,
-@@ -559,7 +561,8 @@ export class DomRenderer extends Disposable implements IRenderer {
+@@ -559,7 +574,9 @@ export class DomRenderer extends Disposable implements IRenderer {
            this._widthCache,
            -1,
            -1,
 -          rowInfo
 +          rowInfo,
-+          isPreeditRow
++          isPreeditRow,
++          adopted !== undefined
          )
        );
        this._setRowBlinkState(y, rowInfo.hasBlinkingCells);
-@@ -604,8 +607,9 @@ export class DomRenderer extends Disposable implements IRenderer {
+@@ -567,6 +584,12 @@ export class DomRenderer extends Disposable implements IRenderer {
+     this._updateTextBlinkState();
+   }
+ 
++  /** The row as drawn: the adopted caret's inverse cleared, then any IME preedit composed in. */
++  private _composeDrawnLine(line: IBufferLine, row: number, preedit: IImePreedit | undefined, adopted: IAdoptedCaret | undefined): IBufferLine {
++    const drawn = adopted?.row === row ? adopted.composeLine(line) : line;
++    return preedit?.row === row ? preedit.composeLine(drawn) : drawn;
++  }
++
+   private get _terminalSelector(): string {
+     return `.${Constants.TERMINAL_CLASS_PREFIX}${this._terminalClass}`;
+   }
+@@ -604,8 +627,10 @@ export class DomRenderer extends Disposable implements IRenderer {
  
      cols = Math.min(cols, this._bufferService.cols);
      const buffer = this._bufferService.buffer;
 -    const cursorAbsoluteY = buffer.ybase + buffer.y;
 -    const cursorX = Math.min(buffer.x, cols - 1);
 +    const preedit = this._terminal.imePreedit;
-+    const cursorAbsoluteY = preedit?.row ?? buffer.ybase + buffer.y;
-+    const cursorX = preedit?.cursorX ?? Math.min(buffer.x, cols - 1);
++    const adopted = this._terminal.adoptedCaret;
++    const cursorAbsoluteY = preedit?.row ?? adopted?.row ?? buffer.ybase + buffer.y;
++    const cursorX = preedit?.cursorX ?? adopted?.x ?? Math.min(buffer.x, cols - 1);
      const cursorBlink = this._optionsService.rawOptions.cursorBlink;
      const cursorStyle = this._optionsService.rawOptions.cursorStyle;
      const cursorInactiveStyle = this._optionsService.rawOptions.cursorInactiveStyle;
-@@ -624,9 +628,10 @@ export class DomRenderer extends Disposable implements IRenderer {
+@@ -624,9 +649,10 @@ export class DomRenderer extends Disposable implements IRenderer {
          this._setRowBlinkState(i, false);
          continue;
        }
@@ -1931,31 +2074,33 @@ index 657217f7104c97ce54b98e88b381b325b061604c..6ea7804bcce45c3ec803c59cd1f079e4
        rowElement.replaceChildren(
          ...this._rowFactory.createRow(
 -          bufferline,
-+          isPreeditRow ? preedit.composeLine(bufferline) : bufferline,
++          this._composeDrawnLine(bufferline, row, preedit, adopted),
            row,
            row === cursorAbsoluteY,
            cursorStyle,
-@@ -638,7 +643,8 @@ export class DomRenderer extends Disposable implements IRenderer {
+@@ -638,7 +664,9 @@ export class DomRenderer extends Disposable implements IRenderer {
            this._widthCache,
            enabled ? (i === y ? x : 0) : -1,
            enabled ? ((i === y2 ? x2 : cols) - 1) : -1,
 -          rowInfo
 +          rowInfo,
-+          isPreeditRow
++          isPreeditRow,
++          adopted !== undefined
          )
        );
        this._setRowBlinkState(i, rowInfo.hasBlinkingCells);
 diff --git a/src/browser/renderer/dom/DomRendererRowFactory.ts b/src/browser/renderer/dom/DomRendererRowFactory.ts
-index 6ae089a4387de14488f39f5dab7024cffdcd9d10..f9e7feea570f127977bad9cc54b64a132e8e20ce 100644
+index 6ae089a4387de14488f39f5dab7024cffdcd9d10..ccdeb6fc6b1cd6dd9604ebd6fa6e2a73174cf6c2 100644
 --- a/src/browser/renderer/dom/DomRendererRowFactory.ts
 +++ b/src/browser/renderer/dom/DomRendererRowFactory.ts
-@@ -73,14 +73,16 @@ export class DomRendererRowFactory {
+@@ -73,14 +73,17 @@ export class DomRendererRowFactory {
      widthCache: WidthCache,
      linkStart: number,
      linkEnd: number,
 -    rowInfo?: { hasBlinkingCells: boolean }
 +    rowInfo?: { hasBlinkingCells: boolean },
-+    ignoreJoins: boolean = false
++    ignoreJoins: boolean = false,
++    drawsHiddenCursor: boolean = false
    ): HTMLSpanElement[] {
  
      const elements: HTMLSpanElement[] = [];
@@ -1968,6 +2113,16 @@ index 6ae089a4387de14488f39f5dab7024cffdcd9d10..f9e7feea570f127977bad9cc54b64a13
      const colors = this._themeService.colors;
  
      let lineLength = lineData.getNoBgTrimmedLength();
+@@ -252,7 +255,8 @@ export class DomRendererRowFactory {
+         }
+       }
+ 
+-      if (!this._coreService.isCursorHidden && isCursorCell && this._coreService.isCursorInitialized) {
++      // An adopted app caret is drawn with the cursor hidden.
++      if ((drawsHiddenCursor || !this._coreService.isCursorHidden) && isCursorCell && this._coreService.isCursorInitialized) {
+         classes.push(RowCss.CURSOR_CLASS);
+         if (this._coreBrowserService.isFocused) {
+           if (cursorBlink) {
 diff --git a/src/browser/renderer/dom/WidthCache.ts b/src/browser/renderer/dom/WidthCache.ts
 index d45938515e7a9903de0da0d61716fd42e4deea0c..17d6577e388eb2e4397338093e35373864b822a4 100644
 --- a/src/browser/renderer/dom/WidthCache.ts
