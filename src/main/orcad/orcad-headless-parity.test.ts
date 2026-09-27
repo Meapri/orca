@@ -71,6 +71,16 @@ function makeAgentHookServer() {
   }
 }
 
+function makeAccounts() {
+  return {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: these suites never run an automation, so no usage lookup reaches the stores.
+    claudeUsage: {} as never,
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: as above.
+    codexUsage: {} as never,
+    stop: vi.fn()
+  }
+}
+
 describe('installOrcadHeadlessParity', () => {
   it('publishes the headless placeholder graph so session-tab RPCs stop refusing (#17846)', () => {
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: makeStore returns every read the graph publish reaches.
@@ -78,7 +88,12 @@ describe('installOrcadHeadlessParity', () => {
     const runtime = new OrcaRuntimeService(store)
     expect(runtime.getStatus().graphStatus).not.toBe('ready')
 
-    installOrcadHeadlessParity({ runtime, store, agentHookServer: makeAgentHookServer() })
+    installOrcadHeadlessParity({
+      runtime,
+      store,
+      agentHookServer: makeAgentHookServer(),
+      accounts: makeAccounts()
+    })
 
     const status = runtime.getStatus()
     expect(status.graphStatus).toBe('ready')
@@ -92,7 +107,8 @@ describe('installOrcadHeadlessParity', () => {
 
     const runtime = new OrcaRuntimeService(store)
     const setAutomationService = vi.spyOn(runtime, 'setAutomationService')
-    const parity = installOrcadHeadlessParity({ runtime, store, agentHookServer: server })
+    const accounts = makeAccounts()
+    const parity = installOrcadHeadlessParity({ runtime, store, agentHookServer: server, accounts })
     expect(server.statusListeners.size).toBe(2)
     expect(server.dropListeners.size).toBe(1)
     expect(setAutomationService.mock.calls[0]?.[0]).toBeInstanceOf(AutomationService)
@@ -100,6 +116,7 @@ describe('installOrcadHeadlessParity', () => {
     parity.uninstall()
     expect(server.statusListeners.size).toBe(0)
     expect(server.dropListeners.size).toBe(0)
+    expect(accounts.stop).toHaveBeenCalledOnce()
   })
 
   it('arms scheduled work only when asked, after the transport is up', async () => {
@@ -117,7 +134,8 @@ describe('installOrcadHeadlessParity', () => {
       const parity = installOrcadHeadlessParity({
         runtime,
         store,
-        agentHookServer: makeAgentHookServer()
+        agentHookServer: makeAgentHookServer(),
+        accounts: makeAccounts()
       })
       expect(diskHygiene).toEqual([])
 
@@ -151,7 +169,8 @@ describe('installOrcadHeadlessParity', () => {
       const parity = installOrcadHeadlessParity({
         runtime: new OrcaRuntimeService(store),
         store,
-        agentHookServer: makeAgentHookServer()
+        agentHookServer: makeAgentHookServer(),
+        accounts: makeAccounts()
       })
       parity.startScheduledWork()
       expect(hookInstalls).toHaveLength(0)

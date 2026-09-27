@@ -47,6 +47,10 @@ vi.mock('./orcad-health', () => ({
 vi.mock('./orcad-headless-parity', () => ({
   installOrcadHeadlessParity: () => ({ startScheduledWork() {}, uninstall() {} })
 }))
+vi.mock('./orcad-account-services', () => ({
+  createOrcadAccountServices: () => ({ runtimeDeps: {} }),
+  registerAccountBackedPtyRuntime: async () => {}
+}))
 vi.mock('../daemon/daemon-init', () => ({ daemonOwnsFreshPersistentPtys: () => false }))
 vi.mock('../ipc/pty', () => ({
   registerHeadlessPtyRuntime: async () => {},

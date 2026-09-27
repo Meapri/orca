@@ -54,6 +54,7 @@ const DAEMON_ENTRY = join(ROOT, ORCAD_CHILD_ENTRY_POINTS.daemon)
 const DAEMON_OUT_FILE = join(OUT_DIR, 'daemon-entry.js')
 const PTY_GATE_ENTRY = join(ROOT, ORCAD_CHILD_ENTRY_POINTS.ptyGate)
 const PTY_GATE_OUT_FILE = join(OUT_DIR, 'windows-bun-pty-gate-entry.js')
+const USAGE_SCAN_OUT_FILE = join(OUT_DIR, 'usage-scan-worker-entry.js')
 const OUT_FILE = join(OUT_DIR, 'orcad.js')
 const BUILD_TARGET = process.env.ORCAD_BUILD_TARGET
 if (!BUILD_TARGET) {
@@ -178,6 +179,7 @@ const childResults = await Promise.all([
   buildForkedChild(WATCHER_ENTRY, WATCHER_OUT_FILE),
   buildForkedChild(DAEMON_ENTRY, DAEMON_OUT_FILE),
   buildForkedChild(PTY_GATE_ENTRY, PTY_GATE_OUT_FILE),
+  buildForkedChild(join(ROOT, ORCAD_CHILD_ENTRY_POINTS.usageScan), USAGE_SCAN_OUT_FILE),
   ...['writer', 'backup'].map((role) =>
     buildForkedChild(
       join(ROOT, ORCAD_CHILD_ENTRY_POINTS[role]),

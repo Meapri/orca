@@ -42,7 +42,7 @@ describe('headless PTY registry hydration ordering', () => {
     const source = readFileSync(join(process.cwd(), 'src/main/orcad/orcad-entry.ts'), 'utf8')
     const store = source.indexOf('createOrcadProfileStateStartup(runtimeUserDataPath)')
     const daemon = source.indexOf('await startOrcadDaemon()', store)
-    const handlersAndHydration = source.indexOf('await registerHeadlessPtyRuntime(', daemon)
+    const handlersAndHydration = source.indexOf('await registerAccountBackedPtyRuntime(', daemon)
     const rpc = source.indexOf('await rpc.start()', handlersAndHydration)
     const readiness = source.indexOf('await new ServeReadinessPublisher().publish(', rpc)
 
@@ -61,7 +61,7 @@ describe('headless PTY registry hydration ordering', () => {
     const hookStart = source.indexOf('await agentHookServer.start(', store)
     const daemon = source.indexOf('await startOrcadDaemon()', hookStart)
     const hookEnv = source.indexOf('buildAgentHookPtyEnv:', daemon)
-    const handlersAndHydration = source.indexOf('await registerHeadlessPtyRuntime(', hookEnv)
+    const handlersAndHydration = source.indexOf('await registerAccountBackedPtyRuntime(', hookEnv)
 
     expect(cleanup).toBeGreaterThanOrEqual(0)
     expect(hookStop).toBeGreaterThan(cleanup)
@@ -97,7 +97,7 @@ describe('headless PTY registry hydration ordering', () => {
     const subscription = source.indexOf('agentHookServer.subscribeEnrichedStatus(')
     const hookStart = source.indexOf('await agentHookServer.start(', subscription)
     const runtime = source.indexOf('const runtime = new OrcaRuntimeService(')
-    const handlers = source.indexOf('await registerHeadlessPtyRuntime(', runtime)
+    const handlers = source.indexOf('await registerAccountBackedPtyRuntime(', runtime)
     const identityRecovery = source.indexOf('await runtime.refreshRestoredOrchestrationAuthority()')
     const workerRecovery = source.indexOf('await runtime.reconcileLegacyWorkerTerminals()')
     const replay = source.indexOf('observedStatusCapture.attach(runtime)', runtime)

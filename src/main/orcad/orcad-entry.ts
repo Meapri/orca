@@ -140,8 +140,7 @@ async function startOrcadRuntime(
   const { closedTerminalSurfaceLedgerPath, createClosedTerminalSurfaceLedgerFileStorage } =
     await import('../runtime/closed-terminal-surface-ledger-file')
   const { OrcaRuntimeRpcServer } = await import('../runtime/runtime-rpc')
-  const { registerHeadlessPtyRuntime, getLocalPtyProvider, getSshPtyProvider } =
-    await import('../ipc/pty')
+  const { getLocalPtyProvider, getSshPtyProvider } = await import('../ipc/pty')
   const { getAppEnvironment } = await import('../../shared/app-environment')
   const { collectPairingEndpointCandidates } =
     await import('../runtime/pairing-endpoint-candidates')
@@ -163,6 +162,8 @@ async function startOrcadRuntime(
   const { AgentStatusObservedPaneIdentities, AgentStatusObservedPaneIdentityCapture } =
     await import('../runtime/agent-status-observed-pane-identity')
   const { installOrcadHeadlessParity } = await import('./orcad-headless-parity')
+  const { createOrcadAccountServices, registerAccountBackedPtyRuntime } =
+    await import('./orcad-account-services')
 
   let rpc: InstanceType<typeof OrcaRuntimeRpcServer> | null = null
   let profileStoreForShutdown:
@@ -204,6 +205,7 @@ async function startOrcadRuntime(
   const runtimeUserDataPath = getAppEnvironment().getPath('userData')
   const { store: profileStore, authority: profileStateAuthority } =
     await createOrcadProfileStateStartup(runtimeUserDataPath)
+  const accounts = createOrcadAccountServices(profileStore)
   const observedPaneIdentities = new AgentStatusObservedPaneIdentities()
   const observedStatusCapture = new AgentStatusObservedPaneIdentityCapture(observedPaneIdentities)
   // Why a real Store: without one every persistence-backed RPC throws `runtime_unavailable`
@@ -250,6 +252,7 @@ async function startOrcadRuntime(
     // what powers serve→desktop promotion. A Node host can never do that, and the
     // constructor's default would advertise it.
     getDesktopWindowStatus: () => 'blocked',
+    ...accounts.runtimeDeps,
     // Why here too and not only on the desktop: main's OSC parse is the only producer for a
     // PTY agent on this host, and the store is the only place `worktree.ps` and the mobile
     // projection read from — unwired, orcad lists no PTY agents at all.
@@ -301,17 +304,7 @@ async function startOrcadRuntime(
   // Why the headless entry point rather than registerPtyHandlers directly: this is the
   // same call `--serve` makes, and it threads the store through. Without the store the
   // handlers install fine and every terminal.create then fails at persistence time.
-  //
-  // Codex-home and Claude-auth preparation are left unset: both are desktop account
-  // flows. A launch that needs one fails with its own message rather than silently
-  // spawning an unauthenticated agent.
-  await registerHeadlessPtyRuntime(
-    runtime,
-    undefined,
-    () => profileStore.getSettings(),
-    undefined,
-    profileStore
-  )
+  await registerAccountBackedPtyRuntime(runtime, profileStore, accounts)
 
   // Why: same post-registration reconciliation `--serve` performs. Skipping it leaves
   // restored orchestration rows claiming an authority this host never took over.
@@ -326,7 +319,8 @@ async function startOrcadRuntime(
   headlessParity = installOrcadHeadlessParity({
     runtime,
     store: profileStore,
-    agentHookServer
+    agentHookServer,
+    accounts
   })
 
   // Recovery binds terminal and dispatch identities; only now can startup observations be fenced.

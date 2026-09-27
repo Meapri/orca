@@ -19,6 +19,7 @@ import type { Store } from '../persistence'
 import type { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { scheduleAllPendingHistoryTreeRemovals } from '../terminal-history-deletion'
 import { collectWorktreeTrashSweepRoots, sweepStaleWorktreeTrash } from '../worktree-trash'
+import type { OrcadAccountServices } from './orcad-account-services'
 
 export type OrcadHeadlessParity = {
   /** Serve arms these only once its RPC transport is up; orcad keeps that order. */
@@ -30,8 +31,9 @@ export function installOrcadHeadlessParity(options: {
   runtime: OrcaRuntimeService
   store: Store
   agentHookServer: Pick<AgentHookServer, 'subscribeEnrichedStatus' | 'subscribeStatusDrop'>
+  accounts: Pick<OrcadAccountServices, 'claudeUsage' | 'codexUsage' | 'stop'>
 }): OrcadHeadlessParity {
-  const { runtime, store, agentHookServer } = options
+  const { runtime, store, agentHookServer, accounts } = options
   // Same placeholder serve publishes: no renderer will ever publish a graph on this host.
   runtime.syncWindowGraph(HEADLESS_RUNTIME_WINDOW_ID, { tabs: [], leaves: [] })
   const uninstallRename = installFirstWorkRenameSubscription(agentHookServer, () =>
@@ -45,8 +47,10 @@ export function installOrcadHeadlessParity(options: {
     isRendererAttached: () => false
   })
   // Why: without a service `automation.runNow` refuses and schedules never fire, although orcad
-  // is the runtime authority that owns them. Usage stores are desktop accounts; runs omit usage.
+  // is the runtime authority that owns them.
   const automations = new AutomationService(store, {
+    claudeUsage: accounts.claudeUsage,
+    codexUsage: accounts.codexUsage,
     terminalObserver: createRuntimeAutomationRunTerminalObserver(runtime),
     onAutomationsChanged: (payload) => runtime.notifyAutomationsChanged(payload),
     allowRemoteHostScheduling: true,
@@ -80,6 +84,7 @@ export function installOrcadHeadlessParity(options: {
     uninstall: () => {
       stopped = true
       automations.stop()
+      accounts.stop()
       uninstallNotifications()
       uninstallRename()
     }
