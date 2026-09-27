@@ -688,5 +688,10 @@ Named here so nothing reads as implemented that is not:
   direct endpoints only.
 - **Endpoint failover and resume probing outside the desktop.** The web client and mobile app do
   not read `alternateEndpoints`, and the web client has no resume-triggered probe.
+- **Host editor tab color, pin and split-group placement across a restart.** They live in the
+  published snapshot only; `host-editor-tabs.json` keeps the tabs and their order.
+- **Host conflict checks for mirrored editors.** A desktop or web client that mirrors a host
+  markdown tab edits and saves it through its own editor, as it does against a desktop host; only
+  `markdown.saveTab` (the phone's path) runs the host's version check.
 - **Compress-before-encrypt.** JSON state is not compressed before encryption, so the stream
   itself stays roughly as large as its plaintext.
