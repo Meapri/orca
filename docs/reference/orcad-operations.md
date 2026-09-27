@@ -105,6 +105,41 @@ offered. A desktop client stores each as an endpoint of the same pairing; when a
 preferred one goes unanswered it prefers the next, and whichever connects stays preferred. Older
 clients ignore the field and dial `endpoint`.
 
+### Browser client
+
+orcad serves the paired web client on its own listener, exactly as `orca serve` does: the same
+static handler (`static-web-client-handler.ts`), so only `web-index.html` and the bundle's
+`assets/`, `cmaps/`, `standard_fonts/` and `wasm/` subtrees are served, over the same port as the
+WebSocket. The page itself holds no credential; everything after load is the E2EE RPC channel,
+authenticated by the pairing token. Serve and orcad set no CSP or other hardening headers.
+
+The bundle ships in the install directory as `web/`, built by `pnpm build:orcad` from
+`vite.web.config.ts`. `web/orcad-web-client.json` pins every file's size and SHA-256 and is an
+ordinary artifact, so it is part of the install identity; the packaged template and the SSH
+materializer verify each file against it. At startup orcad checks that every listed file is
+present at its size; a missing or torn bundle is logged (`browser client not served: …`) and
+offers carry `webClientUrl: null` instead of a link to a broken page.
+
+A runtime offer's `webClientUrl` is `http(s)://<endpoint>/web-index.html#pairing=<url>`; the
+credential rides in the fragment, which browsers never send to a server or proxy. The browser
+dials only the offer's `endpoint`, so every alternate endpoint gets its own link in
+`webClientAlternateUrls` (additive), each carrying the same credential re-encoded with that
+endpoint first. Only addresses orcad already advertises get a link, so reachability follows the
+[pairing endpoints](#pairing-endpoints) rules:
+
+- **Loopback default.** The link names `127.0.0.1`, and the readiness block says so. Forward the
+  same port and open it on your machine: `ssh -L 6768:127.0.0.1:6768 <server>`. A different local
+  port breaks the link, since the embedded endpoint names the server's port.
+- **Tailscale.** Bind and advertise the tailnet address (`--bind 100.64.1.20` with
+  `--pairing-address 100.64.1.20`) and the link names it; open it from any tailnet device. With a
+  wildcard bind (never on a public host) the interface addresses become alternates, each with its
+  own link.
+- **Reverse proxy.** `--pairing-address wss://orca.example.com/orca` yields
+  `https://orca.example.com/orca/web-index.html`; the proxy must forward plain HTTP GETs as well
+  as the WebSocket upgrade. Relative asset URLs keep a path prefix working.
+
+Mobile offers never carry a web link: the web client saves only runtime-scoped offers.
+
 ## Transport over the internet
 
 Every frame is E2EE ciphertext, so these behaviours are about the WebSocket carrying it:
@@ -562,7 +597,7 @@ scope is refused, and `--environment` / `--pairing-code` are rejected rather tha
 
 | Command                                                                                 | Effect                                                                                                         |
 | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `orca serve pairing [show] [--rotate]`                                                  | orcad only: reprints the startup offer (below); `--rotate` revokes that unused offer and mints a new one       |
+| `orca serve pairing [show] [--mobile] [--rotate]`                                       | orcad only: reprints a startup offer (below); `--rotate` revokes that unused offer and mints a new one         |
 | `orca serve pairing new [--mobile\|--runtime] [--pairing-address] [--expires] [--name]` | mints an additional offer against the live server; the startup offer is untouched                              |
 | `orca serve devices list [--json]`                                                      | ids, scope, pending/paired, last use, offer expiry, open connections and the server key fingerprint; no tokens |
 | `orca serve devices revoke <id>`                                                        | removes the grant, closes every socket it authenticated, and refuses it on reconnect, including after restart  |
@@ -584,6 +619,16 @@ Orca Relay. On a loopback-pinned orcad the address vouches for a reverse proxy o
 is never widened. Mobile pairings cannot be rotated in place because the token also keys the
 phone's Relay and push identity: revoke and pair again.
 
+**The startup phone offer.** `orcad --mobile-pairing` adds a mobile offer beside the runtime one:
+the human readiness block prints its QR and URL after the runtime offer, and the JSON line carries
+it as `mobilePairing` (additive; `pairing` is unchanged). It is minted by the same host-only path
+as `orca serve pairing new --mobile`, with the first `--pairing-address` and the
+`--pairing-expires` lifetime. Without a non-loopback `--pairing-address` it is reported
+unavailable (`invalid_advertised_endpoint`) and startup continues. `orca serve pairing --mobile`
+reprints or `--rotate`s it exactly as the runtime offer, with or without the startup flag; an
+orcad older than the flag ignores the scope, and the CLI refuses its runtime reply rather than
+printing it as a phone offer.
+
 ### Security log
 
 With a data root, orcad appends NDJSON to `<data-root>/logs/security.log`, rotated by size (5 MB,
@@ -601,7 +646,7 @@ One command family administers a server from its own host:
 | --------------------------------------------------------------------------------------- | -------------------------------------------------- |
 | `orca serve status [--fresh] [--json]`                                                  | `server.health` (orcad); `--environment` allowed   |
 | `orca serve doctor [--bind] [--port] [--json]`                                          | host probes, plus `server.health` when orcad is up |
-| `orca serve pairing [show] [--rotate] [--json]`                                         | `server.pairingOffer` (orcad)                      |
+| `orca serve pairing [show] [--mobile] [--rotate] [--json]`                              | `server.pairingOffer` (orcad)                      |
 | `orca serve pairing new [--mobile\|--runtime] [--pairing-address] [--expires] [--name]` | `pairing.create` (any runtime)                     |
 | `orca serve devices list\|revoke <id>\|rotate <id>`                                     | `devices.*` (any runtime)                          |
 
@@ -669,7 +714,12 @@ Named here so nothing reads as implemented that is not:
   credential; closing that needs a protocol-level token exchange that old clients do not speak.
 - **Rotating the host E2EE identity** or a mobile pairing in place, and administering credentials
   from a paired client (host-only by design).
-- **Reconciling `webClientUrl` with reachability** under the loopback default.
+- **The web client served from a desktop-deployed orcad.** The packaged template and SSH
+  materializer carry and verify `web/`, but desktop packages do not ship the template yet, so
+  that path has only unit coverage.
+- **Web links for later offers.** `orca serve pairing new` and `devices rotate` return one
+  `webClientUrl` for the endpoint they encode; only the startup offers carry
+  `webClientAlternateUrls`.
 - **State-schema rollback rules.**
 - **A census without the Orca CLI.** The self-managed installer reads live terminals through
   `terminal list --json` from an Orca CLI. A host with no CLI can prove a stop safe only
@@ -681,6 +731,7 @@ Named here so nothing reads as implemented that is not:
 - **Relay pairing for orcad.** The cloud relay is wired only in the desktop app; orcad offers
   direct endpoints only.
 - **Endpoint failover and resume probing outside the desktop.** The web client and mobile app do
-  not read `alternateEndpoints`, and the web client has no resume-triggered probe.
+  not read `alternateEndpoints` (orcad works around it for the browser with one link per
+  endpoint), and the web client has no resume-triggered probe.
 - **Compress-before-encrypt.** JSON state is not compressed before encryption, so the stream
   itself stays roughly as large as its plaintext.
