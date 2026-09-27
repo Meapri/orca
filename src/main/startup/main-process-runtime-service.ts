@@ -12,10 +12,7 @@ import { agentHookServer } from '../agent-hooks/server'
 import { browserManager } from '../browser/browser-manager'
 import { loadAgentSessionClaimSigner } from '../runtime/agent-session-claim-identity'
 import { getProfileUserDataPath } from '../orca-profiles/profile-storage-paths'
-import {
-  closedTerminalSurfaceLedgerPath,
-  createClosedTerminalSurfaceLedgerFileStorage
-} from '../runtime/closed-terminal-surface-ledger-file'
+import { createRuntimeHostRecordStorages } from '../runtime/runtime-host-record-storage'
 import {
   attachAccountServicesToRuntime,
   createAccountBackedRuntimeDeps
@@ -82,9 +79,7 @@ export function initializeMainProcessRuntime(): OrcaRuntimeService {
   // `orca serve`, which never opens one, and the fleet path runs there too.
   const observedPaneIdentities = new AgentStatusObservedPaneIdentities()
   const runtime = new OrcaRuntimeService(store, stats, {
-    closedTerminalSurfaceLedgerStorage: createClosedTerminalSurfaceLedgerFileStorage(
-      closedTerminalSurfaceLedgerPath(getProfileUserDataPath())
-    ),
+    ...createRuntimeHostRecordStorages(getProfileUserDataPath()),
     agentSessionClaimSigner: loadAgentSessionClaimSigner(
       getProfileUserDataPath(),
       getProfileUserDataPath()

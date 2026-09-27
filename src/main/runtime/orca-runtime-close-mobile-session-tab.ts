@@ -310,10 +310,12 @@ export class OrcaRuntimeWithCloseMobileSessionTab extends OrcaRuntimeWithRefuseU
         }
       }
       await this.closeStructuredAgentSessionTab(tab)
-    } else {
-      if (!this.notifier?.closeSessionTab) {
+    } else if (!this.notifier?.closeSessionTab) {
+      // Why: with no renderer the host owns editor tabs; the ledger tombstones the id in close().
+      if (!this.hostEditorTabs.close(worktreeId, tab.id)) {
         throw new Error('runtime_unavailable')
       }
+    } else {
       await this.notifier.closeSessionTab(tab.id, worktreeId)
     }
     return finishCommittedClose()

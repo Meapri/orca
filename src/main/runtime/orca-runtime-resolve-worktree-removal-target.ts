@@ -96,6 +96,7 @@ export class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRuntimeWith
       deleteWorktreeHistoryDir(worktreeId)
       this.closeHeadlessBrowserPagesForWorktree(worktreeId)
       closeClientHostedBrowserPagesForWorktree(this, worktreeId)
+      this.hostEditorTabs.forgetWorktree(worktreeId)
     }
   }
 

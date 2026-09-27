@@ -205,6 +205,12 @@ needs a login already made on the host (`accounts.addClaudeFromConfigDir` /
 Rate-limit meters refresh only when a client asks for them, as on `orca serve`: orcad never polls
 provider usage endpoints on its own.
 
+Host-authored records live beside the profile state and are written with fsync + rename before
+the change they record is acknowledged: `closed-terminal-surfaces.json` (the closed-surface ledger,
+see [multi-client-state-authority.md](./multi-client-state-authority.md)) and
+`host-editor-tabs.json` (the file, markdown and diff tabs paired clients opened on this host).
+Deleting the second closes those tabs; it holds paths, never file content.
+
 **The lock scopes one role — who is the runtime.** It deliberately says nothing about the
 daemon, which lives under `<data-root>/daemon` and fences its own endpoint with its own PID
 record. A lock that asked "is any process using this root" would refuse exactly the restarts
@@ -805,5 +811,10 @@ Named here so nothing reads as implemented that is not:
 - **Endpoint failover and resume probing outside the desktop.** The web client and mobile app do
   not read `alternateEndpoints` (orcad works around it for the browser with one link per
   endpoint), and the web client has no resume-triggered probe.
+- **Host editor tab color, pin and split-group placement across a restart.** They live in the
+  published snapshot only; `host-editor-tabs.json` keeps the tabs and their order.
+- **Host conflict checks for mirrored editors.** A desktop or web client that mirrors a host
+  markdown tab edits and saves it through its own editor, as it does against a desktop host; only
+  `markdown.saveTab` (the phone's path) runs the host's version check.
 - **Compress-before-encrypt.** JSON state is not compressed before encryption, so the stream
   itself stays roughly as large as its plaintext.

@@ -111,8 +111,12 @@ session tabs. A title this process observed live, or a manual title, always outr
 - **Clients never report a base revision.** The host refuses retired ids regardless of what the
   client last saw, which is enough for resurrection; a stale client's other mutations
   (`session.tabs.move` / `setTabProps` on a still-open tab) are still last-writer-wins.
-- **Non-terminal surfaces.** Browser, editor and structured-chat tabs are not tombstoned; closing
-  them relies on the existing per-surface retirement paths.
+- **Non-terminal surfaces.** Browser, renderer-owned editor and structured-chat tabs are not
+  tombstoned; closing them relies on the existing per-surface retirement paths. The exception is
+  the host-owned editor tabs a renderer-less host keeps (`host-editor-tabs.ts`): their ids are
+  host-minted uuids, and a close records the id in this ledger before it removes the row, so a
+  row a crash left in `host-editor-tabs.json` is never listed, read or saved again. Reopening the
+  same file mints a new id, so the ledger never refuses a legitimate open.
 - **A tab whose shell exited on its own** is not tombstoned: a hibernated agent pane legitimately
   cold-restores at the same ids.
 - **Client-side ghost retention.** `recoverWebSessionTerminalOrphansBeforeApply` in the renderer
