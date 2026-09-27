@@ -107,8 +107,8 @@ async function loadClientModule(options: SafeStorageMockOptions = {}) {
   const { setMainHttpClient } = await import('../network/http-client')
   setMainHttpClient({
     fetch: (url, init) => netFetchMock(url, init),
-    proxySession: () => ({ resolveProxy: resolveProxyMock, setProxy: setProxyMock }) as never,
-    partitionSession: () => null
+    partitionSession: () => null,
+    proxySession: () => ({ resolveProxy: resolveProxyMock, setProxy: setProxyMock }) as never
   })
   const { setSecretStore } = await import('../../shared/secret-store')
   setSecretStore({
