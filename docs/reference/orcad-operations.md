@@ -159,7 +159,7 @@ by the same code:
 | `claude-accounts/<id>/`                              | managed Claude accounts: `oauth-account.json`, and on Linux `.credentials.json` (macOS: login keychain)  |
 | `claude-runtime-auth/`                               | the system-default Claude credentials snapshot taken before a managed account is swapped in              |
 | `codex-accounts/<id>/home/`                          | managed Codex homes (`auth.json`, config mirror); a PTY for the selected account gets it as `CODEX_HOME` |
-| `codex-runtime-home/`                                | Codex routing metadata and migration markers                                                             |
+| `codex-runtime-home/`                                | Codex routing metadata, and `home/`, the system-default mirror used when `~/.codex` cannot host hooks    |
 | `orca-claude-usage.json`, `orca-codex-usage.json`    | usage scan caches; automation runs read their token and cost figures from them                           |
 | `cli/bin/orca` (macOS) or `cli/bin/orca-ide` (Linux) | the [`orca` CLI launcher](#the-orca-cli-on-orcad-hosts)                                                  |
 
@@ -445,9 +445,9 @@ hours:
 
 This sweep only reads Orca's own `terminal-history/`. Codex's `sessions/` under `~/.codex` is
 third-party data and is never collected. orcad routes Codex the way the desktop does: the system
-default runs on the real `~/.codex`, and a selected managed account runs in its own
-`<data-root>/codex-accounts/<id>/home`, which the same session-migration pass as the desktop
-keeps in step with `~/.codex`.
+default runs on the real `~/.codex` when Codex can grant Orca's status hooks trust there, and
+otherwise on Orca's mirror of it at `<data-root>/codex-runtime-home/home`; a selected managed
+account runs in `<data-root>/codex-accounts/<id>/home`.
 
 ### Headless browser tabs
 
