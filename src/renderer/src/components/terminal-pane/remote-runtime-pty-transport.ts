@@ -2170,6 +2170,17 @@ export function createRemoteRuntimePtyTransport(
       remotePtyId !== subscribedPtyId
     ) {
       nextStream.close()
+      // Why: a stream that opened after the deadline latched is discarded like its late failure would be,
+      // so park it too or resume/online find nothing to revive (#9092).
+      if (
+        !destroyed &&
+        connected &&
+        handle === subscribedHandle &&
+        recovery.currentPhase === 'disconnected' &&
+        (expectedRecoveryEpoch === undefined || recovery.ownsEpoch(expectedRecoveryEpoch))
+      ) {
+        parkResubscribeAfterDeadline(subscribedHandle)
+      }
       return
     }
     closeMultiplexedStream()
