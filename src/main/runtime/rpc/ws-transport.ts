@@ -10,6 +10,7 @@ import {
   type WebSocketProbeRequestHandler
 } from './ws-transport-http-server'
 import { RemoteRuntimeServerHeartbeat } from './remote-runtime-server-heartbeat'
+import { closeWebSocketWithinFlushBound } from './ws-bounded-close'
 import { listenOnPlannedPorts, planWebSocketListenPorts } from './ws-transport-port-binding'
 
 export type { WebSocketProbeRequestHandler } from './ws-transport-http-server'
@@ -214,10 +215,7 @@ export class WebSocketTransport implements RpcTransport {
   // Why: force-terminate soon after the 1013 close since a half-open phone may never ack and would hold the descriptor past the WS cap; the 'error' listener absorbs a reset while closing.
   private rejectOverCapacity(ws: WebSocket): void {
     ws.on('error', () => {})
-    ws.close(1013, 'Maximum connections reached')
-    const terminateTimer = setTimeout(() => ws.terminate(), 1_000)
-    terminateTimer.unref?.()
-    ws.once('close', () => clearTimeout(terminateTimer))
+    closeWebSocketWithinFlushBound(ws, 1013, 'Maximum connections reached')
   }
 
   async stop(): Promise<void> {

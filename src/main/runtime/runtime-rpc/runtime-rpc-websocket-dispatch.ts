@@ -13,6 +13,7 @@ import { classifyRuntimeLongPoll } from './runtime-rpc-long-poll'
 import { MOBILE_RPC_METHOD_ALLOWLIST } from './runtime-rpc-mobile-method-allowlist'
 import { COMPRESSIBLE_RUNTIME_RPC_METHODS } from './runtime-rpc-compressible-methods'
 import type { E2EETextReply } from '../../../shared/e2ee-text-compression'
+import { closeWebSocketWithinFlushBound } from '../rpc/ws-bounded-close'
 
 // Why: status.get has no per-connection context in the dispatcher, so stamp the scope here at the transport boundary.
 function injectDeviceScope(response: string, scope: DeviceScope): string {
@@ -158,7 +159,9 @@ export class RuntimeRpcWebSocketDispatch extends RuntimeRpcRequestAdmission {
         sendBinary,
         outboundBacklogBytes: authenticatedSocket?.outboundBacklogBytes,
         awaitOutboundDelivery: authenticatedSocket?.awaitOutboundDelivery,
-        closeConnection: ws ? (code, reason) => ws.close(code, reason) : undefined,
+        closeConnection: ws
+          ? (code, reason) => closeWebSocketWithinFlushBound(ws, code, reason)
+          : undefined,
         registerBinaryStreamHandler: (streamId, handler) =>
           this.registerBinaryStreamHandler(connectionId, streamId, handler),
         registerBinaryMessageHandler: (handler) =>
