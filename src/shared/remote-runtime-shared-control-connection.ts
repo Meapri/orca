@@ -1,7 +1,7 @@
 import type WebSocket from 'ws'
 import type { PairingOffer } from './pairing'
 import type { RemoteRuntimeClientError } from './remote-runtime-client-error'
-import { remoteRuntimeClientCapabilities } from './remote-runtime-client-capabilities'
+import { nodeRemoteRuntimeClientCapabilities } from './remote-runtime-node-client-capabilities'
 import { remoteRuntimeUnavailableError } from './remote-runtime-request-frames'
 import { openSharedControlSocket } from './remote-runtime-shared-control-open'
 import * as sharedControlReady from './remote-runtime-shared-control-ready'
@@ -213,7 +213,7 @@ export class RemoteRuntimeSharedControlConnection {
       getSharedKey: () => this.sharedKey,
       environmentId: this.options.environmentId,
       deviceToken: this.pairing.deviceToken,
-      clientCapabilities: remoteRuntimeClientCapabilities(this.options.clientCapabilities),
+      clientCapabilities: nodeRemoteRuntimeClientCapabilities(this.options.clientCapabilities),
       pendingRequests: this.pendingRequests,
       subscriptions: this.subscriptions,
       retiredRequestIds: this.retiredRequestIds,

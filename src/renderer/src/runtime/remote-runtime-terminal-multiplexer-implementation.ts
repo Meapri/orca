@@ -14,7 +14,8 @@ import {
 import type {
   RemoteRuntimeMultiplexedTerminal,
   RemoteRuntimeMultiplexedTerminalCallbacks,
-  RemoteRuntimeMultiplexedTerminalState
+  RemoteRuntimeMultiplexedTerminalState,
+  RemoteRuntimeTerminalResumePoint
 } from './remote-runtime-terminal-multiplexer-types'
 import { createRemoteTerminalStreamWatchdog } from './remote-terminal-stream-watchdog'
 
@@ -24,6 +25,8 @@ export class RemoteRuntimeTerminalMultiplexer extends RemoteRuntimeTerminalBinar
     client: { id: string; type: 'desktop' | 'mobile' }
     viewport?: { cols: number; rows: number }
     callbacks: RemoteRuntimeMultiplexedTerminalCallbacks
+    // Only from a caller whose view still shows every byte up to this point.
+    resumeFrom?: RemoteRuntimeTerminalResumePoint
   }): Promise<RemoteRuntimeMultiplexedTerminal> {
     const streamId = this.allocateStreamId()
     const state: RemoteRuntimeMultiplexedTerminalState = {
@@ -36,6 +39,8 @@ export class RemoteRuntimeTerminalMultiplexer extends RemoteRuntimeTerminalBinar
       supportsOutputPause: false,
       outputPaused: false,
       streamGeneration: null,
+      resumeToken: null,
+      requestedResume: args.resumeFrom ?? null,
       sourceAckedEndByte: 0,
       heldAckBytes: 0,
       pendingAckBytes: 0,
@@ -143,9 +148,11 @@ export class RemoteRuntimeTerminalMultiplexer extends RemoteRuntimeTerminalBinar
             ackOutput: 1,
             ackOutputSourceRanges: 1,
             outputPause: 1,
+            outputResume: 1,
             writeUnavailable: 1,
             ...(args.client.type === 'desktop' ? { desktopViewportClaims: 1 } : {})
-          }
+          },
+          ...(args.resumeFrom ? { resume: args.resumeFrom } : {})
         })
       )
       if (!sent) {

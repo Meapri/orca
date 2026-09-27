@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import type { WebSocket } from 'ws'
+import type { E2EETextReply } from '../../../shared/e2ee-text-compression'
 import type { DeviceEntry, DeviceRegistry } from '../device-registry'
 import type { E2EEKeypair } from '../e2ee-keypair'
 import { E2EEChannel, type E2EEAuthenticatedDevice } from './e2ee-channel'
@@ -51,7 +52,7 @@ type MobileSocketWiringOptions = {
   onText: (
     socket: AuthenticatedMobileSocket,
     plaintext: string,
-    reply: (response: string) => void,
+    reply: E2EETextReply,
     sendBinary: (response: Uint8Array<ArrayBufferLike>) => boolean | void
   ) => void
   onBinary: (socket: AuthenticatedMobileSocket, bytes: Uint8Array<ArrayBufferLike>) => void

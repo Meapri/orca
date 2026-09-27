@@ -5,6 +5,10 @@ import { z } from 'zod'
 import { BrowserError } from '../browser/browser-error'
 import { BROWSER_UNAVAILABLE_ERROR_CODE } from '../../shared/runtime-types'
 import { runProcess } from '../../shared/child-process/run-process'
+import {
+  reapExternalChromiumProfileProcesses,
+  type ExternalChromiumReapOutcome
+} from './external-chromium-orphan-reaper'
 
 const COMMAND_TIMEOUT_MS = 90_000
 const MAX_OUTPUT_BYTES = 50 * 1024 * 1024
@@ -85,7 +89,10 @@ export class ExternalChromiumBrowserSession {
   constructor(
     private readonly agentBrowserPath: string,
     private readonly launch: ExternalChromiumLaunch,
-    statePath: string
+    statePath: string,
+    private readonly reapProfileProcesses: (
+      profilePath: string
+    ) => Promise<ExternalChromiumReapOutcome> = reapExternalChromiumProfileProcesses
   ) {
     const identity = createHash('sha256')
       .update(`${statePath}:${launch.provider}`)
@@ -131,7 +138,16 @@ export class ExternalChromiumBrowserSession {
     try {
       await this.run(['close'], CLOSE_TIMEOUT_MS)
     } catch {
-      // Closing an already-dead browser is complete cleanup.
+      // A dead driver cannot close its browser; the reap below covers that tree.
+    }
+    // Why: a killed driver leaves its Chromium re-parented and running on this profile, and a
+    // relaunch on the same profile would hand off to it instead of starting a browser we drive.
+    const reaped = await this.reapProfileProcesses(this.profilePath).catch(() => null)
+    if (reaped && reaped.signalled.length > 0) {
+      console.warn(
+        `[orcad] Reaped ${reaped.signalled.length} orphaned browser process(es) ` +
+          `left by a lost driver (${reaped.killed.length} needed SIGKILL).`
+      )
     }
   }
 

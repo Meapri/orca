@@ -348,7 +348,10 @@ unit. Manage one account with one of them.
 data root, runs heartbeat, throughput, full-screen redraw and echo terminals through a
 paired client behind an in-process TCP fault proxy, and injects `kill -9` of orcad, a
 frozen daemon, `SIGTERM` timing, restart under connected clients, link latency, partition
-and reset, daemon death, and a long run that samples RSS and descriptors. It writes a JSON
+and reset, daemon death, and a long run that samples RSS and descriptors. Two scenarios
+measure the wire itself through the same proxy: `stream-resume` reconnects a terminal after a
+link reset with and without a resume point across missed-output sizes, and `e2ee-compression`
+fetches listing replies as a client with and without `e2ee.text-deflate.v1`. It writes a JSON
 report to `out/orcad-soak/`. The `orcad-soak` workflow runs it on Linux on demand.
 
 ## Legacy: Electron AppImage with Xvfb

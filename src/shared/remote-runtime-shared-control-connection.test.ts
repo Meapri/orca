@@ -6,7 +6,7 @@ import {
   serializeRemoteRuntimeRpcRequest
 } from './remote-runtime-memory-limits'
 import { getRemoteRuntimeRequestAdmissionEvidence } from './remote-runtime-prepared-request-admission'
-import { remoteRuntimeClientCapabilities } from './remote-runtime-client-capabilities'
+import { nodeRemoteRuntimeClientCapabilities } from './remote-runtime-node-client-capabilities'
 import { RemoteRuntimeSharedControlConnection } from './remote-runtime-shared-control-connection'
 import * as sharedControlProtocol from './remote-runtime-shared-control-protocol'
 import { isRuntimeSubscriptionReplayResponse } from './runtime-subscription-replay'
@@ -36,7 +36,7 @@ describe('RemoteRuntimeSharedControlConnection', () => {
     expect(server.auths).toContainEqual({
       type: 'e2ee_auth',
       deviceToken: 'device-token',
-      clientCapabilities: remoteRuntimeClientCapabilities()
+      clientCapabilities: nodeRemoteRuntimeClientCapabilities()
     })
     expect(server.requests.map((request) => request.method)).toEqual([
       'worktree.ps',

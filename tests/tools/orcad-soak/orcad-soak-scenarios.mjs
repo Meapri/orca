@@ -18,6 +18,8 @@ import {
   slopePerMinute,
   waitFor
 } from './orcad-soak-host.mjs'
+import { createStreamResumeScenario } from './orcad-soak-stream-resume.mjs'
+import { createE2eeCompressionScenario } from './orcad-soak-e2ee-compression.mjs'
 
 const GENERATORS = ['heartbeat', 'stream', 'tui']
 
@@ -56,7 +58,7 @@ async function mustCall(ctx, args, options) {
   return response.result
 }
 
-export async function createLoad(ctx) {
+async function ensureWorktree(ctx) {
   if (!ctx.worktreeId) {
     const repoPath = seedRepo(join(ctx.root, 'repo'))
     const repo = (await mustCall(ctx, ['repo', 'add', '--path', repoPath])).repo
@@ -67,6 +69,10 @@ export async function createLoad(ctx) {
     }
     ctx.worktreeId = main.id
   }
+}
+
+export async function createLoad(ctx) {
+  await ensureWorktree(ctx)
   ctx.terminals = {}
   for (const name of [...GENERATORS, 'echo']) {
     const created = await mustCall(ctx, ['terminal', 'create', '--worktree', ctx.worktreeId])
@@ -517,5 +523,8 @@ export const SCENARIOS = {
     }
   }
 }
+
+SCENARIOS['stream-resume'] = createStreamResumeScenario({ ensureWorktree, mustCall })
+SCENARIOS['e2ee-compression'] = createE2eeCompressionScenario({ ensureWorktree })
 
 export const SCENARIO_ORDER = Object.keys(SCENARIOS)

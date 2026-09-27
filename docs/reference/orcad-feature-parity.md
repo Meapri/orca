@@ -121,6 +121,13 @@ Host-owned editor tabs are the one negotiated change:
   sees a row another client opened can therefore read, edit and close it. The cross-version
   harness does not cover the session-tab channel; this is the recorded reasoning.
 
+Terminal stream resumption, compress-before-encrypt for listing replies and the killed-driver
+browser reap were added later. The first two live in the shared runtime, so `orca serve` and
+orcad behave the same (parity); they add negotiated capabilities (`outputResume`,
+`e2ee.text-deflate.v1`) described in
+[remote-wire-compatibility.md](./remote-wire-compatibility.md#worked-example-negotiated-changes-with-no-new-opcode).
+The reap applies to orcad's external Chromium provider only.
+
 ## Follow-ups
 
 1. Interactive Claude/Codex logins on a headless host (accounts are added from a login already

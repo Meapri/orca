@@ -157,6 +157,47 @@ Every frame is E2EE ciphertext, so these behaviours are about the WebSocket carr
 - **Compression.** permessage-deflate is negotiated with any client that offers it (desktop and
   browsers do), Huffman-only and without context takeover. Ciphertext does not compress, so the
   gain is base64's overhead on text frames, about 25%; binary frames are never deflated.
+- **Compression before encryption.** A client that advertises `e2ee.text-deflate.v1` in its
+  `e2ee_auth` capabilities (the desktop main process and the CLI) can be sent a text reply
+  deflated before it is sealed: the plaintext starts with a NUL marker byte, which no JSON frame
+  can, then an algorithm byte and a raw-deflate body capped at 4 MiB inflated. The host does it
+  only for a client that advertised it, only for replies of at least 1 KiB that actually shrink,
+  and only for the listing methods in `runtime-rpc-compressible-methods.ts` (`files.listAll`,
+  `git.status`, `worktree.list`, `repo.list`, `status.get` and similar). Measured through the
+  soak proxy on a synthetic repo with 3000 untracked files: `files.listAll` 207 KB to 12 KB,
+  `git.status` 135 KB to 4 KB, `worktree.list` 2.2 KB to 1.0 KB; synthetic names are more
+  repetitive than a real tree, so expect less.
+
+  Compression leaks through ciphertext length when attacker-influenced text shares a
+  compression context with a secret (CRIME/BREACH): an attacker who can repeatedly inject a
+  guess and observe frame sizes learns the secret byte by byte. Two rules keep that shut. Every
+  frame is its own deflate context, so no frame's length depends on another's content. And the
+  allowlist admits only replies made entirely of names, paths, refs and states: a cloned
+  repository's file and branch names may be attacker-chosen, but nothing beside them is a secret.
+  Terminal output and agent transcripts (typed secrets beside program output), file and diff
+  contents (a secret line beside an attacker-edited one), `session.tabs` (terminal titles carry
+  command lines; browser URLs carry tokens next to page-chosen titles), and anything touching
+  accounts, pairing or credentials are never compressed, and terminal stream frames are binary
+  and untouched. Mobile (E2EE v2 framing) and browser clients do not advertise the capability
+  and receive plain frames, as does every older client.
+
+- **Terminal stream resumption.** A reconnecting terminal view (desktop app or web client) used
+  to re-subscribe and take a full snapshot. The host now keeps, per terminal, a ring of its most recent output (256 KiB,
+  held for 10 minutes after the last stream detaches, at most 64 idle rings) in the output
+  sequence domain. A client that negotiates `outputResume` on the multiplex `Subscribe` frame is
+  told a run token in the `subscribed` event; on reconnect it presents that token and the
+  sequence it last applied, and when the ring still holds every byte after it the host sends
+  only that tail (`subscribed.resumed`) instead of the snapshot, and the view keeps its own
+  scrollback. It falls back to the snapshot when the token changed (host restart, respawned PTY,
+  a sequence gap or an unsequenced chunk), the point is older than the ring, the tail holds a
+  reply-eliciting query the host already answered, the stream uses SSH source-range accounting,
+  or output was paused at the drop. Measured through the soak proxy on a 40 ms link with 4000
+  lines of scrollback: an idle reconnect costs 1.3 KB instead of 4.9 KB and 1 KiB missed costs
+  2.7 KB instead of 5.8 KB, but because the desktop snapshot is one screen, a missed burst larger
+  than a screen (8 KiB and up) costs more than the snapshot would: 128 KiB missed is 133 KB
+  against 6 KB. Catch-up time was the same either way (about 90 ms) on that link. The trade is
+  deliberate: the snapshot carries one screen, so lines that scrolled past while disconnected
+  never reach the view; the tail delivers every missed line.
 - **State streams under a thin link.** `session.tabs` streams keep one frame in flight per
   subscription: after each frame the host sends a delivery ping, and later changes park as the
   newest frame per worktree until the pong proves the peer has read it. Interactive replies on
@@ -458,9 +499,32 @@ bounds **all terminal and agent work on the host together**, not each terminal. 
   published in `status.get` as a `terminal_resource_limits_unavailable` degradation naming the
   missing assignments. Terminals keep working either way.
 
-Per-terminal limits (one sub-scope per PTY) are deliberately not provided: moving a PTY into its
-own unit takes it out of the daemon scope that is stopped when the daemon dies, so its
-descendants would outlive the daemon.
+#### Per-terminal limits (designed, not implemented)
+
+One systemd sub-scope per PTY is rejected: moving a PTY into its own unit takes it out of the
+daemon scope that the daemon-death watcher stops, so its descendants would outlive the daemon.
+The design that keeps that cleanup is cgroup v2 delegation _inside_ the daemon scope, where
+every PTY stays in the scope's subtree:
+
+1. Launch a fresh scope with `--property=Delegate=yes` when a per-terminal limit is configured,
+   so the daemon's user owns the scope's cgroup directory.
+2. At daemon start, move every process in the scope root (the daemon, and the lifetime watcher
+   if it runs there) into a `daemon` leaf, then enable `+memory +pids +cpu` in the scope's `cgroup.subtree_control`.
+   cgroup v2's no-internal-processes rule forbids enabling controllers while the scope root
+   still holds processes, so this order is required.
+3. At PTY spawn, where niceness and `oom_score_adj` are applied today, create `pty-<pid>`
+   with `memory.high`, `memory.max`, `pids.max` and `cpu.weight` and write the child's PID to
+   its `cgroup.procs`; remove the empty cgroup after the PTY exits.
+4. Stopping the scope still signals every process in its subtree, so the daemon-death watcher,
+   `OOMPolicy=continue` and the scope-wide limits behave as today; a per-terminal `memory.max`
+   OOM-kills inside that one leaf.
+
+Its limits, and why it is not shipped yet: a child that forks before its PID is moved leaves
+that grandchild in the `daemon` leaf, outside the limit; an adopted daemon launched without
+`Delegate=yes` cannot use it until it is replaced; and it needs verification against a real
+systemd user manager, which this change did not have. When built, configured-but-unenforced
+per-terminal limits must surface through the existing `terminal_resource_limits_unavailable`
+degradation.
 
 ### PTY priority and OOM preference
 
@@ -546,6 +610,12 @@ changed is that orcad now recovers it instead of staying broken:
 - **Electron sidecar.** A sidecar whose process exited is relaunched by the maintenance pass.
 - Relaunches are spaced at least 5 s apart and capped at 5 per 10 minutes, the same containment
   the terminal daemon uses, so a host that cannot keep a browser up stops forking one.
+- **Killed driver.** If the external provider's `agent-browser` daemon itself is killed, its
+  Chromium is re-parented and keeps running on orcad's private profile, which also blocks a new
+  browser on that profile. Stopping the session, on relaunch and on orcad shutdown, now ends
+  every process whose command line names that exact `--user-data-dir` (SIGTERM, then SIGKILL
+  after 3 s). The profile lives under orcad's own state root, so a match is ownership proof and
+  the user's other browsers never match.
 
 ## Continuous health
 
@@ -805,11 +875,12 @@ which startup steps it now performs the same way, is tracked in
 
 Named here so nothing reads as implemented that is not:
 
-- **Per-terminal resource limits.** Limits cover the daemon scope as a whole (see
-  [Resource governance](#resource-governance)); one terminal can still use the whole budget.
-- **Browser processes orphaned by a killed driver.** If the external Chromium provider's
-  `agent-browser` daemon itself is killed, the Chromium tree it launched is re-parented and keeps
-  running; the relaunched driver starts a new browser and nothing reaps the old one.
+- **Per-terminal resource limits.** Limits cover the daemon scope as a whole; one terminal can
+  still use the whole budget. A delegated-cgroup design is written up under
+  [Per-terminal limits](#per-terminal-limits-designed-not-implemented) but not built.
+- **Orphaned browsers on Windows, and wedged drivers.** The killed-driver reap is covered by a
+  real-Chromium integration test on macOS only. A driver that is alive but wedged is not itself
+  reaped; only the Chromium on its profile is.
 - **Resource governance on the desktop app.** Exited-history retention and the live
   `set-property` apply are wired into orcad only; the desktop keeps its previous behavior.
 - **Health probes without a WebSocket listener.** `/healthz` and `/readyz` share the WebSocket
@@ -850,13 +921,20 @@ Named here so nothing reads as implemented that is not:
   with this build, or whose `orca-ide` slot holds an unrelated command, still has no census and
   can prove a stop safe only through daemon scope isolation (or `ORCAD_CENSUS_COMMAND` pointing
   at `<data-root>/cli/bin/orca-ide`).
+- **Interactive agent logins on the host.** Accounts are added from a login already made on the
+  host; interactive Claude/Codex logins and MiniMax / OpenCode Go cookie sign-in remain desktop
+  flows (their API-key paths work).
 - **Signed release assets.** Published orcad tarballs carry SHA-256 checksums from the same
   release, which catch corruption but not a compromised release; there is no signature or
   provenance attestation yet. Pin `--sha256` from a channel you trust if that matters.
 - **Windows sidecar reaping.** The browser-sidecar lifeline is POSIX-only; on Windows a
   SIGKILLed orcad's Electron sidecar is not reaped.
-- **Terminal stream resumption.** A reconnect always re-subscribes and receives a full snapshot;
-  there is no replay from the last acknowledged sequence.
+- **Stream resumption on mobile.** The desktop app and the web client share the pane code that
+  presents a resume point; the mobile app still takes a full snapshot on every reconnect. A run
+  token that rotates while a client is attached (a sequence gap) is not republished, so that
+  client's next reconnect takes the snapshot. A reconnect whose missed tail is larger than one screen
+  sends more bytes than the snapshot would (see
+  [Transport over the internet](#transport-over-the-internet)); there is no size-based choice.
 - **Relay for runtime clients.** Orca Relay v1 carries phones only; a desktop or the web client
   still needs a direct address (tailnet, reverse proxy, or an SSH forward) to reach orcad.
 - **A headless sign-in without a browser.** `orca serve relay sign-in` needs a browser on some
@@ -872,5 +950,7 @@ Named here so nothing reads as implemented that is not:
 - **Host conflict checks for mirrored editors.** A desktop or web client that mirrors a host
   markdown tab edits and saves it through its own editor, as it does against a desktop host; only
   `markdown.saveTab` (the phone's path) runs the host's version check.
-- **Compress-before-encrypt.** JSON state is not compressed before encryption, so the stream
-  itself stays roughly as large as its plaintext.
+- **Compressing state streams.** Compress-before-encrypt covers the listing replies only.
+  `session.tabs`, agent sessions and terminal output stay uncompressed on purpose (they mix
+  attacker-influenced text with secrets), client-to-host frames are never compressed, and
+  mobile (E2EE v2) and browser clients do not negotiate it.
