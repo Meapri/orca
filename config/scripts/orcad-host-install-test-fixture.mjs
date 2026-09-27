@@ -68,7 +68,7 @@ export function packFakeOrcadRelease(root, version, options) {
     env: { ...process.env, COPYFILE_DISABLE: '1' }
   })
   if (packed.status !== 0) {
-    throw new Error(`tar failed: ${packed.stderr}`)
+    throw new Error(`tar failed: ${String(packed.stderr)}`)
   }
   writeFileSync(`${tarball}.sha256`, sha256Line(sha256File(tarball), name))
   return tarball
