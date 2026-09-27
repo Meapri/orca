@@ -27,7 +27,8 @@ vi.mock('electron', () => ({
     handle: vi.fn((channel: string, handler: (_event: unknown, args?: unknown) => unknown) => {
       handlers.set(channel, handler)
     })
-  }
+  },
+  shell: { openExternal: vi.fn() }
 }))
 
 vi.mock('../tray/system-tray', () => ({
@@ -108,7 +109,9 @@ describe('registerOrcaProfileHandlers auth channels', () => {
     await expect(
       Promise.resolve(handlers.get('orcaProfiles:signOutCurrent')?.(null))
     ).resolves.toBe(signOutResult)
-    expect(connectCurrentOrcaProfileMock).toHaveBeenCalledWith('/tmp/orca-user-data')
+    expect(connectCurrentOrcaProfileMock).toHaveBeenCalledWith('/tmp/orca-user-data', {
+      openAuthorizeUrl: expect.any(Function)
+    })
     expect(signOutCurrentOrcaProfileMock).toHaveBeenCalledWith('/tmp/orca-user-data')
   })
 

@@ -90,6 +90,8 @@ export type OrcadOptions = {
   resourceLimits?: Record<string, string>
   /** `--browser`; unset falls back to ORCA_BROWSER_PROVIDER, then `auto`. */
   browser?: OrcadBrowserMode
+  /** Serve phones through Orca Relay (outbound only); see orcad-relay.ts. */
+  relay?: boolean
 }
 
 export type OrcadHandle = {
@@ -149,6 +151,7 @@ async function startOrcadRuntime(
   const { installOrcadHeadlessParity } = await import('./orcad-headless-parity')
   const { createOrcadAccountServices, registerAccountBackedPtyRuntime } =
     await import('./orcad-account-services')
+  const { createOrcadRelayControl } = await import('./orcad-relay')
 
   let rpc: InstanceType<typeof OrcaRuntimeRpcServer> | null = null
   let profileStoreForShutdown:
@@ -158,8 +161,10 @@ async function startOrcadRuntime(
   let uninstallObservedStatusIdentity = (): void => {}
   let healthSurface: ReturnType<typeof createOrcadHealthSurface> | null = null
   let headlessParity: OrcadHeadlessParity | null = null
+  let relayControl: ReturnType<typeof createOrcadRelayControl> | null = null
   registerCleanup(async () => {
     try {
+      relayControl?.stop()
       await healthSurface?.stop()
       await rpc?.stop()
     } finally {
@@ -320,6 +325,11 @@ async function startOrcadRuntime(
   if ('reason' in webClient) {
     console.error(`[orcad] browser client not served: ${webClient.reason}`)
   }
+  relayControl = createOrcadRelayControl({
+    enabled: options.relay === true,
+    userDataPath: runtimeUserDataPath,
+    appVersion: getAppEnvironment().getVersion()
+  })
   rpc = new OrcaRuntimeRpcServer({
     runtime,
     userDataPath: runtimeUserDataPath,
@@ -329,7 +339,7 @@ async function startOrcadRuntime(
     // once a device has connected, so a loopback deployment would silently go wide one
     // restart after its first client paired.
     pinnedBindHost: bindHost,
-    extraMethods: healthSurface.extraMethods,
+    extraMethods: [...healthSurface.extraMethods, ...relayControl.methods],
     httpProbeHandler: healthSurface.httpProbeHandler,
     securityLogPath: join(getAppEnvironment().getPath('logs'), SECURITY_LOG_FILENAME),
     // Same static handler and path allowlist as `orca serve`; runtime offers then carry webClientUrl.
@@ -340,6 +350,7 @@ async function startOrcadRuntime(
       : {})
   })
   await rpc.start()
+  relayControl.attach(rpc)
   headlessParity.startScheduledWork()
   const pushService = DesktopPushService.create({
     runtime,

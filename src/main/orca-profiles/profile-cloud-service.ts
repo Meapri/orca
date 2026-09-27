@@ -19,7 +19,7 @@ import {
   exchangeOrcaCloudAuthCode,
   revokeOrcaCloudSession
 } from './profile-cloud-client'
-import { beginOrcaCloudPkceFlow } from './profile-cloud-pkce'
+import { beginOrcaCloudPkceFlow, type OrcaCloudAuthorizeUrlOpener } from './profile-cloud-pkce'
 import {
   createCloudLinkedOrcaProfileRecord,
   linkOrcaProfileToCloud,
@@ -59,8 +59,13 @@ export function getCurrentOrcaProfileAuthStatus(userDataPath: string): OrcaProfi
   return getOrcaProfileAuthStatusFromProfile(ensureActiveOrcaProfile(userDataPath), userDataPath)
 }
 
+// Why a default that refuses: a host with no way to show the URL must fail the sign-in, not hang it.
+const refuseAuthorizeUrl: OrcaCloudAuthorizeUrlOpener = () =>
+  Promise.reject(new Error('orca_cloud_auth_browser_open_failed'))
+
 export async function connectCurrentOrcaProfile(
-  userDataPath: string
+  userDataPath: string,
+  options: { openAuthorizeUrl?: OrcaCloudAuthorizeUrlOpener } = {}
 ): Promise<ConnectCurrentOrcaProfileResult> {
   const active = ensureActiveOrcaProfile(userDataPath)
   if (isOrcaCloudDevAuthEnabled()) {
@@ -83,7 +88,11 @@ export async function connectCurrentOrcaProfile(
 
   const attempt = ++nextCloudConnectAttempt
   try {
-    const code = await beginOrcaCloudPkceFlow(configState.config, active.profile.id)
+    const code = await beginOrcaCloudPkceFlow(
+      configState.config,
+      active.profile.id,
+      options.openAuthorizeUrl ?? refuseAuthorizeUrl
+    )
     if (attempt < linkedCloudConnectAttempt) {
       return {
         status: 'cancelled',

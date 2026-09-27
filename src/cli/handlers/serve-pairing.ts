@@ -139,11 +139,17 @@ export const SERVE_PAIRING_HANDLERS: Record<string, CommandHandler> = {
   },
   'serve pairing new': async ({ flags, json }) => {
     rejectRemoteSelectionFlags(flags, REMOTE_SELECTION_SUFFIX)
+    const scope = resolvePairingScope(flags)
+    if (flags.get('relay') === true && scope !== 'mobile') {
+      throw new RuntimeClientError('invalid_argument', '--relay pairs phones only; add --mobile.')
+    }
     const response = await callHost<PairingCreateResult>(flags, 'pairing.create', {
-      scope: resolvePairingScope(flags),
+      scope,
       address: optionalStringFlag(flags, 'pairing-address'),
       name: optionalStringFlag(flags, 'name'),
-      expiresInMs: resolveLifetimeMs(flags)
+      expiresInMs: resolveLifetimeMs(flags),
+      // Why only when asked: an older host refuses the unknown key, which is right only for --relay.
+      ...(flags.get('relay') === true ? { relay: true } : {})
     })
     await printOffer({ ...response, result: requireAvailableOffer(response.result) }, json)
   },

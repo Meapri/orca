@@ -76,6 +76,8 @@ export type PairingOfferUnavailableReason =
   | 'invalid_advertised_endpoint'
   | 'relay_mint_failed'
   | 'network_exposure_failed'
+  | 'relay_unavailable'
+  | 'relay_scope_unsupported'
 
 export type PairingOfferUnavailable = {
   available: false
@@ -93,6 +95,8 @@ export type MobilePairingOfferAvailable = {
   webClientUrl: string | null
   /** Mode the offer actually encodes. */
   connectionMode: MobilePairingConnectionMode
+  /** Only standalone offers minted with a lifetime carry one. */
+  offerExpiresAt?: number | null
 }
 
 export type MobilePairingOffer = PairingOfferUnavailable | MobilePairingOfferAvailable

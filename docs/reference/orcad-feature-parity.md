@@ -38,6 +38,7 @@ Status: **parity** — same behavior; **fixed** — was missing on orcad and is 
 | Browser automation                             | offscreen `WebContents` when a display exists  | Electron sidecar or `ORCA_BROWSER_EXECUTABLE` Chromium (`orcad-browser-provider.ts`), started after readiness; `--browser` selects or disables it                                                                 | parity (different backend) |
 | Serve→desktop promotion                        | `openable`                                     | `blocked`                                                                                                                                                                                                         | n/a                        |
 | Telemetry, stats, crash sampling               | observers                                      | none                                                                                                                                                                                                              | n/a                        |
+| Orca Relay for phones                          | not started (desktop app window only)          | Opt-in `--relay`: the desktop's `DesktopRelayService` behind `orcad-relay.ts`; sign-in with `orca serve relay sign-in`, relay offers with `orca serve pairing new --mobile --relay`                               | fixed (orcad only)         |
 
 ## Features a desktop renderer performs
 
@@ -76,6 +77,13 @@ each needs a host-side (or client-side) replacement.
 - **Wake.** `worktree-sleep` captures are consumed only by a wake. A phone opening a single parked
   agent tab before any worktree activation gets a plain shell there, not the agent.
 
+## Clients
+
+| Feature                                       | Behavior                                                                                                                                                                | Status |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| `alternateEndpoints` failover outside desktop | The web client and the phone store every offered address and fail over on an unanswered connect, keeping the last good one (`src/shared/pairing-endpoint-failover.ts`). | fixed  |
+| Resume probe in the web client                | `online`, back/forward-cache restore and Page Lifecycle `resume` probe a live socket with the desktop's 8 s deadline or skip the remaining reconnect backoff.           | fixed  |
+
 ## Wire compatibility of the fixes
 
 No stream frames changed. The web client and phone offer add only optional fields: `pairing.webClientAlternateUrls` and `mobilePairing` in the readiness line, the same
@@ -92,6 +100,11 @@ orcad unchanged. What orcad now publishes differently uses existing values only:
 workspace's tabs read `pending-handle`, as a hibernated pane's already do; a phone wake answers
 `sleepingAgentWake: 'requested'` instead of `unsupported-headless`; a resumed agent arrives as an
 ordinary terminal at the pane's existing ids.
+
+Relay pairing adds an optional `relay` key to the host-only `pairing.create` params (an older host
+refuses it, which is the intended outcome for `--relay`) and orcad-only `server.relay.*` admin
+methods whose presence is the capability; the phone-facing relay wire is the desktop's, unchanged.
+Client failover only reads the existing optional `alternateEndpoints`.
 
 Host-owned editor tabs are the one negotiated change:
 

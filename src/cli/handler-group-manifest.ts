@@ -26,7 +26,10 @@ export const HANDLER_GROUPS: readonly HandlerGroup[] = [
       'serve pairing new',
       'serve devices list',
       'serve devices revoke',
-      'serve devices rotate'
+      'serve devices rotate',
+      'serve relay status',
+      'serve relay sign-in',
+      'serve relay sign-out'
     ],
     load: async () => (await import('./handlers/serve-admin.js')).SERVE_ADMIN_HANDLERS
   },

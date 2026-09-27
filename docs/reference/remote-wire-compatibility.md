@@ -271,6 +271,31 @@ a new opcode or capability. Each is safe for a stated reason, and the reason is 
   new decoder drops malformed or excess entries instead of refusing the offer (Rule 4's intent). A
   client must keep treating `endpoint` as the primary: the field is advice, not a replacement.
 
+## Worked example: orcad relay pairing and client-side failover
+
+Serving Orca Relay from orcad and teaching the web client and phone to fail over added no stream
+opcode and no host-published content. Each piece is safe for a stated reason:
+
+- **Relay on orcad reuses the desktop's relay wire unchanged.** The phone cannot tell an orcad
+  from a desktop: the same `DesktopRelayService`, the same `pairing.getEndpoints` /
+  `pairing.provisionRelay` RPCs and the same E2EE v2 splice. A phone build that already pairs
+  with a desktop over the relay pairs with orcad.
+- **`pairing.create` gains an optional `relay: true`** (host-only CLI → local runtime). The CLI
+  sends the key only for `--relay`, so every other invocation is byte-identical. The params are
+  `.strict()`, so an older host refuses the unknown key instead of silently minting a direct-only
+  offer the operator believed was relay-reachable — the failure is the compatibility behavior.
+  The result's optional `viaRelay` is Rule 1.
+- **`server.relay.status|signIn|signOut`** are orcad-only admin methods; capability is presence.
+  An older orcad (or the desktop) answers `method_not_found`, which the CLI names as "older than
+  this CLI" rather than "down".
+- **Web and mobile read `alternateEndpoints`**, which is Rule 1 on the reading side: a newer
+  client with an older host gets no field and keeps its single-endpoint behavior (pinned by
+  `web-runtime-connection-endpoint-failover.test.ts` and `rpc-client-endpoint-failover.test.ts`).
+  The phone persists alternates in its own host store; an older app build rewriting that record
+  drops the optional key, which only loses failover, never the pairing (the field is salvaged).
+- **The web resume probe** is an ordinary `status.get` with a shorter deadline, the same request
+  the idle heartbeat already sends, so every host answers it.
+
 ## Known debt: JSON-RPC errors drop Node's string code
 
 An error raised on an SSH host crosses the relay as JSON-RPC, and

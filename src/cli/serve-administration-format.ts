@@ -44,6 +44,11 @@ export function formatPairingOffer(offer: AdministeredPairingOffer, qr: string |
   }
   lines.push(`Scope: ${offer.scope}`)
   lines.push(`Endpoint: ${offer.endpoint}`)
+  if (offer.viaRelay) {
+    lines.push(
+      'Reach: Orca Relay — the phone falls back to the relay when it cannot dial the endpoint.'
+    )
+  }
   lines.push(`Device ID: ${offer.deviceId}`)
   if (offer.offerExpiresAt !== null) {
     lines.push(

@@ -182,7 +182,9 @@ Why each setting is what it is:
   [Resource governance](./orcad-operations.md#resource-governance)). `Nice=` needs `LimitNICE=`
   so the daemon can reset each new terminal to nice 0.
 - **`ORCAD_EXTRA_ARGS`** in `orcad.env` carries further orcad flags, split on whitespace — for
-  example more `--pairing-address` values or `--pairing-expires 1h`.
+  example more `--pairing-address` values, `--pairing-expires 1h`, or `--relay` to reach
+  phones through Orca Relay from a host with no open port (see
+  [Orca Relay](./orcad-operations.md#orca-relay---relay)).
 - **No `UMask=`, no `NoNewPrivileges=`.** The daemon and every PTY inherit them, which would
   make files created in terminals private and break `sudo` inside them. orcad makes its data
   root `0700` itself.

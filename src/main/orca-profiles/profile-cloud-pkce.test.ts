@@ -7,12 +7,6 @@ const { openExternalMock } = vi.hoisted(() => ({
   openExternalMock: vi.fn()
 }))
 
-vi.mock('electron', () => ({
-  shell: {
-    openExternal: openExternalMock
-  }
-}))
-
 import { beginOrcaCloudPkceFlow } from './profile-cloud-pkce'
 
 type HttpResponse = {
@@ -67,7 +61,7 @@ async function startedFlow(): Promise<{
   redirectUri: string
   state: string
 }> {
-  const flow = beginOrcaCloudPkceFlow(config, 'local-default')
+  const flow = beginOrcaCloudPkceFlow(config, 'local-default', openExternalMock)
   await vi.waitFor(() => expect(openExternalMock).toHaveBeenCalledTimes(1))
   const authUrl = new URL(String(openExternalMock.mock.calls[0]?.[0]))
   const nonce = authUrl.searchParams.get('nonce')
@@ -150,7 +144,7 @@ describe('Orca cloud PKCE flow', () => {
   })
 
   it('keeps the first loopback alive when a second sign-in starts', async () => {
-    const first = beginOrcaCloudPkceFlow(config, 'local-default')
+    const first = beginOrcaCloudPkceFlow(config, 'local-default', openExternalMock)
     await vi.waitFor(() => expect(openExternalMock).toHaveBeenCalledTimes(1))
     const firstUrl = new URL(String(openExternalMock.mock.calls[0]?.[0]))
     const firstRedirectUri = firstUrl.searchParams.get('redirect_uri')
@@ -159,7 +153,7 @@ describe('Orca cloud PKCE flow', () => {
       throw new Error('Expected the first PKCE flow to create redirect_uri and state')
     }
 
-    const second = beginOrcaCloudPkceFlow(config, 'local-default')
+    const second = beginOrcaCloudPkceFlow(config, 'local-default', openExternalMock)
     await vi.waitFor(() => expect(openExternalMock).toHaveBeenCalledTimes(2))
     const secondUrl = new URL(String(openExternalMock.mock.calls[1]?.[0]))
     const secondRedirectUri = secondUrl.searchParams.get('redirect_uri')

@@ -17,7 +17,14 @@ const COMMAND_SCOPED_FLAG_HELP: Record<string, Record<string, string>> = {
     rotate: '--rotate               Revoke the unused startup pairing offer and mint a new one',
     'data-root': SERVE_DATA_ROOT_HELP
   },
-  'serve pairing new': { 'data-root': SERVE_DATA_ROOT_HELP },
+  'serve pairing new': {
+    relay:
+      '--relay                With --mobile: add an Orca Relay invite (orcad --relay, signed in)',
+    'data-root': SERVE_DATA_ROOT_HELP
+  },
+  'serve relay status': { 'data-root': SERVE_DATA_ROOT_HELP },
+  'serve relay sign-in': { 'data-root': SERVE_DATA_ROOT_HELP },
+  'serve relay sign-out': { 'data-root': SERVE_DATA_ROOT_HELP },
   'serve devices list': { 'data-root': SERVE_DATA_ROOT_HELP },
   'serve devices revoke': { 'data-root': SERVE_DATA_ROOT_HELP },
   'serve devices rotate': { 'data-root': SERVE_DATA_ROOT_HELP },
