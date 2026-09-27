@@ -305,8 +305,12 @@ export async function updateHostNameAndEndpoint(
     if (index === -1) {
       throw new Error('Host not found')
     }
+    const { alternateEndpoints, ...current } = hosts[index]!
+    // Why: an address the user typed is authoritative; failover must not dial the paired alternates instead.
+    const editsEndpoint = updates.endpoint !== undefined && updates.endpoint !== current.endpoint
     let updated: StoredHostProfile = {
-      ...hosts[index]!,
+      ...current,
+      ...(alternateEndpoints && !editsEndpoint ? { alternateEndpoints } : {}),
       ...(updates.endpoint !== undefined ? { endpoint: updates.endpoint } : {})
     }
     if (updates.personalName !== undefined) {

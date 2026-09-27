@@ -4,12 +4,13 @@ import { createStableLogicalRpcClient } from './stable-logical-rpc-client'
 import type { ConnectionLogSink, HostProfile } from './types'
 import { directPathForEndpoint } from './mobile-direct-endpoint-probe'
 import { startMobileEndpointLifecycle } from './mobile-endpoint-lifecycle'
+import { directConnectOptions } from './host-direct-connect-options'
 
 export function openHostLogicalClient(host: HostProfile, onLog: ConnectionLogSink): RpcClient {
   // Why: the stable facade owns app-visible RPC/subscription state while the
   // direct socket remains a replaceable first physical generation.
   const logical = createStableLogicalRpcClient(
-    connect(host.endpoint, host.deviceToken, host.publicKeyB64, { onLog }),
+    connect(host.endpoint, host.deviceToken, host.publicKeyB64, directConnectOptions(host, onLog)),
     directPathForEndpoint(host.endpoint)
   )
   if (Platform.OS === 'web') {

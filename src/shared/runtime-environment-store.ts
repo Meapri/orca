@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { JsonStringifyByteLimitError } from './node-bounded-json-stringify'
 import { readNodeFileSyncWithinLimit } from './node-bounded-file-reader'
 import { parsePairingCode, type PairingOffer } from './pairing'
+import { nextEndpointAfterUnreachable } from './pairing-endpoint-failover'
 import { classifyRemotePairingHostname } from './remote-pairing-address'
 import { writeSecureJsonFileWithinLimit } from './bounded-secure-json-file'
 import { hardenExistingSecureFile } from './secure-file'
@@ -217,16 +218,14 @@ export function preferNextEnvironmentEndpointAfterUnreachable(
 ): boolean {
   const store = readEnvironmentStore(userDataPath)
   const environment = resolveEnvironmentFromStore(store, selector)
-  const index = environment.endpoints.findIndex(
-    (entry) => entry.id === environment.preferredEndpointId
+  const next = nextEndpointAfterUnreachable(
+    environment.endpoints,
+    environment.preferredEndpointId,
+    failedEndpoint
   )
-  if (
-    environment.endpoints.length < 2 ||
-    environment.endpoints[index]?.endpoint !== failedEndpoint
-  ) {
+  if (!next) {
     return false
   }
-  const next = environment.endpoints[(index + 1) % environment.endpoints.length]!
   writeEnvironmentStore(userDataPath, {
     version: 1,
     environments: store.environments.map((entry) =>

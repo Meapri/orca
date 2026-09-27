@@ -33,6 +33,10 @@ import { redactSocketEndpoint } from './socket-event-debug'
 import { assertCommittedInstall, relayHost } from './pairing-relay-host'
 import { recordHostDescriptorFromStatus } from './host-descriptor-recorder'
 import type { HostStatusReply } from './host-status-reply-schema'
+import {
+  listPairingDialEndpoints,
+  PairingEndpointRotation
+} from '../../../src/shared/pairing-endpoint-failover'
 
 export type PreProfilePairingAttempt = {
   readonly result: Promise<{ hostId: string }>
@@ -156,12 +160,27 @@ async function runPairing(
     assertActive(isDisposed)
   }
 
+  // Why: the direct candidate walks the offer's alternates itself; the one that answers is saved as preferred.
+  let answeredEndpoint: string | null = null
   const directClient = dependencies.connectDirect(
     offer.endpoint,
     offer.deviceToken,
     offer.publicKeyB64,
-    { ...connectOptions, onLog: attributePairingLogPath('direct', connectOptions?.onLog) }
+    {
+      ...connectOptions,
+      onLog: attributePairingLogPath('direct', connectOptions?.onLog),
+      ...(offer.alternateEndpoints?.length
+        ? {
+            alternateEndpoints: offer.alternateEndpoints,
+            onEndpointConnected: (endpoint: string) => {
+              answeredEndpoint = endpoint
+            }
+          }
+        : {})
+    }
   )
+  const withOfferEndpoints = (host: HostProfile): HostProfile =>
+    withPairedEndpoints(host, offer, answeredEndpoint)
   clients.add(directClient)
   const candidates: PairingCandidate[] = [{ path: 'direct', client: directClient }]
   const log = createPairingRelayLogger(connectOptions?.onLog)
@@ -206,7 +225,7 @@ async function runPairing(
   assertActive(isDisposed)
 
   if (!journal) {
-    await dependencies.savePairedHost(baseHost(offer, hostId, hostName, now))
+    await dependencies.savePairedHost(withOfferEndpoints(baseHost(offer, hostId, hostName, now)))
     recordWinnerDescriptor(dependencies, hostId, winner.status)
     return { hostId }
   }
@@ -231,7 +250,7 @@ async function runPairing(
     // Why: this commits a LAN-only host instead of failing, so the refusal code is the only
     // record of why the phone never got a relay endpoint.
     log('info', 'Relay: desktop will not serve relay pairing', provision.error.code)
-    await dependencies.savePairedHost(baseHost(offer, hostId, hostName, now))
+    await dependencies.savePairedHost(withOfferEndpoints(baseHost(offer, hostId, hostName, now)))
     await dependencies.clearJournal(journal.metadata.journalId)
     recordWinnerDescriptor(dependencies, hostId, winner.status)
     return { hostId }
@@ -247,7 +266,7 @@ async function runPairing(
   }
   assertActive(isDisposed)
   await dependencies.writeCredentialBundle(promotePairingJournalCredential({ journal, installed }))
-  await dependencies.savePairedHost(relayHost(journal, endpoints.relay))
+  await dependencies.savePairedHost(withOfferEndpoints(relayHost(journal, endpoints.relay)))
   await dependencies.clearJournal(journal.metadata.journalId)
   recordWinnerDescriptor(dependencies, hostId, winner.status)
   return { hostId }
@@ -287,6 +306,25 @@ function baseHost(
     deviceToken: offer.deviceToken,
     publicKeyB64: offer.publicKeyB64,
     lastConnected
+  }
+}
+
+/** Stores the offer's other addresses as alternates, preferring whichever answered during pairing. */
+function withPairedEndpoints(
+  host: HostProfile,
+  offer: PairingOffer,
+  answeredEndpoint: string | null
+): HostProfile {
+  const endpoints = listPairingDialEndpoints(offer)
+  if (endpoints.length < 2) {
+    return host
+  }
+  const preferred =
+    answeredEndpoint && endpoints.includes(answeredEndpoint) ? answeredEndpoint : offer.endpoint
+  return {
+    ...host,
+    endpoint: preferred,
+    alternateEndpoints: new PairingEndpointRotation(endpoints).alternatesAfter(preferred)
   }
 }
 

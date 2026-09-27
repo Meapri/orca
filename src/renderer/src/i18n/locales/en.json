@@ -393,7 +393,8 @@
         },
         "runtime": {
           "environment": {
-            "07f788de83": "WebSocket"
+            "07f788de83": "WebSocket",
+            "alternateWebSocket": "WebSocket (alternate {{value0}})"
           }
         }
       }

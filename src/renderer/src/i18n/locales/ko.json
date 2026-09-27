@@ -277,7 +277,8 @@
         },
         "runtime": {
           "environment": {
-            "07f788de83": "웹소켓"
+            "07f788de83": "웹소켓",
+            "alternateWebSocket": "웹소켓 (대체 {{value0}})"
           }
         }
       }

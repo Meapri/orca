@@ -4,7 +4,8 @@ import { redactSocketEndpoint } from './socket-event-debug'
 import type { ConnectionLogEmitter, ConnectionState, RpcResponse } from './types'
 
 type SocketFactoryOptions = {
-  endpoint: string
+  /** Read at each dial so a failover to another paired address takes effect on the next attempt. */
+  resolveEndpoint: () => string
   deviceToken: string
   serverPublicKeyB64: string
   getCurrentSocket: () => WebSocket | null
@@ -36,11 +37,12 @@ export class RpcClientSocketFactory {
 
   open(): RpcClientSocketSession {
     const now = Date.now()
+    const endpoint = this.options.resolveEndpoint()
     const lastConnectedAt = this.options.getLastConnectedAt()
     this.constructionCount++
     console.log('[net] openConnection', {
       attempt: this.options.getReconnectAttempt(),
-      endpoint: redactSocketEndpoint(this.options.endpoint),
+      endpoint: redactSocketEndpoint(endpoint),
       wsCount: this.constructionCount,
       msSinceLastConnected: lastConnectedAt !== null ? now - lastConnectedAt : null,
       msSinceLastClose: this.lastSocketClosedAt !== null ? now - this.lastSocketClosedAt : null,
@@ -52,10 +54,10 @@ export class RpcClientSocketFactory {
       this.options.getReconnectAttempt() > 0
         ? `Reconnecting (attempt ${this.options.getReconnectAttempt() + 1})`
         : 'Opening WebSocket',
-      redactSocketEndpoint(this.options.endpoint)
+      redactSocketEndpoint(endpoint)
     )
     return new RpcClientSocketSession({
-      endpoint: this.options.endpoint,
+      endpoint,
       deviceToken: this.options.deviceToken,
       serverPublicKey: this.serverPublicKey,
       getCurrentSocket: this.options.getCurrentSocket,

@@ -10,6 +10,7 @@ import { WebRuntimeClient } from '../web-runtime-client'
 import {
   clearStoredWebRuntimeEnvironment,
   getPreferredWebPairingOffer,
+  preferConnectedWebEndpoint,
   readStoredWebRuntimeEnvironment,
   updateStoredEnvironmentRuntimeId
 } from '../web-runtime-environment'
@@ -92,6 +93,7 @@ export function getClientForEnvironment(
   ) {
     webRuntimeState.activeClient?.close()
     webRuntimeState.activeClient = new WebRuntimeClient(getPreferredWebPairingOffer(environment), {
+      onEndpointConnected: (endpoint) => recordConnectedEndpoint(environment.id, endpoint),
       status: {
         environmentId: environment.id,
         pairingRevision: environment.pairingRevision ?? environment.createdAt,
@@ -106,6 +108,19 @@ export function getClientForEnvironment(
     webRuntimeState.activeClientEnvironmentId = environment.id
   }
   return webRuntimeState.activeClient
+}
+
+// Why persisted: the next page load should dial the last address that answered, not the dead primary.
+function recordConnectedEndpoint(environmentId: string, endpoint: string): void {
+  const active = webRuntimeState.activeEnvironment
+  if (active?.id !== environmentId) {
+    return
+  }
+  try {
+    webRuntimeState.activeEnvironment = preferConnectedWebEndpoint(active, endpoint)
+  } catch {
+    // Why: preference is an optimisation; blocked storage must not break a live connection.
+  }
 }
 
 export function closeActiveRuntimeClients(): void {

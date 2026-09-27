@@ -12,6 +12,7 @@ import {
 import { setRelayRouting } from './host-store'
 import { upgradeDirectMobileRelay } from './mobile-relay-direct-upgrade'
 import { directPathForEndpoint } from './mobile-direct-endpoint-probe'
+import { directConnectOptions } from './host-direct-connect-options'
 import { MobileRelayDirectUpgradeController } from './mobile-relay-direct-upgrade-controller'
 import { defaultCancelTimer, defaultScheduleTimer } from './timer-scheduler'
 import type { StableLogicalRpcClient } from './stable-logical-rpc-client'
@@ -89,7 +90,8 @@ function createSupervisor(
   onLog: ConnectionLogSink
 ): MobileEndpointSupervisor {
   return new MobileEndpointSupervisor(logical, host.id, relay, {
-    openDirect: () => connect(host.endpoint, host.deviceToken, host.publicKeyB64, { onLog }),
+    openDirect: () =>
+      connect(host.endpoint, host.deviceToken, host.publicKeyB64, directConnectOptions(host, onLog)),
     directPath: directPathForEndpoint(host.endpoint),
     openRelay: (relay, credential, confirmReqId, onHostCloseReason) =>
       connectMobileRelayRpcSession({

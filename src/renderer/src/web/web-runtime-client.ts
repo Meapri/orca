@@ -35,6 +35,7 @@ export class WebRuntimeClient {
     private readonly pairing: WebPairingOffer,
     options: {
       reconnect?: boolean
+      onEndpointConnected?: (endpoint: string) => void
       status?: {
         environmentId: string
         pairingRevision: number
@@ -51,6 +52,7 @@ export class WebRuntimeClient {
       },
       {
         reconnect: options.reconnect,
+        onEndpointConnected: options.onEndpointConnected,
         onStateChanged: (state) => {
           if (state === 'auth-failed') {
             this.statusOwner?.authenticationRejected()
@@ -114,7 +116,8 @@ export class WebRuntimeClient {
         teardownRetries: this.fileWatchTeardownRetries
       })
     }
-    const client = new WebRuntimeClient(this.pairing)
+    // Why current, not the construction pairing: after a failover the child must not redial the dead primary first.
+    const client = new WebRuntimeClient(this.transport.currentPairing())
     this.childClients.add(client)
     const closeChild = (notifySubscriptions = false): void => {
       this.childClients.delete(client)
