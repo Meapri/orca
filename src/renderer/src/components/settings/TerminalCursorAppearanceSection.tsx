@@ -10,6 +10,7 @@ import { SearchableSetting } from './SearchableSetting'
 import { clampNumber } from '@/lib/terminal-theme'
 import { translate } from '@/i18n/i18n'
 import { resolveTerminalCursorAnimationEnabled } from '../../../../shared/terminal-cursor-animation-settings'
+import { resolveTerminalAdoptAppCaretEnabled } from '../../../../shared/terminal-app-caret-settings'
 
 type TerminalCursorAppearanceSectionProps = {
   settings: GlobalSettings
@@ -129,6 +130,37 @@ export function TerminalCursorAppearanceSection({
               updateSettings({
                 terminalCursorAnimation: !resolveTerminalCursorAnimationEnabled(
                   settings.terminalCursorAnimation
+                )
+              })
+            }
+          />
+        </SearchableSetting>
+
+        <SearchableSetting
+          title={translate(
+            'auto.components.settings.TerminalAppearanceSection.b2ff21a421',
+            'Terminal Cursor for App Carets'
+          )}
+          description={translate(
+            'auto.components.settings.TerminalAppearanceSection.c9f01528ff',
+            'When a terminal app hides the cursor and paints its own caret, draws the terminal cursor there with your shape, blink and animation.'
+          )}
+          keywords={['terminal', 'cursor', 'caret', 'tui', 'inverse', 'smooth']}
+        >
+          <SettingsSwitchRow
+            label={translate(
+              'auto.components.settings.TerminalAppearanceSection.b2ff21a421',
+              'Terminal Cursor for App Carets'
+            )}
+            description={translate(
+              'auto.components.settings.TerminalAppearanceSection.c9f01528ff',
+              'When a terminal app hides the cursor and paints its own caret, draws the terminal cursor there with your shape, blink and animation.'
+            )}
+            checked={resolveTerminalAdoptAppCaretEnabled(settings.terminalAdoptAppCaret)}
+            onChange={() =>
+              updateSettings({
+                terminalAdoptAppCaret: !resolveTerminalAdoptAppCaretEnabled(
+                  settings.terminalAdoptAppCaret
                 )
               })
             }

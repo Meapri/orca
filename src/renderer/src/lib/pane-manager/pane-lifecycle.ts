@@ -22,6 +22,7 @@ import { configureLazyArabicShapingJoiner } from './terminal-arabic-shaping-join
 import { TerminalLigaturesAddon } from './terminal-ligatures-addon'
 import { attachInlineImages, detachInlineImages } from './pane-inline-images'
 import { installTerminalImeCandidateAnchor } from './terminal-ime-candidate-anchor'
+import { installTerminalAppCaretAdoption } from './terminal-app-caret-adoption'
 
 // ---------------------------------------------------------------------------
 // Pane creation, terminal open/close, addon management
@@ -108,6 +109,7 @@ export function openTerminal(
 
   // Store so disposePane() can remove its listeners and avoid a memory leak.
   pane.compositionHandler = installTerminalImeCandidateAnchor(terminal)
+  pane.appCaretAdoptionCleanup = installTerminalAppCaretAdoption(terminal)
 
   pane.focusClassSyncCleanup = attachDomRendererFocusClassSync(terminal.element)
 
@@ -226,6 +228,8 @@ export function disposePane(
   pane.arabicShapingJoinerCleanup = null
   pane.compositionHandler?.()
   pane.compositionHandler = null
+  pane.appCaretAdoptionCleanup?.()
+  pane.appCaretAdoptionCleanup = null
   try {
     clearPendingSplitScrollRestore(pane)
   } catch {

@@ -4,8 +4,12 @@ export type TerminalExperienceSettings = {
   terminalFontFallbackFamily?: string
   /** Draw the IME preedit as terminal cells, not xterm's DOM overlay (the fallback); undefined means on. */
   terminalImePreeditInGrid?: boolean
+  /** Enlarge CJK fallback glyphs toward their two cells and center wide glyphs; undefined means on. */
+  terminalFitWideGlyphs?: boolean
   /** GPU cursor glide and blink fade (WebGL renderer only). Undefined means on. */
   terminalCursorAnimation?: boolean
+  /** Draw the terminal cursor at the lone inverse cell a TUI paints as its caret while hiding the cursor. Undefined means on. */
+  terminalAdoptAppCaret?: boolean
   /** Animates wheel-notch, Shift+PageUp/PageDown and jump-to-latest scrolling in the scrollback; reduced-motion always wins. */
   terminalSmoothScroll: boolean
   /** Plain click on the input line moves the cursor via arrow keys; 'shell-prompt' needs OSC 133 prompt marks. Optional for older profiles. */

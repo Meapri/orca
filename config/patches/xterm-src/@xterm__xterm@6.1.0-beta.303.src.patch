@@ -1,27 +1,112 @@
+diff --git a/src/browser/AdoptedCaret.ts b/src/browser/AdoptedCaret.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..e81b1d0fdda4ca270264a569e391b53554fdafcb
+--- /dev/null
++++ b/src/browser/AdoptedCaret.ts
+@@ -0,0 +1,70 @@
++/**
++ * Copyright (c) 2026 The xterm.js authors. All rights reserved.
++ * @license MIT
++ */
++
++import { IAdoptedCaret } from './Types';
++import { IBufferLine } from '../common/buffer/Types';
++import { BufferLine } from '../common/buffer/BufferLine';
++import { CellData } from '../common/buffer/CellData';
++import { FgFlags } from '../common/buffer/Constants';
++import { IBufferService, ICoreService } from '../common/services/Services';
++
++/** Where the embedder found the app's caret, in viewport-independent screen coordinates. */
++export type AdoptedCaretSource = () => { x: number, y: number } | undefined;
++
++/**
++ * Orca: a caret an app draws itself (an inverse cell) while it hides the real cursor, adopted so
++ * the renderers draw the terminal cursor there instead. Only what is drawn changes.
++ */
++export class AdoptedCaret implements IAdoptedCaret {
++  public row = 0;
++  public x = 0;
++  private _source: AdoptedCaretSource | undefined;
++  private readonly _line = new BufferLine(0);
++  private readonly _work = new CellData();
++
++  constructor(
++    private readonly _bufferService: IBufferService,
++    private readonly _coreService: ICoreService
++  ) {}
++
++  public setSource(source: AdoptedCaretSource | undefined): void {
++    this._source = source;
++  }
++
++  /** The adopted caret, or `undefined` while the real cursor is shown or none is adopted. */
++  public resolve(): IAdoptedCaret | undefined {
++    // Asked first so the source sees every pass, including ones with the cursor shown.
++    const at = this._source?.();
++    if (!at || !this._coreService.isCursorHidden) {
++      return undefined;
++    }
++    if (at.x < 0 || at.x >= this._bufferService.cols || at.y < 0 || at.y >= this._bufferService.rows) {
++      return undefined;
++    }
++    this.x = at.x;
++    this.row = this._bufferService.buffer.ybase + at.y;
++    return this;
++  }
++
++  public composeLine(source: IBufferLine): IBufferLine {
++    if (!(source instanceof BufferLine) || this.x >= source.length) {
++      return source;
++    }
++    source.loadCell(this.x, this._work);
++    if (!this._work.isInverse()) {
++      return source;
++    }
++    const line = this._line;
++    line.copyFrom(source);
++    // A wide cell's trailing half carries the inverse too.
++    const end = Math.min(this.x + Math.max(this._work.getWidth(), 1), source.length);
++    for (let x = this.x; x < end; x++) {
++      line.loadCell(x, this._work);
++      this._work.fg &= ~FgFlags.INVERSE;
++      line.setCell(x, this._work);
++    }
++    return line;
++  }
++}
 diff --git a/src/browser/CoreBrowserTerminal.ts b/src/browser/CoreBrowserTerminal.ts
-index 67893b7966eb095db4459b8837de9766921f36c5..507e78f5fd3ea06e114f73dd4df8970b3b562710 100644
+index 67893b7966eb095db4459b8837de9766921f36c5..c520337a9d869af93cbedfdd3d44d4de72d3ab9f 100644
 --- a/src/browser/CoreBrowserTerminal.ts
 +++ b/src/browser/CoreBrowserTerminal.ts
-@@ -25,7 +25,7 @@ import { IDecoration, IDecorationOptions, IDisposable, ILinkProvider, IMarker, I
+@@ -25,7 +25,8 @@ import { IDecoration, IDecorationOptions, IDisposable, ILinkProvider, IMarker, I
  import { copyHandler, handlePasteEvent, moveTextAreaUnderMouseCursor, paste, rightClickHandler } from './Clipboard';
  import * as Strings from './LocalizableStrings';
  import { OscLinkProvider } from './OscLinkProvider';
 -import { CharacterJoinerHandler, CustomKeyEventHandler, CustomWheelEventHandler, IBrowser, IBufferRange, ICompositionHelper, ILinkifier2, ITerminal } from './Types';
-+import { CharacterJoinerHandler, CustomKeyEventHandler, CustomWheelEventHandler, IBrowser, IBufferRange, ICompositionHelper, IImePreedit, ILinkifier2, ITerminal } from './Types';
++import { CharacterJoinerHandler, CustomKeyEventHandler, CustomWheelEventHandler, IAdoptedCaret, IBrowser, IBufferRange, ICompositionHelper, IImePreedit, ILinkifier2, ITerminal } from './Types';
++import { AdoptedCaret, AdoptedCaretSource } from './AdoptedCaret';
  import { Viewport } from './Viewport';
  import { BufferDecorationRenderer } from './decorations/BufferDecorationRenderer';
  import { OverviewRulerRenderer } from './decorations/OverviewRulerRenderer';
-@@ -72,6 +72,9 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
+@@ -72,6 +73,17 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
  
    private readonly _linkifier: MutableDisposable<ILinkifier2> = this._register(new MutableDisposable());
    public get linkifier(): ILinkifier2 | undefined { return this._linkifier.value; }
 +  public get imePreedit(): IImePreedit | undefined {
 +    return this._compositionHelper instanceof CompositionHelper ? this._compositionHelper.imePreedit : undefined;
 +  }
++  private _adoptedCaret: AdoptedCaret | undefined;
++  public get adoptedCaret(): IAdoptedCaret | undefined { return this._adoptedCaret?.resolve(); }
++  /** Orca: lets the embedder name the cell an app draws its caret in; `undefined` stops adopting. */
++  public setAdoptedCaretSource(source: AdoptedCaretSource | undefined): void {
++    this._adoptedCaret ??= new AdoptedCaret(this._bufferService, this.coreService);
++    this._adoptedCaret.setSource(source);
++    this.refresh(0, this.rows - 1);
++  }
    private _overviewRulerRenderer: OverviewRulerRenderer | undefined;
    private _viewport: Viewport | undefined;
  
-@@ -325,6 +328,9 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
+@@ -325,6 +337,9 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
    private _handleTextAreaBlur(): void {
      // Text can safely be removed on blur. Doing it earlier could interfere with
      // screen readers reading it out.
@@ -31,7 +116,7 @@ index 67893b7966eb095db4459b8837de9766921f36c5..507e78f5fd3ea06e114f73dd4df8970b
      this.textarea!.value = '';
      this.refresh(this.buffer.y, this.buffer.y);
      if (this.coreService.decPrivateModes.sendFocus) {
-@@ -425,7 +431,18 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
+@@ -425,7 +440,18 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
        this._compositionHelper!.updateCompositionElements();
      }));
      this._register(addDisposableListener(this.textarea!, 'compositionupdate', (e: CompositionEvent) => this._compositionHelper!.compositionupdate(e)));
@@ -51,7 +136,7 @@ index 67893b7966eb095db4459b8837de9766921f36c5..507e78f5fd3ea06e114f73dd4df8970b
      this._register(addDisposableListener(this.textarea!, 'input', (ev: InputEvent) => this._inputEvent(ev), true));
      this._register(this.onRender(() => this._compositionHelper!.updateCompositionElements()));
    }
-@@ -552,6 +569,16 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
+@@ -552,6 +578,16 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
      this._compositionView = this._document.createElement('div');
      this._compositionView.classList.add('composition-view');
      this._compositionHelper = this._instantiationService.createInstance(CompositionHelper, this.textarea, this._compositionView);
@@ -68,7 +153,7 @@ index 67893b7966eb095db4459b8837de9766921f36c5..507e78f5fd3ea06e114f73dd4df8970b
      this._helperContainer.appendChild(this._compositionView);
  
      this._mouseCoordsService = this._instantiationService.createInstance(MouseCoordsService);
-@@ -1009,7 +1036,9 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
+@@ -1009,7 +1045,9 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
  
      this._onKey.fire({ key, domEvent: ev });
      this._showCursor();
@@ -79,7 +164,7 @@ index 67893b7966eb095db4459b8837de9766921f36c5..507e78f5fd3ea06e114f73dd4df8970b
  
      this._keyPressHandled = true;
  
-@@ -1027,6 +1056,15 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
+@@ -1027,6 +1065,15 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
     * @param ev The input event to be handled.
     */
    protected _inputEvent(ev: InputEvent): boolean {
@@ -96,7 +181,7 @@ index 67893b7966eb095db4459b8837de9766921f36c5..507e78f5fd3ea06e114f73dd4df8970b
      // support reading out character input which can doubling up input characters
      // Based on these event traces: https://github.com/xtermjs/xterm.js/issues/3679
 diff --git a/src/browser/Types.ts b/src/browser/Types.ts
-index 497afcf535f3eaca00889525a77e15eb633ccd96..bbe95178f084cfb0d7c1ed5f4a9dc118dab6b646 100644
+index 497afcf535f3eaca00889525a77e15eb633ccd96..7cee04996e9bff6603aec38beb6f93aa8bf78e95 100644
 --- a/src/browser/Types.ts
 +++ b/src/browser/Types.ts
 @@ -4,7 +4,7 @@
@@ -108,13 +193,27 @@ index 497afcf535f3eaca00889525a77e15eb633ccd96..bbe95178f084cfb0d7c1ed5f4a9dc118
  import { ICoreTerminal } from '../common/CoreTerminal';
  import { IDisposable, IRenderDimensions as IRenderDimensionsApi, Terminal as ITerminalApi } from '@xterm/xterm';
  import { channels, css } from '../common/Color';
-@@ -30,6 +30,22 @@ export interface ITerminal extends InternalPassthroughApis, ICoreTerminal {
+@@ -30,6 +30,36 @@ export interface ITerminal extends InternalPassthroughApis, ICoreTerminal {
    onA11yChar: IEvent<string>;
    onA11yTab: IEvent<number>;
    onWillOpen: IEvent<HTMLElement>;
 +
 +  /** The IME preedit the renderer draws into the cell grid, when in-grid preedit is composing. */
 +  readonly imePreedit?: IImePreedit;
++  /** The app-drawn caret the renderer draws the cursor at while the real cursor is hidden. */
++  readonly adoptedCaret?: IAdoptedCaret;
++}
++
++/**
++ * A caret the app draws as an inverse cell after hiding the cursor, adopted by the embedder. Like
++ * `IImePreedit` it exists only in what the renderer draws.
++ */
++export interface IAdoptedCaret {
++  /** The absolute buffer row of the caret cell. */
++  readonly row: number;
++  readonly x: number;
++  /** `line` with the app's inverse cleared at the caret, so only the cursor marks it. */
++  composeLine(line: IBufferLine): IBufferLine;
 +}
 +
 +/**
@@ -131,7 +230,7 @@ index 497afcf535f3eaca00889525a77e15eb633ccd96..bbe95178f084cfb0d7c1ed5f4a9dc118
  }
  
  export type CustomKeyEventHandler = (event: KeyboardEvent) => boolean;
-@@ -41,9 +57,10 @@ export interface ICompositionHelper {
+@@ -41,9 +71,10 @@ export interface ICompositionHelper {
    readonly isComposing: boolean;
    compositionstart(): void;
    compositionupdate(ev: CompositionEvent): void;
@@ -1874,22 +1973,62 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..d4568f948342aa664704995f8a706483
 +  }
 +}
 diff --git a/src/browser/renderer/dom/DomRenderer.ts b/src/browser/renderer/dom/DomRenderer.ts
-index 657217f7104c97ce54b98e88b381b325b061604c..6ea7804bcce45c3ec803c59cd1f079e4e48dcdb6 100644
+index 657217f7104c97ce54b98e88b381b325b061604c..7dd9f672ae767ce1229416d528f9a5c38de9613f 100644
 --- a/src/browser/renderer/dom/DomRenderer.ts
 +++ b/src/browser/renderer/dom/DomRenderer.ts
-@@ -526,8 +526,9 @@ export class DomRenderer extends Disposable implements IRenderer {
+@@ -11,7 +11,8 @@ import { createSelectionRenderModel } from '../shared/SelectionRenderModel';
+ import { TextBlinkStateManager } from '../shared/TextBlinkStateManager';
+ import { IRenderDimensions, IRenderer, IRequestRedrawEvent, ISelectionRenderModel } from '../shared/Types';
+ import { ICharSizeService, ICoreBrowserService, IThemeService } from '../../services/Services';
+-import { ILinkifier2, ILinkifierEvent, ITerminal, ReadonlyColorSet } from '../../Types';
++import { IAdoptedCaret, IImePreedit, ILinkifier2, ILinkifierEvent, ITerminal, ReadonlyColorSet } from '../../Types';
++import { IBufferLine } from '../../../common/buffer/Types';
+ import { color } from '../../../common/Color';
+ import { Disposable, toDisposable } from '../../../common/Lifecycle';
+ import { IBufferService, ICoreService, IInstantiationService, IOptionsService } from '../../../common/services/Services';
+@@ -54,6 +55,8 @@ export class DomRenderer extends Disposable implements IRenderer {
+   private _textBlinkStateManager: TextBlinkStateManager;
+   private _rowHasBlinkingCells: boolean[] = [];
+   private _rowHasBlinkingCellsCount: number = 0;
++  /** The absolute row the last pass drew an adopted caret on, so a moved caret repaints it. */
++  private _adoptedCaretRow: number | undefined;
+ 
+   public dimensions: IRenderDimensions;
+ 
+@@ -214,6 +217,10 @@ export class DomRenderer extends Disposable implements IRenderer {
+       `}` +
+       `${this._terminalSelector} span.${RowCss.BLINK_HIDDEN_CLASS} {` +
+       ` visibility: hidden;` +
++      `}` +
++      // Orca: text rather than padding leads a fitted wide glyph, so decorations span its cells.
++      `${this._terminalSelector} span.${RowCss.WIDE_GLYPH_CLASS}::before {` +
++      ` content: '\\a0';` +
+       `}`;
+     // Blink animation
+     const blinkAnimationUnderlineId = `blink_underline_${this._terminalClass}`;
+@@ -526,8 +533,19 @@ export class DomRenderer extends Disposable implements IRenderer {
  
    public renderRows(start: number, end: number): void {
      const buffer = this._bufferService.buffer;
 -    const cursorAbsoluteY = buffer.ybase + buffer.y;
 -    const cursorX = Math.min(buffer.x, this._bufferService.cols - 1);
 +    const preedit = this._terminal.imePreedit;
-+    const cursorAbsoluteY = preedit?.row ?? buffer.ybase + buffer.y;
-+    const cursorX = preedit?.cursorX ?? Math.min(buffer.x, this._bufferService.cols - 1);
++    const adopted = this._terminal.adoptedCaret;
++    const cursorAbsoluteY = preedit?.row ?? adopted?.row ?? buffer.ybase + buffer.y;
++    const cursorX = preedit?.cursorX ?? adopted?.x ?? Math.min(buffer.x, this._bufferService.cols - 1);
++    // Both the row the adopted caret left and the one it is on lose or gain the drawn cursor.
++    for (const caretRow of [this._adoptedCaretRow, adopted?.row]) {
++      const y = caretRow === undefined ? -1 : caretRow - buffer.ydisp;
++      if (y >= 0 && y < this._bufferService.rows) {
++        start = Math.min(start, y);
++        end = Math.max(end, y);
++      }
++    }
++    this._adoptedCaretRow = adopted?.row;
      const cursorBlink = this._coreService.decPrivateModes.cursorBlink ?? this._optionsService.rawOptions.cursorBlink;
      const cursorStyle = this._coreService.decPrivateModes.cursorStyle ?? this._optionsService.rawOptions.cursorStyle;
      const cursorInactiveStyle = this._optionsService.rawOptions.cursorInactiveStyle;
-@@ -545,9 +546,10 @@ export class DomRenderer extends Disposable implements IRenderer {
+@@ -545,9 +563,10 @@ export class DomRenderer extends Disposable implements IRenderer {
          this._setRowBlinkState(y, false);
          continue;
        }
@@ -1897,33 +2036,48 @@ index 657217f7104c97ce54b98e88b381b325b061604c..6ea7804bcce45c3ec803c59cd1f079e4
        rowElement.replaceChildren(
          ...this._rowFactory.createRow(
 -          lineData,
-+          isPreeditRow ? preedit.composeLine(lineData) : lineData,
++          this._composeDrawnLine(lineData, row, preedit, adopted),
            row,
            row === cursorAbsoluteY,
            cursorStyle,
-@@ -559,7 +561,8 @@ export class DomRenderer extends Disposable implements IRenderer {
+@@ -559,7 +578,9 @@ export class DomRenderer extends Disposable implements IRenderer {
            this._widthCache,
            -1,
            -1,
 -          rowInfo
 +          rowInfo,
-+          isPreeditRow
++          isPreeditRow,
++          adopted !== undefined
          )
        );
        this._setRowBlinkState(y, rowInfo.hasBlinkingCells);
-@@ -604,8 +607,9 @@ export class DomRenderer extends Disposable implements IRenderer {
+@@ -567,6 +588,12 @@ export class DomRenderer extends Disposable implements IRenderer {
+     this._updateTextBlinkState();
+   }
+ 
++  /** The row as drawn: the adopted caret's inverse cleared, then any IME preedit composed in. */
++  private _composeDrawnLine(line: IBufferLine, row: number, preedit: IImePreedit | undefined, adopted: IAdoptedCaret | undefined): IBufferLine {
++    const drawn = adopted?.row === row ? adopted.composeLine(line) : line;
++    return preedit?.row === row ? preedit.composeLine(drawn) : drawn;
++  }
++
+   private get _terminalSelector(): string {
+     return `.${Constants.TERMINAL_CLASS_PREFIX}${this._terminalClass}`;
+   }
+@@ -604,8 +631,10 @@ export class DomRenderer extends Disposable implements IRenderer {
  
      cols = Math.min(cols, this._bufferService.cols);
      const buffer = this._bufferService.buffer;
 -    const cursorAbsoluteY = buffer.ybase + buffer.y;
 -    const cursorX = Math.min(buffer.x, cols - 1);
 +    const preedit = this._terminal.imePreedit;
-+    const cursorAbsoluteY = preedit?.row ?? buffer.ybase + buffer.y;
-+    const cursorX = preedit?.cursorX ?? Math.min(buffer.x, cols - 1);
++    const adopted = this._terminal.adoptedCaret;
++    const cursorAbsoluteY = preedit?.row ?? adopted?.row ?? buffer.ybase + buffer.y;
++    const cursorX = preedit?.cursorX ?? adopted?.x ?? Math.min(buffer.x, cols - 1);
      const cursorBlink = this._optionsService.rawOptions.cursorBlink;
      const cursorStyle = this._optionsService.rawOptions.cursorStyle;
      const cursorInactiveStyle = this._optionsService.rawOptions.cursorInactiveStyle;
-@@ -624,9 +628,10 @@ export class DomRenderer extends Disposable implements IRenderer {
+@@ -624,9 +653,10 @@ export class DomRenderer extends Disposable implements IRenderer {
          this._setRowBlinkState(i, false);
          continue;
        }
@@ -1931,31 +2085,43 @@ index 657217f7104c97ce54b98e88b381b325b061604c..6ea7804bcce45c3ec803c59cd1f079e4
        rowElement.replaceChildren(
          ...this._rowFactory.createRow(
 -          bufferline,
-+          isPreeditRow ? preedit.composeLine(bufferline) : bufferline,
++          this._composeDrawnLine(bufferline, row, preedit, adopted),
            row,
            row === cursorAbsoluteY,
            cursorStyle,
-@@ -638,7 +643,8 @@ export class DomRenderer extends Disposable implements IRenderer {
+@@ -638,7 +668,9 @@ export class DomRenderer extends Disposable implements IRenderer {
            this._widthCache,
            enabled ? (i === y ? x : 0) : -1,
            enabled ? ((i === y2 ? x2 : cols) - 1) : -1,
 -          rowInfo
 +          rowInfo,
-+          isPreeditRow
++          isPreeditRow,
++          adopted !== undefined
          )
        );
        this._setRowBlinkState(i, rowInfo.hasBlinkingCells);
 diff --git a/src/browser/renderer/dom/DomRendererRowFactory.ts b/src/browser/renderer/dom/DomRendererRowFactory.ts
-index 6ae089a4387de14488f39f5dab7024cffdcd9d10..f9e7feea570f127977bad9cc54b64a132e8e20ce 100644
+index 6ae089a4387de14488f39f5dab7024cffdcd9d10..0085d0e6b75b1cb4599c15cb48b9cfb278cc00fa 100644
 --- a/src/browser/renderer/dom/DomRendererRowFactory.ts
 +++ b/src/browser/renderer/dom/DomRendererRowFactory.ts
-@@ -73,14 +73,16 @@ export class DomRendererRowFactory {
+@@ -31,7 +31,8 @@ export const enum RowCss {
+   CURSOR_STYLE_BLOCK_CLASS = 'xterm-cursor-block',
+   CURSOR_STYLE_OUTLINE_CLASS = 'xterm-cursor-outline',
+   CURSOR_STYLE_BAR_CLASS = 'xterm-cursor-bar',
+-  CURSOR_STYLE_UNDERLINE_CLASS = 'xterm-cursor-underline'
++  CURSOR_STYLE_UNDERLINE_CLASS = 'xterm-cursor-underline',
++  WIDE_GLYPH_CLASS = 'xterm-wide-glyph'
+ }
+ 
+ 
+@@ -73,14 +74,17 @@ export class DomRendererRowFactory {
      widthCache: WidthCache,
      linkStart: number,
      linkEnd: number,
 -    rowInfo?: { hasBlinkingCells: boolean }
 +    rowInfo?: { hasBlinkingCells: boolean },
-+    ignoreJoins: boolean = false
++    ignoreJoins: boolean = false,
++    drawsHiddenCursor: boolean = false
    ): HTMLSpanElement[] {
  
      const elements: HTMLSpanElement[] = [];
@@ -1968,11 +2134,164 @@ index 6ae089a4387de14488f39f5dab7024cffdcd9d10..f9e7feea570f127977bad9cc54b64a13
      const colors = this._themeService.colors;
  
      let lineLength = lineData.getNoBgTrimmedLength();
+@@ -181,6 +185,10 @@ export class DomRendererRowFactory {
+ 
+       // lookup char render width and calc spacing
+       spacing = width * cellWidth - widthCache.get(chars, cell.isBold(), cell.isItalic());
++      // Orca: enlarged and centered wide glyphs carry their own spacing, so they never merge.
++      const wideGlyph = width > 1 && !isJoined && !cell.isInvisible() && this._optionsService.rawOptions.fitWideGlyphs
++        ? widthCache.getWideGlyphFit(chars, cell.isBold(), cell.isItalic(), width * cellWidth)
++        : undefined;
+ 
+       if (!charElement) {
+         charElement = this._document.createElement('span');
+@@ -212,6 +220,7 @@ export class DomRendererRowFactory {
+           && !isJoined
+           && !isDecorated
+           && isValidJoinRange
++          && !wideGlyph
+         ) {
+           // no span alterations, thus only account chars skipping all code below
+           if (cell.isInvisible()) {
+@@ -252,7 +261,8 @@ export class DomRendererRowFactory {
+         }
+       }
+ 
+-      if (!this._coreService.isCursorHidden && isCursorCell && this._coreService.isCursorInitialized) {
++      // An adopted app caret is drawn with the cursor hidden.
++      if ((drawsHiddenCursor || !this._coreService.isCursorHidden) && isCursorCell && this._coreService.isCursorInitialized) {
+         classes.push(RowCss.CURSOR_CLASS);
+         if (this._coreBrowserService.isFocused) {
+           if (cursorBlink) {
+@@ -299,6 +309,10 @@ export class DomRendererRowFactory {
+         classes.push(RowCss.DIM_CLASS);
+       }
+ 
++      if (wideGlyph) {
++        classes.push(RowCss.WIDE_GLYPH_CLASS);
++      }
++
+       if (cell.isInvisible()) {
+         text = WHITESPACE_CELL_CHAR;
+       } else {
+@@ -469,13 +483,25 @@ export class DomRendererRowFactory {
+       }
+ 
+       // exclude conditions for cell merging - never merge these
+-      if (!isCursorCell && !isJoined && !isDecorated && isValidJoinRange) {
++      if (!isCursorCell && !isJoined && !isDecorated && isValidJoinRange && !wideGlyph) {
+         cellAmount++;
+       } else {
+         charElement.textContent = text;
+       }
+-      // apply letter-spacing rule
+-      if (spacing !== this.defaultSpacing) {
++      if (wideGlyph) {
++        // A ::before space and the letter-spacing put `offset` on each side of the glyph; negative
++        // word-spacing cancels the space's own advance, so the span stays exactly its cells wide.
++        charElement.style.letterSpacing = `${wideGlyph.offset}px`;
++        charElement.style.wordSpacing = `${-wideGlyph.space}px`;
++        if (wideGlyph.scale !== 1) {
++          charElement.style.fontSize = `${this._optionsService.rawOptions.fontSize * wideGlyph.scale}px`;
++        }
++        if (wideGlyph.lineHeightDelta !== 0) {
++          // 1lh is the row's line-height; the baseline moves by half of what the span's differs.
++          charElement.style.lineHeight = `calc(1lh - ${wideGlyph.lineHeightDelta}px)`;
++        }
++      } else if (spacing !== this.defaultSpacing) {
++        // apply letter-spacing rule
+         charElement.style.letterSpacing = `${spacing}px`;
+       }
+ 
 diff --git a/src/browser/renderer/dom/WidthCache.ts b/src/browser/renderer/dom/WidthCache.ts
-index d45938515e7a9903de0da0d61716fd42e4deea0c..17d6577e388eb2e4397338093e35373864b822a4 100644
+index d45938515e7a9903de0da0d61716fd42e4deea0c..2c27821c0dd07c03de24798547631d3c2f93683c 100644
 --- a/src/browser/renderer/dom/WidthCache.ts
 +++ b/src/browser/renderer/dom/WidthCache.ts
-@@ -142,7 +142,7 @@ export class WidthCache implements IDisposable {
+@@ -6,6 +6,7 @@
+ import { throwIfFalsy } from '../shared/RendererUtils';
+ import { IDisposable } from '../../../common/Types';
+ import { FontWeight } from '../../../common/services/Services';
++import { IWideGlyphFit, WideGlyphFitter } from '../shared/WideGlyphFit';
+ 
+ 
+ export const enum WidthCacheSettings {
+@@ -28,6 +29,16 @@ const enum FontVariant {
+ export interface IWidthCacheFontVariantCanvas {
+   setFont(fontFamily: string, fontSize: number, fontWeight: FontWeight, italic: boolean): void;
+   measure(c: string): number;
++  /** Orca: full metrics for wide glyph fitting; measure-only doubles leave glyphs unfitted. */
++  measureMetrics?(c: string): TextMetrics;
++}
++
++/** Orca: a wide glyph fit plus what a DOM row needs to apply it. */
++export interface IDomWideGlyphFit extends IWideGlyphFit {
++  /** Advance of the leading space at the scaled size, which negative word-spacing cancels. */
++  space: number;
++  /** Line-height reduction that puts the enlarged strut's baseline `shift` below the row's. */
++  lineHeightDelta: number;
+ }
+ 
+ export class WidthCache implements IDisposable {
+@@ -48,6 +59,8 @@ export class WidthCache implements IDisposable {
+   private _weight: FontWeight = 'normal';
+   private _weightBold: FontWeight = 'bold';
+   private _canvasElements: IWidthCacheFontVariantCanvas[] = [];
++  private readonly _wideGlyphFitter = new WideGlyphFitter();
++  private _wideGlyphFits = new Map<string, IDomWideGlyphFit | null>();
+ 
+   constructor(
+     canvasFactory: () => IWidthCacheFontVariantCanvas = () => new WidthCacheFontVariantCanvas()
+@@ -74,6 +87,7 @@ export class WidthCache implements IDisposable {
+     this._flat.fill(WidthCacheSettings.FLAT_UNSET);
+     // .clear() has some overhead, re-assign instead (>3 times faster)
+     this._holey = new Map<string, number>();
++    this._wideGlyphFits = new Map();
+   }
+ 
+   /**
+@@ -137,12 +151,49 @@ export class WidthCache implements IDisposable {
+     return width;
+   }
+ 
++  /** Orca: how to enlarge and center wide glyph `c` in `span` pixels, if it needs it. */
++  public getWideGlyphFit(c: string, bold: boolean | number, italic: boolean | number, span: number): IDomWideGlyphFit | undefined {
++    let variant = FontVariant.REGULAR;
++    if (bold) variant |= FontVariant.BOLD;
++    if (italic) variant |= FontVariant.ITALIC;
++    const key = `${c}|${variant}|${span}`;
++    let fit = this._wideGlyphFits.get(key);
++    if (fit === undefined) {
++      fit = this._fitWideGlyph(c, bold, italic, variant, span);
++      this._wideGlyphFits.set(key, fit);
++    }
++    return fit ?? undefined;
++  }
++
++  private _fitWideGlyph(c: string, bold: boolean | number, italic: boolean | number, variant: FontVariant, span: number): IDomWideGlyphFit | null {
++    const canvas = this._canvasElements[variant];
++    const measure = canvas.measureMetrics?.bind(canvas);
++    if (!measure) {
++      return null;
++    }
++    // The span's line box is the primary font's; half a pixel keeps antialiasing inside the row.
++    const line = measure('W');
++    const fit = this._wideGlyphFitter.fit(c, {
++      span,
++      ascent: line.fontBoundingBoxAscent - 0.5,
++      descent: line.fontBoundingBoxDescent - 0.5
++    }, String(variant), measure);
++    if (!fit) {
++      return null;
++    }
++    return {
++      ...fit,
++      space: this.get('\xa0', bold, italic) * fit.scale,
++      lineHeightDelta: (fit.scale - 1) * (line.fontBoundingBoxAscent - line.fontBoundingBoxDescent) - 2 * fit.shift
++    };
++  }
++
+   protected _measure(c: string, variant: FontVariant): number {
+     return this._canvasElements[variant].measure(c);
    }
  }
  
@@ -1981,6 +2300,150 @@ index d45938515e7a9903de0da0d61716fd42e4deea0c..17d6577e388eb2e4397338093e353738
    private _canvas: OffscreenCanvas | HTMLCanvasElement;
    private _ctx: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D;
  
+@@ -166,4 +217,8 @@ class WidthCacheFontVariantCanvas implements IWidthCacheFontVariantCanvas {
+   public measure(c: string): number {
+     return this._ctx.measureText(c).width;
+   }
++
++  public measureMetrics(c: string): TextMetrics {
++    return this._ctx.measureText(c);
++  }
+ }
+diff --git a/src/browser/renderer/shared/WideGlyphFit.ts b/src/browser/renderer/shared/WideGlyphFit.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..254f950077fe22222a7ffddc7f49fdca4ad928c5
+--- /dev/null
++++ b/src/browser/renderer/shared/WideGlyphFit.ts
+@@ -0,0 +1,129 @@
++/**
++ * Copyright (c) 2026 The xterm.js authors. All rights reserved.
++ * @license MIT
++ */
++
++// Orca: sizes and centers wide glyphs whose fallback face leaves them narrower than their cells.
++// The WebGL addon cannot import new core files, so it ships a byte-identical copy; keep this file
++// import-free and limited to erasable TypeScript so Orca can unit test both copies as installed.
++
++/** Scripts a terminal font stack draws from one fallback face, so one scale keeps a line even. */
++export type WideGlyphScript = 'hangul' | 'han' | 'kana';
++
++// The script's scale and baseline shift must fit every glyph of the face: sample its extremes.
++const SCRIPT_SAMPLES: Record<WideGlyphScript, string> = {
++  hangul: '가갈뷁힣ㅎ',
++  han: '中國鬱龍語',
++  kana: 'あガぽヅカ'
++};
++
++export function getWideGlyphScript(code: number): WideGlyphScript | undefined {
++  if ((code >= 0xAC00 && code <= 0xD7A3) || (code >= 0x1100 && code <= 0x115F) ||
++    (code >= 0x3130 && code <= 0x318F) || (code >= 0xA960 && code <= 0xA97F)) {
++    return 'hangul';
++  }
++  if ((code >= 0x3040 && code <= 0x30FF) || (code >= 0x31F0 && code <= 0x31FF)) {
++    return 'kana';
++  }
++  if ((code >= 0x3400 && code <= 0x4DBF) || (code >= 0x4E00 && code <= 0x9FFF) ||
++    (code >= 0xF900 && code <= 0xFAFF) || (code >= 0x20000 && code <= 0x3FFFF)) {
++    return 'han';
++  }
++  return undefined;
++}
++
++/** The space a wide glyph may fill, measured from the alphabetic baseline it is drawn on. */
++export interface IWideGlyphBox {
++  /** Width of the cells the glyph occupies. */
++  span: number;
++  /** Room above the baseline, up to the top of the primary font's line box. */
++  ascent: number;
++  /** Room below the baseline, down to the bottom of the primary font's line box. */
++  descent: number;
++}
++
++export interface IWideGlyphFit {
++  /** Font size multiplier; 1 keeps the terminal font size. */
++  scale: number;
++  /** Space left of the scaled glyph that centers it in its span. */
++  offset: number;
++  /** How far to lower the baseline so the scaled ink stays inside the line box. */
++  shift: number;
++}
++
++/** The subset of TextMetrics the fit reads, measured at the alphabetic baseline. */
++export interface IWideGlyphMetrics {
++  width: number;
++  actualBoundingBoxAscent: number;
++  actualBoundingBoxDescent: number;
++}
++
++interface IInkExtent {
++  width: number;
++  ascent: number;
++  descent: number;
++}
++
++function inkExtent(metrics: IWideGlyphMetrics): IInkExtent {
++  return { width: metrics.width, ascent: metrics.actualBoundingBoxAscent, descent: metrics.actualBoundingBoxDescent };
++}
++
++/** Largest scale that keeps `ink` within the span and the line box's full height. */
++function maxScale(ink: IInkExtent, box: IWideGlyphBox): number {
++  const height = ink.ascent + ink.descent;
++  return Math.min(box.span / ink.width, height > 0 ? (box.ascent + box.descent) / height : Infinity);
++}
++
++/** The smallest baseline move that keeps `ink` at `scale` inside the line box. */
++function baselineShift(ink: IInkExtent, scale: number, box: IWideGlyphBox): number {
++  return Math.min(Math.max(0, ink.ascent * scale - box.ascent), box.descent - ink.descent * scale);
++}
++
++export class WideGlyphFitter {
++  private readonly _faces = new Map<string, { scale: number, ink: IInkExtent }>();
++
++  /**
++   * Fits a glyph that occupies exactly the cells of its first code point. `measure` reports the
++   * unscaled font; `fontKey` separates font variants. Undefined when the glyph already fills its
++   * span. Listed scripts grow as far as the span and line box allow, lowering the baseline only
++   * once the line box's ascent runs out; other glyphs only center.
++   */
++  public fit(chars: string, box: IWideGlyphBox, fontKey: string, measure: (text: string) => IWideGlyphMetrics): IWideGlyphFit | undefined {
++    const glyph = inkExtent(measure(chars));
++    if (!(glyph.width > 0) || glyph.width >= box.span) {
++      return undefined;
++    }
++    const script = getWideGlyphScript(chars.codePointAt(0) ?? 0);
++    const face = script && this._measureFace(script, box, fontKey, measure);
++    if (!face || face.scale <= 1) {
++      return { scale: 1, offset: (box.span - glyph.width) / 2, shift: 0 };
++    }
++    // Also bound by the glyph itself: a code point the samples miss may come from another face.
++    const scale = Math.max(1, Math.min(face.scale, maxScale(glyph, box)));
++    // The face's shift, not the glyph's, keeps every glyph of the face on one baseline.
++    const shift = Math.min(
++      Math.max(baselineShift(face.ink, scale, box), glyph.ascent * scale - box.ascent),
++      box.descent - glyph.descent * scale
++    );
++    return { scale, offset: (box.span - glyph.width * scale) / 2, shift };
++  }
++
++  private _measureFace(script: WideGlyphScript, box: IWideGlyphBox, fontKey: string, measure: (text: string) => IWideGlyphMetrics): { scale: number, ink: IInkExtent } {
++    const key = `${fontKey}|${script}|${box.span}|${box.ascent}|${box.descent}`;
++    let face = this._faces.get(key);
++    if (!face) {
++      const ink: IInkExtent = { width: 0, ascent: -Infinity, descent: -Infinity };
++      for (const sample of SCRIPT_SAMPLES[script]) {
++        const metrics = measure(sample);
++        if (metrics.width > 0) {
++          ink.width = Math.max(ink.width, metrics.width);
++          ink.ascent = Math.max(ink.ascent, metrics.actualBoundingBoxAscent);
++          ink.descent = Math.max(ink.descent, metrics.actualBoundingBoxDescent);
++        }
++      }
++      face = { scale: ink.width > 0 ? maxScale(ink, box) : 1, ink };
++      this._faces.set(key, face);
++    }
++    return face;
++  }
++}
 diff --git a/src/browser/services/MouseCoordsService.ts b/src/browser/services/MouseCoordsService.ts
 index 7e110ea988bd320e99e24f5b87628ad7f3adff72..c2c51e2b20c024ec79d3731edb94fb61bfb35336 100644
 --- a/src/browser/services/MouseCoordsService.ts
@@ -2013,6 +2476,20 @@ index 353e0581da7a95c9473d6169cd9ec548bc3bfe30..d587c02426b284b9567208c02b0d59d1
        return false;
      }
  
+diff --git a/src/browser/services/RenderService.ts b/src/browser/services/RenderService.ts
+index 75cd55418b0eac94c3f28273c73a26086e437a90..1feb073984b82234e4108165e0036205da928560 100644
+--- a/src/browser/services/RenderService.ts
++++ b/src/browser/services/RenderService.ts
+@@ -104,7 +104,8 @@ export class RenderService extends Disposable implements IRenderService {
+       'fontWeight',
+       'fontWeightBold',
+       'minimumContrastRatio',
+-      'rescaleOverlappingGlyphs'
++      'rescaleOverlappingGlyphs',
++      'fitWideGlyphs'
+     ], () => {
+       this.clear();
+       this.handleResize(bufferService.cols, bufferService.rows);
 diff --git a/src/common/SortedList.ts b/src/common/SortedList.ts
 index 8a10076e3963e33b4a7d1e4602333eb3f4772dc9..c6dcf18b762e3c56fe22e9c2d49b8e550d96f915 100644
 --- a/src/common/SortedList.ts
@@ -2136,27 +2613,30 @@ index 8a10076e3963e33b4a7d1e4602333eb3f4772dc9..c6dcf18b762e3c56fe22e9c2d49b8e55
      }
    }
 diff --git a/src/common/services/OptionsService.ts b/src/common/services/OptionsService.ts
-index d14982e3ff8907fd3182c8c970d81afa74eba84b..eb4094af3e6d869a9aa2d72ce4c89077a905e266 100644
+index d14982e3ff8907fd3182c8c970d81afa74eba84b..4dd5a42852c02286304623a55d0d24536cf5c101 100644
 --- a/src/common/services/OptionsService.ts
 +++ b/src/common/services/OptionsService.ts
-@@ -37,6 +37,7 @@ export const DEFAULT_OPTIONS: Readonly<Required<ITerminalOptions>> = {
+@@ -37,6 +37,8 @@ export const DEFAULT_OPTIONS: Readonly<Required<ITerminalOptions>> = {
    scrollOnUserInput: true,
    scrollSensitivity: 1,
    screenReaderMode: false,
 +  imePreeditInGrid: false,
++  fitWideGlyphs: false,
    smoothScrollDuration: 0,
    macOptionIsMeta: false,
    macOptionClickForcesSelection: false,
 diff --git a/src/common/services/Services.ts b/src/common/services/Services.ts
-index 8f0aeeed15d38aa8ab341577520db15d13788a52..a149b006e25158ae68bd31527064f14867836de3 100644
+index 8f0aeeed15d38aa8ab341577520db15d13788a52..f33eb8582c66cbcc8feab04d79883b6a0e018212 100644
 --- a/src/common/services/Services.ts
 +++ b/src/common/services/Services.ts
-@@ -218,6 +218,8 @@ export interface ITerminalOptions {
+@@ -218,6 +218,10 @@ export interface ITerminalOptions {
    fontSize?: number;
    fontFamily?: string;
    fontWeight?: FontWeight;
 +  /** Draws the IME preedit in the renderer's cell grid instead of the composition-view overlay. */
 +  imePreeditInGrid?: boolean;
++  /** Enlarges Hangul, Han and Kana glyphs narrower than their two cells and centers wide glyphs. */
++  fitWideGlyphs?: boolean;
    fontWeightBold?: FontWeight;
    ignoreBracketedPasteMode?: boolean;
    letterSpacing?: number;

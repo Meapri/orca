@@ -20,6 +20,9 @@ WebGL addon reads that surface too, but each package is built from a checkout
 with only its own source patch applied, so the addon declares the shape it reads
 locally instead of importing the core type; importing it fails the addon build.
 New files are not picked up either: the checkout diff only sees tracked files.
+The adopted app caret (`setAdoptedCaretSource`, `IAdoptedCaret`, `src/browser/AdoptedCaret.ts`)
+follows the same pattern: Orca's `terminal-app-caret-adoption.ts` names the cell, both renderers
+draw the cursor there and clear the app's inverse at it, and the addon declares the shape locally.
 
 The two halves are the same edits diffed two ways, so the generator requires
 them to match byte for byte on every source file. A hunk the shipped patch

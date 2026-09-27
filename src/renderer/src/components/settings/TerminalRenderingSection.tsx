@@ -10,6 +10,7 @@ import { TerminalContrastSetting } from './TerminalContrastSetting'
 import { translate } from '@/i18n/i18n'
 import { resolveTerminalInlineImagesEnabled } from '../../../../shared/terminal-inline-images-settings'
 import { resolveTerminalImePreeditInGrid } from '@/lib/pane-manager/terminal-ime-grid-preedit'
+import { resolveTerminalFitWideGlyphs } from '@/lib/pane-manager/terminal-wide-glyph-fit'
 
 type TerminalRenderingSectionProps = {
   settings: GlobalSettings
@@ -180,6 +181,50 @@ export function TerminalRenderingSection({
                 terminalImePreeditInGrid: !resolveTerminalImePreeditInGrid(
                   settings.terminalImePreeditInGrid
                 )
+              })
+            }
+          />
+        </SearchableSetting>
+
+        <SearchableSetting
+          title={translate(
+            'components.settings.TerminalRendering.fitWideGlyphs',
+            'Fit and Center Wide Characters'
+          )}
+          description={translate(
+            'components.settings.TerminalRendering.fitWideGlyphsDescription',
+            'Enlarge Korean, Chinese and Japanese characters drawn from a fallback font toward their two-cell width, never taller than the line, and center them so text does not look spaced out.'
+          )}
+          keywords={[
+            'terminal',
+            'wide',
+            'characters',
+            'glyph',
+            'cjk',
+            'korean',
+            'hangul',
+            'chinese',
+            'japanese',
+            'fallback',
+            'font',
+            'spacing',
+            'center'
+          ]}
+          className="py-2"
+        >
+          <SettingsSwitchRow
+            label={translate(
+              'components.settings.TerminalRendering.fitWideGlyphs',
+              'Fit and Center Wide Characters'
+            )}
+            description={translate(
+              'components.settings.TerminalRendering.fitWideGlyphsDescription',
+              'Enlarge Korean, Chinese and Japanese characters drawn from a fallback font toward their two-cell width, never taller than the line, and center them so text does not look spaced out.'
+            )}
+            checked={resolveTerminalFitWideGlyphs(settings.terminalFitWideGlyphs)}
+            onChange={() =>
+              updateSettings({
+                terminalFitWideGlyphs: !resolveTerminalFitWideGlyphs(settings.terminalFitWideGlyphs)
               })
             }
           />

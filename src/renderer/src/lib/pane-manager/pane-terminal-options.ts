@@ -3,6 +3,7 @@ import { DESKTOP_TERMINAL_SCROLLBACK_ROWS_DEFAULT } from '../../../../shared/ter
 import { LIGHT_BG_MIN_CONTRAST } from '@/lib/terminal-contrast-correction'
 import { buildFontFamily } from '@/lib/monospace-font-family'
 import { DEFAULT_TERMINAL_IME_PREEDIT_IN_GRID } from './terminal-ime-grid-preedit'
+import { DEFAULT_TERMINAL_FIT_WIDE_GLYPHS } from './terminal-wide-glyph-fit'
 
 type TerminalCursorStyle = NonNullable<ITerminalOptions['cursorStyle']>
 type TerminalCursorInactiveStyle = NonNullable<ITerminalOptions['cursorInactiveStyle']>
@@ -43,6 +44,7 @@ export function buildDefaultTerminalOptions(): ITerminalOptions {
     // Why: one-cell glyphs drawn from a CJK/symbol fallback face (①, ※, Ⅻ) otherwise spill
     // into the next cell under WebGL; wide, ASCII, emoji and Nerd glyphs are never rescaled.
     rescaleOverlappingGlyphs: true,
+    fitWideGlyphs: DEFAULT_TERMINAL_FIT_WIDE_GLYPHS,
     fontWeight: '300',
     fontWeightBold: '500',
     scrollback: DESKTOP_TERMINAL_SCROLLBACK_ROWS_DEFAULT,

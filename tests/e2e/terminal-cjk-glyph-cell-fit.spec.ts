@@ -1,14 +1,25 @@
 /**
  * CJK fallback glyphs must render inside their two cells under both renderers:
  * no ink bleeding into the neighbouring cell or row, and box-drawing frames that
- * stay connected when lineHeight > 1. Set ORCA_GLYPH_SCREENSHOT_DIR to also keep
- * PNG captures for manual review.
+ * stay connected when lineHeight > 1. With fitWideGlyphs (Orca's default) they are
+ * also enlarged toward and centered in those cells, identically for the IME preedit.
+ * Set ORCA_GLYPH_SCREENSHOT_DIR to also keep PNG captures for manual review.
  */
 import { mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import type { Page } from '@stablyai/playwright-test'
 import { test, expect } from './helpers/orca-app'
 import { waitForActiveTerminalManager } from './helpers/terminal'
+import {
+  closeWideGlyphProbe,
+  measureWideGlyphProbe,
+  openWideGlyphProbe,
+  writeWideGlyphProbe,
+  type GlyphInk,
+  type ProbeOptions,
+  type ProbeRenderer,
+  type ProbeRun
+} from './terminal-wide-glyph-fit-probe'
 
 type ProbeTerminal = {
   rows: number
@@ -61,7 +72,14 @@ type WebglProbeResult = {
   dataUrl: string
 }
 
-type DomGlyphRect = { label: string; width: number; left: number; cellLeft: number }
+type DomGlyphRect = {
+  label: string
+  width: number
+  left: number
+  letterSpacing: number
+  cellLeft: number
+  nextCellLeft: number
+}
 
 type DomProbeResult = {
   lineHeight: number
@@ -137,6 +155,7 @@ async function probeWebgl(page: Page, lineHeight: number): Promise<WebglProbeRes
         fontWeightBold: pane.terminal.options.fontWeightBold,
         lineHeight: probeLineHeight,
         rescaleOverlappingGlyphs: true,
+        fitWideGlyphs: true,
         cursorBlink: false,
         allowProposedApi: true,
         theme: { background: '#000000', foreground: '#ffffff', cursor: '#000000' }
@@ -269,6 +288,7 @@ async function probeDom(page: Page, lineHeight: number): Promise<DomProbeResult>
         fontFamily: pane.terminal.options.fontFamily,
         fontWeight: pane.terminal.options.fontWeight,
         lineHeight: probeLineHeight,
+        fitWideGlyphs: true,
         cursorBlink: false,
         allowProposedApi: true
       })
@@ -283,25 +303,33 @@ async function probeDom(page: Page, lineHeight: number): Promise<DomProbeResult>
       const rows = [...(terminal.element?.querySelectorAll('.xterm-rows > div') ?? [])]
       const screenLeft =
         terminal.element?.querySelector('.xterm-rows')?.getBoundingClientRect().left ?? 0
-      const rects = glyphs.map(({ label, glyph }, index) => {
-        const row = rows[index]
+      const textRect = (row: Element | undefined, text: string): DOMRect => {
         const walker = document.createTreeWalker(row ?? document.body, NodeFilter.SHOW_TEXT)
         let node = walker.nextNode()
-        while (node && !(node.textContent ?? '').includes(glyph)) {
+        while (node && !(node.textContent ?? '').includes(text)) {
           node = walker.nextNode()
         }
         const range = document.createRange()
-        const offset = (node?.textContent ?? '').indexOf(glyph)
+        const offset = (node?.textContent ?? '').indexOf(text)
         if (node && offset !== -1) {
           range.setStart(node, offset)
-          range.setEnd(node, offset + glyph.length)
+          range.setEnd(node, offset + text.length)
         }
-        const rect = range.getBoundingClientRect()
+        return range.getBoundingClientRect()
+      }
+      const rects = glyphs.map(({ label, glyph }, index) => {
+        const row = rows[index]
+        const rect = textRect(row, glyph)
+        const span = [...(row?.querySelectorAll('span') ?? [])].find((element) =>
+          (element.textContent ?? '').includes(glyph)
+        )
         return {
           label: `${label} ${glyph}`,
           width: rect.width,
           left: rect.left - screenLeft,
-          cellLeft: 2 * cellWidth
+          letterSpacing: Number.parseFloat(span ? getComputedStyle(span).letterSpacing : '') || 0,
+          cellLeft: 2 * cellWidth,
+          nextCellLeft: textRect(row, 'x').left - screenLeft
         }
       })
       terminal.dispose()
@@ -352,8 +380,172 @@ test.describe('terminal CJK glyph cell fit', () => {
         const cells = PROBE_GLYPHS[index]?.cells ?? 1
         expect(glyph.width, glyph.label).toBeGreaterThan(0)
         expect(glyph.width, glyph.label).toBeLessThanOrEqual(cells * dom.cellWidth + 0.5)
-        expect(Math.abs(glyph.left - glyph.cellLeft), glyph.label).toBeLessThanOrEqual(1)
+        if (cells === 1) {
+          expect(Math.abs(glyph.left - glyph.cellLeft), glyph.label).toBeLessThanOrEqual(1)
+        } else {
+          // A text box is the advance plus its trailing letter-spacing; the advance centers.
+          const advanceCenter = glyph.left + (glyph.width - glyph.letterSpacing) / 2
+          const spanCenter = glyph.cellLeft + (cells * dom.cellWidth) / 2
+          expect(Math.abs(advanceCenter - spanCenter), glyph.label).toBeLessThanOrEqual(1)
+        }
+        // Fitting never moves the cells that follow.
+        expect(
+          Math.abs(glyph.nextCellLeft - (glyph.cellLeft + (cells + 2) * dom.cellWidth)),
+          glyph.label
+        ).toBeLessThanOrEqual(1)
       }
     }
   })
+
+  test('fits and centers wide glyphs, and the IME preedit lands where the commit does', async ({
+    orcaPage
+  }) => {
+    await waitForActiveTerminalManager(orcaPage)
+    await forceActivePaneWebgl(orcaPage)
+    const screenshotDir = process.env.ORCA_GLYPH_SCREENSHOT_DIR
+    const report: Record<string, unknown> = {}
+
+    for (const renderer of ['webgl', 'dom'] as const) {
+      const [before, after] = [
+        await captureFitRuns(orcaPage, renderer, false),
+        await captureFitRuns(orcaPage, renderer, true)
+      ]
+      if (screenshotDir) {
+        mkdirSync(screenshotDir, { recursive: true })
+        for (const [name, capture] of [
+          ['before', before],
+          ['after', after]
+        ] as const) {
+          writeFileSync(
+            path.join(screenshotDir, `fit-${renderer}-${name}.png`),
+            Buffer.from(capture.dataUrl.split(',')[1] ?? '', 'base64')
+          )
+        }
+      }
+      const sentence = (glyphs: GlyphInk[]): GlyphInk[] =>
+        glyphs.filter((glyph) => glyph.label.startsWith('sentence'))
+      const stats = (glyphs: GlyphInk[]) => {
+        const syllables = sentence(glyphs)
+        const gaps = syllables.slice(1).map((next, i) => {
+          const previous = syllables[i]
+          return next.minX + previous.span - previous.maxX - 1
+        })
+        return {
+          inkWidthRatio: mean(syllables.map((g) => (g.maxX - g.minX + 1) / g.span)),
+          gapPx: mean(gaps),
+          gapCells: mean(gaps) / (syllables[0]?.span ? syllables[0].span / 2 : 1)
+        }
+      }
+      report[renderer] = {
+        before: stats(before.glyphs),
+        after: stats(after.glyphs),
+        glyphs: after.glyphs.map((glyph, index) => ({ after: glyph, before: before.glyphs[index] }))
+      }
+
+      for (const [index, glyph] of after.glyphs.entries()) {
+        expect(glyph.minX, glyph.label).toBeGreaterThanOrEqual(0)
+        if (!glyph.label.startsWith('mixed')) {
+          expect(glyph.bleed, glyph.label).toEqual({ left: 0, right: 0, above: 0, below: 0 })
+        }
+        const unfitted = before.glyphs[index]
+        if (glyph.span <= Math.ceil(after.cellWidth)) {
+          // Single-width glyphs (Latin) render exactly as without fitting.
+          expect({ minX: glyph.minX, maxX: glyph.maxX }, glyph.label).toEqual({
+            minX: unfitted?.minX,
+            maxX: unfitted?.maxX
+          })
+          continue
+        }
+        // The advance is centered, so a syllable drawn off-center in its own advance (세) keeps
+        // that design offset; the probe glyphs are balanced.
+        const centerError = (glyph.minX + glyph.maxX + 1) / 2 - glyph.span / 2
+        const tolerance = glyph.label.startsWith('sentence') ? 2 : 1
+        expect(Math.abs(centerError), glyph.label).toBeLessThanOrEqual(tolerance)
+      }
+      expect(stats(after.glyphs).inkWidthRatio).toBeGreaterThan(stats(before.glyphs).inkWidthRatio)
+      expect(stats(after.glyphs).gapPx).toBeLessThan(stats(before.glyphs).gapPx)
+
+      // The preedit syllable must not move when it commits and the app echoes it.
+      const preeditRun: ProbeRun[] = [{ label: 'preedit', row: 1, col: 2, text: '한', cells: 2 }]
+      const probe = await openProbe(orcaPage, {
+        renderer,
+        fitWideGlyphs: true,
+        lineHeight: 1,
+        rows: 4,
+        content: '\x1b[?25l\r\n  ',
+        preedit: '한'
+      })
+      const composing = await captureProbe(orcaPage, probe, preeditRun)
+      await writeWideGlyphProbe(orcaPage, '한', true)
+      const committed = await captureProbe(orcaPage, probe, preeditRun)
+      await closeWideGlyphProbe(orcaPage)
+      const [drawn, echoed] = [composing.glyphs[0], committed.glyphs[0]]
+      report[`${renderer}Preedit`] = { composing: drawn, committed: echoed }
+      if (screenshotDir) {
+        for (const [name, capture] of [
+          ['composing', composing],
+          ['committed', committed]
+        ] as const) {
+          writeFileSync(
+            path.join(screenshotDir, `preedit-${renderer}-${name}.png`),
+            Buffer.from(capture.dataUrl.split(',')[1] ?? '', 'base64')
+          )
+        }
+        writeFileSync(path.join(screenshotDir, 'fit-report.json'), JSON.stringify(report, null, 2))
+      }
+      expect(drawn?.minY, 'preedit drawn').toBeGreaterThanOrEqual(0)
+      expect(Math.abs((drawn?.minX ?? 0) - (echoed?.minX ?? 0))).toBeLessThanOrEqual(1)
+      expect(Math.abs((drawn?.maxX ?? 0) - (echoed?.maxX ?? 0))).toBeLessThanOrEqual(1)
+      expect(Math.abs((drawn?.minY ?? 0) - (echoed?.minY ?? 0))).toBeLessThanOrEqual(1)
+    }
+  })
 })
+
+const FIT_SENTENCE = '안녕하세요'
+
+function mean(values: number[]): number {
+  return values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length)
+}
+
+async function captureFitRuns(page: Page, renderer: ProbeRenderer, fitWideGlyphs: boolean) {
+  const runs: ProbeRun[] = PROBE_GLYPHS.map(({ label, glyph, cells }, index) => ({
+    label,
+    row: 1 + index * 2,
+    col: 2,
+    text: glyph,
+    cells
+  }))
+  const sentenceRow = 1 + PROBE_GLYPHS.length * 2
+  runs.push({ label: 'sentence', row: sentenceRow, col: 2, text: FIT_SENTENCE, cells: 2 })
+  // Latin between wide glyphs in the mixed line below.
+  runs.push({ label: 'mixed', row: sentenceRow + 2, col: 12, text: 'ls', cells: 1 })
+  runs.push({ label: 'mixed', row: sentenceRow + 2, col: 19, text: 'abc', cells: 1 })
+  let content = '\x1b[?25l\r\n'
+  for (const { glyph } of PROBE_GLYPHS) {
+    content += `  ${glyph}\r\n\r\n`
+  }
+  // Mixed text for the screenshots a reviewer compares; only its Latin is measured.
+  content += `  ${FIT_SENTENCE}\r\n\r\n  다 쳤어요 ls 한글abc 漢字`
+  const probe = await openProbe(page, {
+    renderer,
+    fitWideGlyphs,
+    lineHeight: 1,
+    rows: PROBE_GLYPHS.length * 2 + 4,
+    content
+  })
+  const capture = await captureProbe(page, probe, runs)
+  await closeWideGlyphProbe(page)
+  return capture
+}
+
+type OpenProbe = { renderer: ProbeRenderer; clip: Awaited<ReturnType<typeof openWideGlyphProbe>> }
+
+async function openProbe(page: Page, options: ProbeOptions): Promise<OpenProbe> {
+  return { renderer: options.renderer, clip: await openWideGlyphProbe(page, options) }
+}
+
+// Why a screenshot for DOM: only the compositor knows where CSS put the glyph's pixels.
+async function captureProbe(page: Page, probe: OpenProbe, runs: ProbeRun[]) {
+  const png = probe.renderer === 'dom' ? await page.screenshot({ clip: probe.clip }) : null
+  return measureWideGlyphProbe(page, runs, png)
+}
