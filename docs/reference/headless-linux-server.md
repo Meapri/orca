@@ -48,10 +48,39 @@ pnpm install
 pnpm pack:orcad-release --target linux-x64-glibc   # writes out/orcad-release/
 ```
 
-The release workflow does not publish these assets yet, so copy them to the host
-yourself (for example with `scp out/orcad-release/* vps:`).
+or copy a local build to the host yourself (for example with `scp out/orcad-release/* vps:`).
 
-Download, then verify, then run. Never pipe the installer into a shell:
+#### From GitHub Releases
+
+Pushing a tag `orcad-v<X.Y.Z>` runs `.github/workflows/orcad-release.yml`, which builds
+`linux-x64-glibc` and `linux-arm64-glibc` (and, best effort, `darwin-arm64`) on native
+runners, gates the Linux bundles on the [glibc floor](./linux-glibc-compatibility.md), and
+uploads them to a GitHub Release of that tag. Release assets use fixed names per target —
+`orcad-<target>.tar.gz`, `orcad-<target>.tar.gz.sha256`, `orcad-<target>.json` — plus
+`orcad-install.sh`, its `.sha256`, and a combined `SHA256SUMS`. The version is still read
+from the tarball's `orcad-<version>/` directory. The workflow never marks the release
+"latest", so it cannot displace a desktop release.
+
+Download, then verify, then run. Never pipe the installer into a shell. On the host:
+
+```bash
+REL=https://github.com/Meapri/orca/releases/download/orcad-v0.1.0   # the fork and tag you want
+curl -fsSLO "$REL/orcad-install.sh" && curl -fsSLO "$REL/orcad-install.sh.sha256" \
+  && sha256sum -c orcad-install.sh.sha256 && sh orcad-install.sh install --release orcad-v0.1.0
+```
+
+`install --release <tag|latest>` (and `upgrade --release …`) downloads this host's
+`orcad-<target>.tar.gz` and its `.sha256` from that release, verifies the checksum, then
+installs exactly as for a local tarball. `latest` is the newest stable `orcad-vX.Y.Z` tag;
+desktop tags and `-rc` prereleases never match. A `--sha256 <hex>` you obtained out of band
+overrides the published checksum. The repository defaults to the one that built the
+installer (stamped by `pack:orcad-release` from `--release-repo`, `GITHUB_REPOSITORY`, or
+the checkout's `origin` remote); `--repo OWNER/NAME` or `ORCAD_RELEASE_REPO` overrides it.
+`sh orcad-install.sh fetch [<tag>|latest] [--dir DIR]` downloads and verifies without
+installing, and prints the tarball path. It needs `curl` or `wget`; redirects must stay
+on https.
+
+#### From a local tarball
 
 ```bash
 sha256sum -c orcad-install.sh.sha256
@@ -204,7 +233,7 @@ PID 1, a reachable user bus and `systemd-run` on `PATH` (see
 ### Upgrade and roll back
 
 ```bash
-sh orcad-install.sh upgrade orcad-<new>-linux-x64-glibc.tar.gz
+sh orcad-install.sh upgrade orcad-<new>-linux-x64-glibc.tar.gz   # or: upgrade --release latest
 sh orcad-install.sh rollback
 ```
 

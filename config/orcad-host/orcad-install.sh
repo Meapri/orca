@@ -29,6 +29,11 @@ fi
 ORCAD_READY_TIMEOUT=${ORCAD_READY_TIMEOUT:-180}
 ORCAD_CENSUS_COMMAND=${ORCAD_CENSUS_COMMAND:-}
 ORCAD_SYSTEMCTL=${ORCAD_SYSTEMCTL:-systemctl}
+# Stamped by pack-orcad-release with the repository that built this installer.
+ORCAD_RELEASE_REPO_BUILT_IN=''
+ORCAD_RELEASE_REPO=${ORCAD_RELEASE_REPO:-$ORCAD_RELEASE_REPO_BUILT_IN}
+ORCAD_RELEASE_BASE_URL=${ORCAD_RELEASE_BASE_URL:-https://github.com}
+ORCAD_RELEASE_API_URL=${ORCAD_RELEASE_API_URL:-https://api.github.com}
 
 EXIT_REFUSED=20
 EXIT_REJECTED=30
@@ -46,8 +51,10 @@ usage() {
 usage: orcad-install.sh <command> [options]
 
   install <tarball> [--sha256 HEX | --sha256-file FILE]   verify, then install a version
+  install --release <tag|latest> [--repo OWNER/NAME]      download from GitHub Releases, verify, install
   activate <fullVersion> [--force]                        switch the service to an installed version
-  upgrade <tarball> [--sha256 ...] [--force]              install + activate
+  upgrade <tarball|--release <tag|latest>> [--force]      install + activate
+  fetch [<tag>|latest] [--repo OWNER/NAME] [--dir DIR]    download and verify only; prints the path
   rollback                                                return to the previous version
   status                                                  record, link, service, daemon isolation
   prune [--dry-run]                                       delete versions nothing needs
@@ -56,7 +63,7 @@ usage: orcad-install.sh <command> [options]
   run | supervise                                         start orcad in the foreground
 
 Environment: ORCAD_BASE ORCA_USER_DATA ORCAD_SERVICE(user|system|none) ORCAD_UNIT
-             ORCAD_SERVICE_USER ORCAD_CENSUS_COMMAND ORCAD_READY_TIMEOUT
+             ORCAD_SERVICE_USER ORCAD_CENSUS_COMMAND ORCAD_READY_TIMEOUT ORCAD_RELEASE_REPO
 EOF
   exit 2
 }
@@ -319,11 +326,120 @@ install_verified_tarball() {
   say "installed orcad $version at $final"
 }
 
+# ---- release download -----------------------------------------------------------------------
+
+download() {
+  if command -v curl >/dev/null 2>&1; then
+    # Redirects (to GitHub's asset CDN) must stay on https.
+    curl -fsSL --proto-redir =https --retry 3 -o "$2" "$1" || die "download failed: $1"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q -O "$2" "$1" || die "download failed: $1"
+  else
+    die 'no downloader (curl or wget) is available'
+  fi
+}
+
+release_repo() {
+  printf '%s\n' "$ORCAD_RELEASE_REPO" | grep -Eq '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$' ||
+    die 'no release repository: pass --repo OWNER/NAME or set ORCAD_RELEASE_REPO'
+  printf '%s\n' "$ORCAD_RELEASE_REPO"
+}
+
+# `latest` is the newest stable orcad-vX.Y.Z tag, so desktop releases and prereleases never match.
+resolve_release_tag() {
+  if [ "$1" != latest ]; then
+    printf '%s\n' "$1" | grep -Eq '^orcad-v[0-9A-Za-z._-]+$' || die "not an orcad release tag: $1"
+    printf '%s\n' "$1"
+    return 0
+  fi
+  download "$ORCAD_RELEASE_API_URL/repos/$2/releases?per_page=100" "$3/releases.json"
+  latest_tag=$(grep -o '"tag_name":[[:space:]]*"orcad-v[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*"' "$3/releases.json" |
+    head -n 1 | sed 's/.*"\(orcad-v[^"]*\)"$/\1/')
+  rm -f "$3/releases.json"
+  [ -n "$latest_tag" ] || die "no stable orcad-v* release found in $2"
+  printf '%s\n' "$latest_tag"
+}
+
+# Downloads this host's tarball and its checksum into $2, then verifies it. Sets FETCHED_TARBALL.
+fetch_release() {
+  repo=$(release_repo)
+  tag=$(resolve_release_tag "$1" "$repo" "$2")
+  asset="orcad-$(host_target).tar.gz"
+  url="$ORCAD_RELEASE_BASE_URL/$repo/releases/download/$tag"
+  say "downloading $asset from $repo release $tag"
+  download "$url/$asset" "$2/$asset"
+  download "$url/$asset.sha256" "$2/$asset.sha256"
+  # A --sha256 pinned out of band wins over the checksum published beside the asset.
+  verify_checksum "$2/$asset"
+  FETCHED_TARBALL="$2/$asset"
+}
+
+cmd_fetch() {
+  EXPECTED_SHA=
+  fetch_tag=latest
+  fetch_dir=.
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --repo)
+        [ $# -ge 2 ] || usage
+        ORCAD_RELEASE_REPO=$2
+        shift 2
+        ;;
+      --dir)
+        [ $# -ge 2 ] || usage
+        fetch_dir=$2
+        shift 2
+        ;;
+      -*) usage ;;
+      *)
+        fetch_tag=$1
+        shift
+        ;;
+    esac
+  done
+  mkdir -p "$fetch_dir"
+  fetch_release "$fetch_tag" "$fetch_dir"
+  echo "$FETCHED_TARBALL"
+}
+
+# `<tarball>` or `--release <tag|latest>`, then checksum/force/repo flags. Sets SOURCE_*.
+parse_install_source() {
+  SOURCE_TARBALL=
+  SOURCE_RELEASE=
+  [ $# -ge 1 ] || usage
+  if [ "$1" = --release ]; then
+    [ $# -ge 2 ] || usage
+    SOURCE_RELEASE=$2
+    shift 2
+  else
+    SOURCE_TARBALL=$1
+    shift
+  fi
+  parse_checksum_flags "$@"
+}
+
+# A release is fetched under the install lock into the work dir, which cleanup removes.
+resolve_install_source() {
+  if [ -n "$SOURCE_RELEASE" ]; then
+    [ -n "$WORK_DIR" ] || make_work_dir
+    mkdir "$WORK_DIR/release"
+    fetch_release "$SOURCE_RELEASE" "$WORK_DIR/release"
+    SOURCE_TARBALL=$FETCHED_TARBALL
+  else
+    verify_checksum "$SOURCE_TARBALL"
+  fi
+}
+
 parse_checksum_flags() {
   EXPECTED_SHA=
   FORCE_FLAG=
   while [ $# -gt 0 ]; do
     case "$1" in
+      --repo)
+        [ $# -ge 2 ] || usage
+        ORCAD_RELEASE_REPO=$2
+        shift 2
+        ;;
       --sha256)
         [ $# -ge 2 ] || usage
         EXPECTED_SHA=$2
@@ -356,14 +472,11 @@ verify_checksum() {
 }
 
 cmd_install() {
-  [ $# -ge 1 ] || usage
-  tarball=$1
-  shift
-  parse_checksum_flags "$@"
+  parse_install_source "$@"
   require_root_for_system
-  verify_checksum "$tarball"
   take_lock
-  install_verified_tarball "$tarball"
+  resolve_install_source
+  install_verified_tarball "$SOURCE_TARBALL"
   echo "$INSTALLED_VERSION"
 }
 
@@ -470,14 +583,11 @@ cmd_activate() {
 }
 
 cmd_upgrade() {
-  [ $# -ge 1 ] || usage
-  tarball=$1
-  shift
-  parse_checksum_flags "$@"
+  parse_install_source "$@"
   require_root_for_system
-  verify_checksum "$tarball"
   take_lock
-  install_verified_tarball "$tarball"
+  resolve_install_source
+  install_verified_tarball "$SOURCE_TARBALL"
   activate_installed "$INSTALLED_VERSION" "$FORCE_FLAG"
 }
 
@@ -763,6 +873,7 @@ command=$1
 shift
 case "$command" in
   install) cmd_install "$@" ;;
+  fetch) cmd_fetch "$@" ;;
   activate) cmd_activate "$@" ;;
   upgrade) cmd_upgrade "$@" ;;
   rollback) cmd_rollback ;;
