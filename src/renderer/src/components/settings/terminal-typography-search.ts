@@ -259,6 +259,22 @@ export const getTerminalCursorSearchEntries = createLocalizedCatalog(() => [
     ]
   },
   {
+    title: translate(
+      'auto.components.settings.terminal.search.b2ff21a421',
+      'Terminal Cursor for App Carets'
+    ),
+    description: translate(
+      'auto.components.settings.terminal.search.c9f01528ff',
+      'When a terminal app hides the cursor and paints its own caret, draws the terminal cursor there with your shape, blink and animation.'
+    ),
+    keywords: [
+      ...translateSearchKeyword('auto.components.settings.terminal.search.f66a7cf715', 'terminal'),
+      ...translateSearchKeyword('auto.components.settings.terminal.search.6eaf7ee0e4', 'cursor'),
+      ...translateSearchKeyword('auto.components.settings.terminal.search.3d0e4adb75', 'caret'),
+      ...translateSearchKeyword('auto.components.settings.terminal.search.864e24955e', 'tui')
+    ]
+  },
+  {
     title: translate('auto.components.settings.terminal.search.7f1e356a54', 'Cursor Opacity'),
     description: translate(
       'auto.components.settings.terminal.search.d4f7d1ce5c',

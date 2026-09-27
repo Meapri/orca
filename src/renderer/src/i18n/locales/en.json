@@ -8748,7 +8748,9 @@
           "typographyAdvanced": "Typography",
           "dimUnfocusedPanes": "Dim unfocused panes.",
           "0739c1f2b6": "Cursor Animation",
-          "ebde1c981e": "Glides the cursor as you type and fades its blink. Requires GPU rendering."
+          "ebde1c981e": "Glides the cursor as you type and fades its blink. Requires GPU rendering.",
+          "b2ff21a421": "Terminal Cursor for App Carets",
+          "c9f01528ff": "When a terminal app hides the cursor and paints its own caret, draws the terminal cursor there with your shape, blink and animation."
         },
         "TerminalAdvancedTypographyControls": {
           "f5fa1a08f1": "Bold Font Weight",
@@ -10823,7 +10825,11 @@
               "description": "Animate mouse-wheel, Shift+Page Up/Down and jump-to-latest scrolling in terminal scrollback."
             },
             "smooth": "smooth",
-            "animation": "animation"
+            "animation": "animation",
+            "b2ff21a421": "Terminal Cursor for App Carets",
+            "c9f01528ff": "When a terminal app hides the cursor and paints its own caret, draws the terminal cursor there with your shape, blink and animation.",
+            "3d0e4adb75": "caret",
+            "864e24955e": "tui"
           },
           "windows": {
             "search": {

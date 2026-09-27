@@ -23,6 +23,7 @@ import {
 import { getFitOverrideForPty } from '@/lib/pane-manager/mobile-fit-overrides'
 import { setTerminalCursorBlinkOption } from '@/lib/pane-manager/pane-cursor-blink-suspension'
 import { setTerminalCursorAnimationEnabled } from '@/lib/pane-manager/pane-webgl-cursor-animation'
+import { setTerminalAppCaretAdoptionEnabled } from '@/lib/pane-manager/terminal-app-caret-adoption'
 import type { PtyTransport } from './pty-transport'
 import type { EffectiveMacOptionAsAlt } from '@/lib/keyboard-layout/detect-option-as-alt'
 import { HEX_COLOR_RE } from '../../../../shared/color-validation'
@@ -34,6 +35,7 @@ import { resolveTerminalMinimumContrastRatio } from '@/lib/terminal-contrast-cor
 import { resolveTerminalInlineImagesEnabled } from '../../../../shared/terminal-inline-images-settings'
 import { resolveTerminalImePreeditInGrid } from '@/lib/pane-manager/terminal-ime-grid-preedit'
 import { resolveTerminalCursorAnimationEnabled } from '../../../../shared/terminal-cursor-animation-settings'
+import { resolveTerminalAdoptAppCaretEnabled } from '../../../../shared/terminal-app-caret-settings'
 
 export function hexToRgba(hex: string, alpha: number): string {
   let clean = hex.replace('#', '')
@@ -165,6 +167,9 @@ export function applyTerminalAppearance(
   )
   setTerminalCursorAnimationEnabled(
     resolveTerminalCursorAnimationEnabled(settings.terminalCursorAnimation)
+  )
+  setTerminalAppCaretAdoptionEnabled(
+    resolveTerminalAdoptAppCaretEnabled(settings.terminalAdoptAppCaret)
   )
 
   for (const pane of manager.getPanes()) {

@@ -83,6 +83,8 @@ export function buildDefaultSettings(args: {
     terminalImePreeditInGrid: true,
     // Why on: the glide only follows local typing and snaps for output, TUIs and reduced motion.
     terminalCursorAnimation: true,
+    // Why on: only a lone inverse cell that moved with local typing is adopted, and only while hidden.
+    terminalAdoptAppCaret: true,
     terminalThemeDark: 'Ghostty Default Style Dark',
     terminalDividerColorDark: '#3f3f46',
     terminalUseSeparateLightTheme: true,
