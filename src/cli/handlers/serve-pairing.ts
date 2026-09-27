@@ -31,6 +31,11 @@ export const SERVER_SURFACE_UNSUPPORTED = new RuntimeClientError(
   'This runtime does not publish server health: it is the desktop app or an orcad older than this CLI. Update orcad on the server host.'
 )
 
+const MOBILE_PAIRING_SHOW_UNSUPPORTED = new RuntimeClientError(
+  'server_mobile_pairing_unsupported',
+  'This orcad predates `orca serve pairing --mobile`. Update orcad, or mint a phone offer with `orca serve pairing new --mobile --pairing-address <address>`.'
+)
+
 const DEVICE_ADMINISTRATION_UNSUPPORTED = new RuntimeClientError(
   'incompatible_runtime',
   'The running Orca runtime does not support device administration. Update Orca on this host and restart it.'
@@ -110,13 +115,18 @@ export const SERVE_PAIRING_HANDLERS: Record<string, CommandHandler> = {
       flags,
       'serve pairing; pairing offers are minted only on the server host. Run it there.'
     )
+    const scope = flags.get('mobile') === true ? 'mobile' : 'runtime'
     const response = await callServeHost<OrcadPairingOfferReport>(
       flags,
       ORCAD_SERVER_PAIRING_OFFER_METHOD,
-      { rotate: flags.get('rotate') === true },
+      { rotate: flags.get('rotate') === true, ...(scope === 'mobile' ? { scope } : {}) },
       SERVER_SURFACE_UNSUPPORTED
     )
     const pairing = response.result
+    // Why: an orcad older than `--mobile` ignores the scope and answers with its runtime offer.
+    if (pairing.available && pairing.scope !== scope) {
+      throw MOBILE_PAIRING_SHOW_UNSUPPORTED
+    }
     if (json) {
       printResult(response, true, () => '')
     } else {

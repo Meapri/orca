@@ -15,7 +15,11 @@ import { OrcadHealthMonitor } from './orcad-health-monitor'
 import { createOrcadHealthProbeHandler } from './orcad-health-probe-http'
 import { sendLocalRuntimeRpcRequest } from './orcad-local-rpc-request'
 import { OrcadRuntimeWatchdog } from './orcad-runtime-watchdog'
-import { createOrcadServerAdminMethods, SERVER_HEALTH_METHOD } from './orcad-server-admin-methods'
+import {
+  createOrcadServerAdminMethods,
+  SERVER_HEALTH_METHOD,
+  type OrcadPairingOfferRequest
+} from './orcad-server-admin-methods'
 import {
   createSystemdNotifySend,
   OrcadSystemdNotifier,
@@ -29,7 +33,7 @@ export type OrcadHealthSurfaceHost = {
   rpc: OrcaRuntimeRpcServer
   runtimeDegradations: () => readonly RuntimeDegradation[]
   listLocalTerminals: () => Promise<readonly unknown[]>
-  pairingOffer: (request: { rotate: boolean }) => ServePairingReadiness
+  pairingOffer: (request: OrcadPairingOfferRequest) => Promise<ServePairingReadiness>
 }
 
 async function withTimeout<T>(work: Promise<T>, timeoutMs: number): Promise<T | null> {
@@ -127,11 +131,11 @@ export function createOrcadHealthSurface(options: {
   return {
     extraMethods: createOrcadServerAdminMethods({
       serverHealth: (request) => monitor.serverHealth(request),
-      pairingOffer: ({ rotate }) => {
+      pairingOffer: async (request) => {
         if (!host) {
           throw new Error('server_not_ready')
         }
-        return host.pairingOffer({ rotate })
+        return host.pairingOffer(request)
       }
     }),
     httpProbeHandler: createOrcadHealthProbeHandler(monitor),

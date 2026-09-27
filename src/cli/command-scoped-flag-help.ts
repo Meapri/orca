@@ -13,6 +13,7 @@ const COMMAND_SCOPED_FLAG_HELP: Record<string, Record<string, string>> = {
     port: '--port <port>          Pinned port orcad will use (default 6768, not pinned)'
   },
   'serve pairing': {
+    mobile: '--mobile               Reprint the phone-scoped offer and QR instead',
     rotate: '--rotate               Revoke the unused startup pairing offer and mint a new one',
     'data-root': SERVE_DATA_ROOT_HELP
   },

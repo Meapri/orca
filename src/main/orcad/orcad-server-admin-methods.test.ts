@@ -13,7 +13,7 @@ vi.mock('../git/worktree', () => ({
 }))
 
 function methods() {
-  const pairingOffer = vi.fn(() => ({
+  const pairingOffer = vi.fn(async () => ({
     available: false as const,
     reason: 'disabled_by_operator' as const,
     guidance: 'g'
@@ -43,7 +43,14 @@ describe('server admin methods', () => {
     await expect(pairing.handler({ rotate: true }, { runtime })).resolves.toMatchObject({
       available: false
     })
-    expect(pairingOffer).toHaveBeenCalledWith({ rotate: true })
+    expect(pairingOffer).toHaveBeenCalledWith({ rotate: true, scope: 'runtime' })
+  })
+
+  it('routes the phone offer only when the caller names the mobile scope', async () => {
+    const { pairing, pairingOffer } = methods()
+
+    await pairing.handler({ scope: 'mobile' }, { runtime })
+    expect(pairingOffer).toHaveBeenCalledWith({ rotate: false, scope: 'mobile' })
   })
 })
 

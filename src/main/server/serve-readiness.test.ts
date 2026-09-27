@@ -91,6 +91,42 @@ describe('ServeReadinessPublisher', () => {
     )
   })
 
+  it('carries a phone offer beside the runtime one without changing the runtime field', () => {
+    const withMobile: ServeReadiness = {
+      ...ready,
+      mobilePairing: {
+        available: true,
+        url: 'orca://pair?code=phone',
+        endpoint: 'wss://orca.example.test/runtime',
+        deviceId: 'phone-1',
+        webClientUrl: null,
+        scope: 'mobile',
+        qr: '[qr]'
+      }
+    }
+
+    const json = JSON.parse(renderServeReadiness(withMobile, { mode: 'json' }))
+    expect(json.pairing).toEqual(ready.pairing)
+    expect(json.mobilePairing).toEqual(withMobile.mobilePairing)
+    const human = renderServeReadiness(withMobile, { mode: 'human' })
+    expect(human).toContain('Pairing URL: orca://pair?code=secret')
+    expect(human).toContain('Mobile pairing QR:\n[qr]\nMobile Pairing URL: orca://pair?code=phone')
+    expect(JSON.parse(renderServeReadiness(ready, { mode: 'json' }))).not.toHaveProperty(
+      'mobilePairing'
+    )
+  })
+
+  it('reports an unavailable phone offer under its own label', () => {
+    const human = renderServeReadiness(
+      {
+        ...ready,
+        mobilePairing: { available: false, reason: 'invalid_advertised_endpoint', guidance: 'g' }
+      },
+      { mode: 'human' }
+    )
+    expect(human).toContain('Mobile Pairing unavailable: invalid_advertised_endpoint')
+  })
+
   it('preserves the recipe JSON contract', () => {
     expect(renderServeReadiness(ready, { mode: 'recipe-json', projectRoot: '/workspace' })).toBe(
       '{"schemaVersion":1,"pairingCode":"orca://pair?code=secret","projectRoot":"/workspace"}'

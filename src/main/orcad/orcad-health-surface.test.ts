@@ -51,6 +51,7 @@ async function startServer(options: { noPairing: boolean }): Promise<{
     await rpc.stop()
   })
   const pairingOffer = createOrcadPairingOffer({
+    scope: 'runtime',
     noPairing: options.noPairing,
     pairingAddress: undefined,
     alternateEndpoints: undefined,

@@ -61,6 +61,7 @@ describe('parseArgs', () => {
         '100.64.1.20',
         '--pairing-address',
         'wss://orca.example.com',
+        '--mobile-pairing',
         '--json'
       ])
     ).toEqual({
@@ -70,6 +71,7 @@ describe('parseArgs', () => {
       pairingExpiresInMs: 3_600_000,
       pairingAddress: '100.64.1.20',
       pairingAddresses: ['100.64.1.20', 'wss://orca.example.com'],
+      mobilePairing: true,
       json: true
     })
   })
