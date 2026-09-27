@@ -151,6 +151,12 @@ not expressible as a POSIX mode, and `statSync().mode` there reports a synthesiz
 A dead holder's record is reclaimed (PID plus process start time, so a recycled PID does not
 read as alive). A record belonging to a different identity is never reclaimed.
 
+Host-authored records live beside the profile state and are written with fsync + rename before
+the change they record is acknowledged: `closed-terminal-surfaces.json` (the closed-surface ledger,
+see [multi-client-state-authority.md](./multi-client-state-authority.md)) and
+`host-editor-tabs.json` (the file, markdown and diff tabs paired clients opened on this host).
+Deleting the second closes those tabs; it holds paths, never file content.
+
 **The lock scopes one role — who is the runtime.** It deliberately says nothing about the
 daemon, which lives under `<data-root>/daemon` and fences its own endpoint with its own PID
 record. A lock that asked "is any process using this root" would refuse exactly the restarts

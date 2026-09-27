@@ -49,24 +49,37 @@ each needs a host-side (or client-side) replacement.
 | "Agent finished" / "needs input" notifications, phone push       | Was never produced (#20706). Now derived from hook status by `notifications/headless-agent-notifications.ts` on serve and orcad, into the existing mobile fan-out; stands down while a renderer is attached.                                                                                                        | fixed          |
 | Terminal-bell notifications                                      | not produced                                                                                                                                                                                                                                                                                                        | gap (low)      |
 | First-work branch/workspace auto-rename                          | Was window-listener only (#17069). Now a hook-status subscription (`agent-hooks/first-work-rename-subscription.ts`) on desktop, serve and orcad.                                                                                                                                                                    | fixed          |
-| Opening a file or diff as a tab (`files.open`, `files.openDiff`) | Host refuses `renderer_unavailable` (`orca-runtime-file-commands.ts`). Mobile now falls back to its device-side screens on that refusal: review screen for a changed file, file preview for a tapped path (#14315, #22186).                                                                                         | fixed (client) |
-| Markdown tab read/save (`markdown.readTab`/`saveTab`)            | Host refuses `renderer_unavailable`; mobile already falls back to a read-only disk render. Editing markdown from a phone still needs a desktop.                                                                                                                                                                     | gap (medium)   |
-| Editor / markdown / diff session tabs                            | Headless hosts have no editor-tab model, so these tabs never exist there and closing one refuses `runtime_unavailable` (`orca-runtime-close-mobile-session-tab.ts`).                                                                                                                                                | gap (medium)   |
+| Opening a file or diff as a tab (`files.open`, `files.openDiff`) | A client advertising `session-tabs.host-editor-tabs.v1` (current mobile, the CLI) gets a host-owned tab (`host-editor-tabs.ts`) on `session.tabs`, and its `tabId`. Other clients still get `renderer_unavailable`; mobile keeps its device-screen fallback for it (#14315, #22186).                                | fixed (opt-in) |
+| Markdown tab read/save (`markdown.readTab`/`saveTab`)            | Served for host-owned markdown tabs with the desktop bridge's rules (hash versions, stale base = `conflict` unless disk already matches, read-back check). A local save re-checks and swaps in a temp file; SSH re-checks before writing (one round trip). Other ids keep `renderer_unavailable`.                   | fixed          |
+| Editor / markdown / diff session tabs                            | Kept in `<data-root>/host-editor-tabs.json`, durable before an open or close is acknowledged; every paired client lists and closes them. A close tombstones the uuid in the closed-surface ledger first. Active only with no renderer attached; a renderer stays the owner.                                         | fixed          |
 | Sleeping-agent capture and resume (#21743)                       | `sleepingAgentSessionsByPaneKey` is written only by the renderer and read only by a renderer cold restore, so an idle agent pane comes back as a bare shell after a restart that loses its PTY. On orcad the daemon keeps PTYs alive across an orcad restart, so this bites only when the daemon or host goes down. | gap (medium)   |
 | `worktree.sleep`                                                 | silent no-op that still returns the worktree id                                                                                                                                                                                                                                                                     | gap (low)      |
 | Orphan terminal-history GC                                       | armed from the main window only                                                                                                                                                                                                                                                                                     | gap (low)      |
 
 ## Wire compatibility of the fixes
 
-No RPC params, stream frames or capabilities changed. The notification producer publishes the
-same `MobileNotificationDispatchEvent` shape the desktop delivery path already publishes, so
-old clients see ordinary notifications. The mobile fallbacks key on an error code every
-existing headless host already sends, and a desktop host never sends it.
+The notification producer publishes the same `MobileNotificationDispatchEvent` shape the desktop
+delivery path already publishes, so old clients see ordinary notifications. The mobile fallbacks
+key on an error code every existing headless host already sends, and a desktop host never sends it.
+
+Host-owned editor tabs are the one negotiated change:
+
+- **New client capability `session-tabs.host-editor-tabs.v1`.** `files.open`/`files.openDiff`
+  answer with a host tab only for a client that advertises it (or the in-process CLI). A released
+  phone does not, so it still receives `renderer_unavailable` and opens its device screens. A new
+  phone against an old host gets the same refusal and the same fallback.
+- **`tabId` on the open reply** is an optional field (Rule 1), omitted whenever a renderer opened
+  the tab, so desktop replies are byte-for-byte unchanged.
+- **New content on `session.tabs` (Rule 3).** A headless host now publishes `markdown`/`file`
+  rows, which it never did. Every released client already decodes those rows, because a desktop
+  host publishes the same shapes, and each operation on them — `markdown.readTab`/`saveTab`,
+  `session.tabs.close`, reading the file from disk — is an existing contract. An old client that
+  sees a row another client opened can therefore read, edit and close it. The cross-version
+  harness does not cover the session-tab channel; this is the recorded reasoning.
 
 ## Follow-ups
 
 1. Serve the bundled web client from orcad and reconcile `webClientUrl` with the loopback bind.
-2. A host-side editor-tab model for markdown/file/diff tabs, including markdown save.
-3. Sleeping-agent capture from hook status plus a headless cold-restore consumer (#21743).
-4. Account-backed agent prep (Claude auth, Codex runtime home) behind a Node host port.
-5. Mobile-scoped pairing offers and a QR in orcad's ready block.
+2. Sleeping-agent capture from hook status plus a headless cold-restore consumer (#21743).
+3. Account-backed agent prep (Claude auth, Codex runtime home) behind a Node host port.
+4. Mobile-scoped pairing offers and a QR in orcad's ready block.
