@@ -114,8 +114,13 @@ export function startRemoteRuntimeSocketLiveness(args: {
       }
     }, deadlineMs)
     // Why: mobile typechecks shared code with DOM timer types where unref is absent.
-    const unrefableProbe = resumeProbeTimer as unknown as { unref?: () => void }
-    unrefableProbe.unref?.()
+    if (
+      typeof resumeProbeTimer === 'object' &&
+      'unref' in resumeProbeTimer &&
+      typeof resumeProbeTimer.unref === 'function'
+    ) {
+      resumeProbeTimer.unref()
+    }
   }
 
   function tryPing(): void {
