@@ -15,6 +15,9 @@ export type RuntimeTerminalResourceLimitsReason =
 
 export type RuntimeBrowserUnavailableReason =
   | 'unconfigured'
+  | 'disabled'
+  | 'starting'
+  | 'electron_not_installed'
   | 'driver_missing'
   | 'executable_not_found'
   | 'executable_not_executable'

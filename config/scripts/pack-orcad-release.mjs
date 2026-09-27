@@ -7,6 +7,13 @@
  * `config/orcad-host/orcad-install.sh` verifies the checksum before it extracts anything.
  *
  *   node config/scripts/pack-orcad-release.mjs [--target linux-x64-glibc] [--from out/orcad]
+ *     [--asset-names stable] [--release-repo OWNER/NAME]
+ *
+ * `--asset-names stable` names the tarball `orcad-<target>.tar.gz`, the name a GitHub Release
+ * carries and `orcad-install.sh --release` downloads; the installer reads the version from
+ * the tarball's top directory, never from its filename. The installer copies are stamped
+ * with the release repository (flag, else ORCAD_RELEASE_REPO / GITHUB_REPOSITORY, else the
+ * `origin` remote) so `--release latest` needs no `--repo`.
  */
 import { createHash } from 'node:crypto'
 import {
@@ -48,6 +55,38 @@ export function orcadReleaseTarballName(fullVersion, target) {
     throw new Error(`Not an orcad build target: ${JSON.stringify(target)}`)
   }
   return `orcad-${fullVersion}-${target}.tar.gz`
+}
+
+/** The release-asset name: fixed per target, and free of the `+` GitHub may rewrite. */
+export function orcadReleaseAssetName(target) {
+  if (!/^[a-z0-9]+-[a-z0-9]+(-(glibc|musl))?$/.test(target)) {
+    throw new Error(`Not an orcad build target: ${JSON.stringify(target)}`)
+  }
+  return `orcad-${target}.tar.gz`
+}
+
+/** `owner/name` from a GitHub remote URL (https or ssh), or null for anything else. */
+export function githubRepoSlugFromRemote(remoteUrl) {
+  const match = /github\.com[:/]([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?\/?$/.exec(
+    remoteUrl.trim()
+  )
+  return match ? `${match[1]}/${match[2]}` : null
+}
+
+const INSTALLER_REPO_LINE = /^ORCAD_RELEASE_REPO_BUILT_IN=''$/m
+
+/** Bakes the default release repository into an installer copy. */
+export function stampInstallerReleaseRepo(installerSource, slug) {
+  if (!slug) {
+    return installerSource
+  }
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(slug)) {
+    throw new Error(`Not a GitHub repository slug: ${JSON.stringify(slug)}`)
+  }
+  if (!INSTALLER_REPO_LINE.test(installerSource)) {
+    throw new Error('orcad-install.sh has no ORCAD_RELEASE_REPO_BUILT_IN line to stamp')
+  }
+  return installerSource.replace(INSTALLER_REPO_LINE, `ORCAD_RELEASE_REPO_BUILT_IN='${slug}'`)
 }
 
 /** `sha256sum -c` format, so operators can verify with standard tools too. */
@@ -105,6 +144,20 @@ function argument(name) {
   return index === -1 ? null : process.argv[index + 1]
 }
 
+function resolveReleaseRepoSlug() {
+  const explicit =
+    argument('--release-repo') ?? process.env.ORCAD_RELEASE_REPO ?? process.env.GITHUB_REPOSITORY
+  if (explicit) {
+    return explicit
+  }
+  const remote = runProcessSync({
+    program: 'git',
+    args: ['remote', 'get-url', 'origin'],
+    cwd: ROOT
+  })
+  return remote.code === 0 ? githubRepoSlugFromRemote(remote.stdout) : null
+}
+
 function run(program, args, options = {}) {
   const result = runProcessSync({ program, args, cwd: ROOT, timeoutMs: null, ...options })
   if (result.code !== 0) {
@@ -115,6 +168,15 @@ function run(program, args, options = {}) {
 
 async function main() {
   const outDir = resolve(argument('--out-dir') ?? join(ROOT, 'out', 'orcad-release'))
+  const assetNames = argument('--asset-names') ?? 'versioned'
+  if (assetNames !== 'versioned' && assetNames !== 'stable') {
+    throw new Error(`--asset-names expects versioned|stable, got ${JSON.stringify(assetNames)}`)
+  }
+  const releaseRepo = resolveReleaseRepoSlug()
+  const installerSource = stampInstallerReleaseRepo(
+    readFileSync(join(ORCAD_HOST_KIT_DIR, 'orcad-install.sh'), 'utf8'),
+    releaseRepo
+  )
   let target = argument('--target')
   let source = argument('--from')
   if (!source) {
@@ -141,17 +203,21 @@ async function main() {
   for (const file of ORCAD_HOST_KIT_FILES) {
     copyFileSync(join(ORCAD_HOST_KIT_DIR, file), join(stage, 'deploy', file))
   }
+  writeFileSync(join(stage, 'deploy', 'orcad-install.sh'), installerSource)
   chmodSync(join(stage, 'deploy', 'orcad-install.sh'), 0o755)
 
   mkdirSync(outDir, { recursive: true })
-  const tarball = orcadReleaseTarballName(version, builtTarget)
+  const tarball =
+    assetNames === 'stable'
+      ? orcadReleaseAssetName(builtTarget)
+      : orcadReleaseTarballName(version, builtTarget)
   // COPYFILE_DISABLE keeps macOS bsdtar from adding AppleDouble `._*` members.
   run('tar', ['-C', stageRoot, '-czf', join(outDir, tarball), basename(stage)], {
     env: { ...process.env, COPYFILE_DISABLE: '1' }
   })
   const tarballSha = sha256File(join(outDir, tarball))
   writeFileSync(join(outDir, `${tarball}.sha256`), sha256Line(tarballSha, tarball))
-  copyFileSync(join(ORCAD_HOST_KIT_DIR, 'orcad-install.sh'), join(outDir, 'orcad-install.sh'))
+  writeFileSync(join(outDir, 'orcad-install.sh'), installerSource, { mode: 0o755 })
   const installerSha = sha256File(join(outDir, 'orcad-install.sh'))
   writeFileSync(
     join(outDir, 'orcad-install.sh.sha256'),
@@ -163,10 +229,14 @@ async function main() {
     target: builtTarget,
     tarball,
     sha256: tarballSha,
-    installerSha256: installerSha
+    installerSha256: installerSha,
+    ...(releaseRepo ? { releaseRepo } : {})
   }
   writeFileSync(
-    join(outDir, `orcad-${version}-${builtTarget}.json`),
+    join(
+      outDir,
+      assetNames === 'stable' ? `orcad-${builtTarget}.json` : `orcad-${version}-${builtTarget}.json`
+    ),
     `${JSON.stringify(manifest, null, 2)}\n`
   )
   rmSync(stageRoot, { recursive: true, force: true })

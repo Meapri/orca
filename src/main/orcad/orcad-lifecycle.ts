@@ -1,5 +1,10 @@
-import { setRuntimeBrowserCommandsFactory } from '../runtime/runtime-browser-commands-factory'
+import {
+  setRuntimeBrowserCommandsFactory,
+  setRuntimeBrowserUnavailableCause
+} from '../runtime/runtime-browser-commands-factory'
 import { resolveOrcadBrowserProvider } from './orcad-browser-provider'
+import { OrcadDeferredBrowserProvider } from './orcad-deferred-browser-provider'
+import type { OrcadBrowserMode } from './orcad-browser-mode'
 import { acquireOrcadInstanceLock } from './orcad-instance-lock'
 import { ORCAD_BUNDLED_LAUNCHER_ENV } from './orcad-bundled-runtime'
 import { resolveOrcadExitCode } from './orcad-exit-code'
@@ -92,25 +97,45 @@ export async function startOrcadWithLifecycle<T extends object>(
   }
 }
 
+/** Installs the deferred provider's factory now; nothing is launched until `startInBackground`. */
+export function installOrcadBrowserProvider(
+  userDataPath: string,
+  mode: OrcadBrowserMode
+): OrcadDeferredBrowserProvider | null {
+  if (mode === 'none') {
+    setRuntimeBrowserCommandsFactory(null)
+    setRuntimeBrowserUnavailableCause({ reason: 'disabled' })
+    return null
+  }
+  const provider = new OrcadDeferredBrowserProvider({
+    resolve: (signal) => resolveOrcadBrowserProvider({ userDataPath, mode, signal })
+  })
+  setRuntimeBrowserCommandsFactory(provider.factory, {
+    headless: true,
+    isAvailable: () => provider.isAvailable(),
+    unavailableCause: () => provider.unavailableCause()
+  })
+  return provider
+}
+
 /** Keep profile admission until every runtime writer has stopped. */
 export async function startOrcadWithHost<T extends object>(
   userDataPath: string,
   start: (registerCleanup: (cleanup: () => Promise<void>) => void) => Promise<T>,
-  runQuitHandlers: () => void
+  runQuitHandlers: () => void,
+  browserMode: OrcadBrowserMode = 'auto'
 ): Promise<T & { stop(): Promise<void> }> {
   const instanceLock = acquireOrcadInstanceLock(userDataPath)
   let admission: ProfileStateRuntimeAdmission | undefined
-  let browserProvider: Awaited<ReturnType<typeof resolveOrcadBrowserProvider>> | undefined
+  let browserProvider: OrcadDeferredBrowserProvider | null = null
   return startOrcadWithLifecycle(
     async (registerCleanup) => {
       admission = acquireProfileStateRuntimeAdmission(userDataPath)
-      browserProvider = await resolveOrcadBrowserProvider({ userDataPath })
-      const provider = browserProvider
-      setRuntimeBrowserCommandsFactory(provider?.factory ?? null, {
-        headless: provider !== null,
-        ...(provider ? { isAvailable: () => provider.isAvailable() } : {})
-      })
-      return start(registerCleanup)
+      browserProvider = installOrcadBrowserProvider(userDataPath, browserMode)
+      const handle = await start(registerCleanup)
+      // Why after start: readiness is already published, so a slow sidecar never delays it.
+      browserProvider?.startInBackground()
+      return handle
     },
     async (runtimeCleanupSucceeded) => {
       try {

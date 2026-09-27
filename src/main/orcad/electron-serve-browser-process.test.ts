@@ -91,6 +91,16 @@ async function startProvider(): Promise<ElectronServeBrowserProcess> {
   return processHandle
 }
 
+function isLifelineSpawn(call: unknown): boolean {
+  return (
+    typeof call === 'object' &&
+    call !== null &&
+    'args' in call &&
+    Array.isArray(call.args) &&
+    call.args[0] === '-e'
+  )
+}
+
 function spawnSpec(): RunProcessModule.ProcessSpec {
   return spawnProcessMock.mock.calls[0][0] as RunProcessModule.ProcessSpec
 }
@@ -108,17 +118,20 @@ beforeEach(async () => {
   )
   spawnProcessMock.mockReset()
   spawnProcessMock.mockImplementation((spec: RunProcessModule.ProcessSpec) =>
-    actual.spawnProcess({
-      ...spec,
-      program: process.execPath,
-      args: [FAKE_SIDECAR, ...(spec.args ?? [])],
-      env: {
-        ...spec.env,
-        ORCA_FAKE_SIDECAR_LOG: logPath,
-        ORCA_FAKE_SIDECAR_CONTROL: controlPath,
-        ...(sidecarMode ? { ORCA_FAKE_SIDECAR_MODE: sidecarMode } : {})
-      }
-    })
+    // Why pass through `-e`: that is the sidecar lifeline watcher, not the installed app.
+    spec.args?.[0] === '-e'
+      ? actual.spawnProcess(spec)
+      : actual.spawnProcess({
+          ...spec,
+          program: process.execPath,
+          args: [FAKE_SIDECAR, ...(spec.args ?? [])],
+          env: {
+            ...spec.env,
+            ORCA_FAKE_SIDECAR_LOG: logPath,
+            ORCA_FAKE_SIDECAR_CONTROL: controlPath,
+            ...(sidecarMode ? { ORCA_FAKE_SIDECAR_MODE: sidecarMode } : {})
+          }
+        })
   )
 })
 
@@ -154,6 +167,17 @@ describe('ElectronServeBrowserProcess start-up', () => {
     }
     expect(spec.env?.ORCA_HARNESS_UNRELATED).toBe('preserved')
     expect(processHandle.isAvailable()).toBe(true)
+  })
+
+  it('launches windowless in its own process group, watched by a lifeline', async () => {
+    await startProvider()
+
+    const spec = spawnSpec()
+    // Why: without it macOS gives every sidecar a Dock tile, and a killed one leaves a ghost.
+    expect(spec.env?.ORCA_BACKGROUND_LAUNCH).toBe('1')
+    expect(spec.detached).toBe(process.platform !== 'win32')
+    const lifelineSpawns = spawnProcessMock.mock.calls.filter(([call]) => isLifelineSpawn(call))
+    expect(lifelineSpawns).toHaveLength(process.platform === 'win32' ? 0 : 1)
   })
 
   it('keeps polling until the sidecar advertises browser.headless.v1', async () => {

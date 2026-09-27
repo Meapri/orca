@@ -46,6 +46,13 @@ describe('parseArgs', () => {
     expect(() => parseArgs(['--limit', 'toString=1'])).toThrow('--limit expects')
   })
 
+  it('accepts --browser and refuses an unknown provider', () => {
+    expect(parseArgs(['--browser', 'none'])).toEqual({ browser: 'none' })
+    expect(parseArgs(['--browser', 'Electron'])).toEqual({ browser: 'electron' })
+    expect(() => parseArgs(['--browser', 'webkit'])).toThrow('--browser expects one of')
+    expect(() => parseArgs(['--browser'])).toThrow('--browser expects one of')
+  })
+
   it('accepts every orcad flag together: limits, lifetime, repeated addresses, pinned port', () => {
     expect(
       parseArgs([

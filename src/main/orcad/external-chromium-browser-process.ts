@@ -3,6 +3,7 @@ import type {
   RuntimeBrowserCommands
 } from '../runtime/orca-runtime-browser'
 import { BrowserError } from '../browser/browser-error'
+import { createBrowserCommandDispatchProxy } from './browser-command-dispatch-proxy'
 import {
   ExternalChromiumBrowserSession,
   type ExternalChromiumLaunch
@@ -99,17 +100,17 @@ export class ExternalChromiumBrowserProcess {
   }
 
   createCommands(host: RuntimeBrowserCommandHost): RuntimeBrowserCommands {
-    return new Proxy({} as RuntimeBrowserCommands, {
-      get: (_target, property) => {
-        if (property === 'then') {
-          return undefined
-        }
-        if (typeof property !== 'string') {
-          return undefined
-        }
-        return (...args: unknown[]) => this.enqueue(() => this.invokeGuarded(host, property, args))
-      }
-    })
+    return createBrowserCommandDispatchProxy((method, args) =>
+      this.invokeCommand(host, method, args)
+    )
+  }
+
+  invokeCommand(
+    host: RuntimeBrowserCommandHost,
+    method: string,
+    args: unknown[]
+  ): Promise<unknown> {
+    return this.enqueue(() => this.invokeGuarded(host, method, args))
   }
   isAvailable(): boolean {
     return this.available

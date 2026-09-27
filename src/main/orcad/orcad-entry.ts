@@ -7,13 +7,14 @@
  *
  * Desktop UI surfaces stay uninstalled: no native notifications or renderer delivery.
  * Browser automation is installed through
- * the runtime factory, but only when an Electron serve sidecar or an operator-supplied
- * Chromium proves available at startup.
+ * the runtime factory; its provider (an Electron serve sidecar or an operator-supplied
+ * Chromium, per `--browser`) starts after readiness is published.
  */
 import { join } from 'node:path'
 import process from 'node:process'
 import { setAppEnvironment, type AppEnvironment } from '../../shared/app-environment'
-import { setSecretStore, type SecretStore } from '../../shared/secret-store'
+import { setSecretStore } from '../../shared/secret-store'
+import { createNodeSecretStore } from './orcad-node-secret-store'
 import type { ServeReadiness } from '../server/serve-readiness'
 import { resolveOrcadInstallRoot, resolveOrcadPath, resolveUserDataPath } from './orcad-app-paths'
 import { describeOrcadBindExposure, resolveOrcadBindHost } from './orcad-bind-address'
@@ -26,6 +27,7 @@ import {
 import { takeSystemdNotifyEnvironment, type SystemdNotifyEnvironment } from './orcad-systemd-notify'
 import { parseArgs } from './orcad-command-arguments'
 import { applyOrcadResourceLimits } from './orcad-resource-limit-flags'
+import { resolveOrcadBrowserMode, type OrcadBrowserMode } from './orcad-browser-mode'
 import type { OrcadHeadlessParity } from './orcad-headless-parity'
 import {
   changedAiVaultSearchSettings,
@@ -66,25 +68,6 @@ function createNodeAppEnvironment(): AppEnvironment {
   }
 }
 
-/**
- * Why not silently plaintext: `isEncryptionAvailable() === false` already makes every
- * caller fall back to unsealed storage, which is a security posture, not a detail.
- * `describeProtectionGap()` gives the reason a client can surface.
- */
-function createNodeSecretStore(): SecretStore {
-  return {
-    isEncryptionAvailable: () => false,
-    encryptString: () => {
-      throw new Error('orcad_secret_sealing_unavailable')
-    },
-    decryptString: () => {
-      throw new Error('orcad_secret_sealing_unavailable')
-    },
-    describeProtectionGap: () =>
-      'This host has no OS keyring, so credentials are stored unencrypted. Pair from a desktop to manage secrets, or install and unlock a keyring.'
-  }
-}
-
 export function installOrcadHostAdapters(): void {
   setAppEnvironment(createNodeAppEnvironment())
   setSecretStore(createNodeSecretStore())
@@ -103,6 +86,8 @@ export type OrcadOptions = {
   bind?: string
   /** Resource-governance env assignments from `--limit`; see orcad-resource-limit-flags.ts. */
   resourceLimits?: Record<string, string>
+  /** `--browser`; unset falls back to ORCA_BROWSER_PROVIDER, then `auto`. */
+  browser?: OrcadBrowserMode
 }
 
 export type OrcadHandle = {
@@ -118,6 +103,7 @@ export type OrcadHandle = {
 export async function startOrcad(options: OrcadOptions = {}): Promise<OrcadHandle> {
   // Why first: the daemon launch, history sweep and browser provider all read these at start.
   applyOrcadResourceLimits(options.resourceLimits)
+  const browserMode = resolveOrcadBrowserMode(options.browser, process.env)
   installOrcadHostAdapters()
   // Why first: the browser sidecar, the daemon and every PTY inherit this env and must not see the notify socket.
   const systemdNotify = takeSystemdNotifyEnvironment(process.env, process.platform, [
@@ -127,7 +113,8 @@ export async function startOrcad(options: OrcadOptions = {}): Promise<OrcadHandl
   return startOrcadWithHost(
     resolveUserDataPath(),
     (registerCleanup) => startOrcadRuntime(options, registerCleanup, systemdNotify),
-    () => runOrcadQuitHandlers()
+    () => runOrcadQuitHandlers(),
+    browserMode
   )
 }
 

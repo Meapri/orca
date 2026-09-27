@@ -197,11 +197,18 @@ it('starts push after RPC identity is available and stops dispatch on shutdown',
   })
 })
 
-it('releases admission when host setup fails before a runtime exists', async () => {
-  state.root = mkdtempSync(join(tmpdir(), 'orca-headless-setup-failure-'))
+it('publishes readiness before the browser provider starts, and survives its failure', async () => {
+  state.root = mkdtempSync(join(tmpdir(), 'orca-headless-browser-failure-'))
   state.browserProvider.mockRejectedValueOnce(new Error('browser setup failed'))
   const { startOrcad } = await import('./orcad-entry')
-  await expect(startOrcad()).rejects.toThrow('browser setup failed')
+  const host = await startOrcad({ noPairing: true, json: true })
+  try {
+    expect(host.readiness.runtimeId).toBeTruthy()
+    // Why: the provider starts only once readiness is out, so a hung sidecar cannot delay it.
+    expect(state.browserProvider).toHaveBeenCalledTimes(1)
+  } finally {
+    await host.stop()
+  }
   expect(readdirSync(profileStateAccessPaths(state.root).participants)).toEqual([])
   acquireProfileStateMaintenance(state.root).release()
 })
