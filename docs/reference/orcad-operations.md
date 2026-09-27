@@ -151,6 +151,25 @@ not expressible as a POSIX mode, and `statSync().mode` there reports a synthesiz
 A dead holder's record is reclaimed (PID plus process start time, so a recycled PID does not
 read as alive). A record belonging to a different identity is never reclaimed.
 
+What orcad keeps there for agent accounts is what the desktop keeps in its own userData, written
+by the same code:
+
+| Path                                                 | Contents                                                                                                 |
+| ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `claude-accounts/<id>/`                              | managed Claude accounts: `oauth-account.json`, and on Linux `.credentials.json` (macOS: login keychain)  |
+| `claude-runtime-auth/`                               | the system-default Claude credentials snapshot taken before a managed account is swapped in              |
+| `codex-accounts/<id>/home/`                          | managed Codex homes (`auth.json`, config mirror); a PTY for the selected account gets it as `CODEX_HOME` |
+| `codex-runtime-home/`                                | Codex routing metadata and migration markers                                                             |
+| `orca-claude-usage.json`, `orca-codex-usage.json`    | usage scan caches; automation runs read their token and cost figures from them                           |
+| `cli/bin/orca` (macOS) or `cli/bin/orca-ide` (Linux) | the [`orca` CLI launcher](#the-orca-cli-on-orcad-hosts)                                                  |
+
+On Linux these credentials are plain files inside the `0700` root, exactly as the desktop stores
+them there; nothing is sealed, because this host's secret store has no keyring. Adding an account
+needs a login already made on the host (`accounts.addClaudeFromConfigDir` /
+`accounts.addCodexFromHome`, local socket only); interactive logins remain desktop flows.
+Rate-limit meters refresh only when a client asks for them, as on `orca serve`: orcad never polls
+provider usage endpoints on its own.
+
 **The lock scopes one role — who is the runtime.** It deliberately says nothing about the
 daemon, which lives under `<data-root>/daemon` and fences its own endpoint with its own PID
 record. A lock that asked "is any process using this root" would refuse exactly the restarts
@@ -424,8 +443,11 @@ hours:
 - Nothing reads an exited session's tree (cold restore requires a session that did not end), so
   collection only drops scrollback of terminals whose process is gone.
 
-orcad runs no private `CODEX_HOME` (the Codex account flows are desktop-only), so Codex's own
-`sessions/` under the user's `~/.codex` is third-party data and is never touched.
+This sweep only reads Orca's own `terminal-history/`. Codex's `sessions/` under `~/.codex` is
+third-party data and is never collected. orcad routes Codex the way the desktop does: the system
+default runs on the real `~/.codex`, and a selected managed account runs in its own
+`<data-root>/codex-accounts/<id>/home`, which the same session-migration pass as the desktop
+keeps in step with `~/.codex`.
 
 ### Headless browser tabs
 
@@ -622,6 +644,29 @@ across logouts and service restarts, daemon cgroup isolation, the glibc floor, t
 the running orcad), and free disk space. Checks that need the running server are skipped when it
 is down. It exits 1 on any failure.
 
+### The `orca` CLI on orcad hosts
+
+The artifact ships the CLI as `orca-cli.js`. On macOS and Linux, every orcad start (re)writes a
+launcher under the data root — `cli/bin/orca-ide` on Linux, `cli/bin/orca` on macOS — that runs
+that bundle on orcad's own runtime (the bundled Bun, or whatever `node` launched orcad) and pins
+`ORCA_USER_DATA_PATH` to this data root, so it always dials this orcad. Because the data root
+does not move between versions, links to the launcher survive upgrades and rollbacks.
+
+- **Inside orcad's terminals** bare `orca` resolves to this launcher on every start: the same PTY
+  `PATH` step the packaged desktop uses (a bare-`orca` shim under the data root on Linux, the
+  launcher directory on macOS). Agents, orchestration workers and scripts need nothing on the
+  service user's `PATH`.
+- **For the service user**, after RPC is up orcad registers the launcher with the desktop's CLI
+  installer: `~/.local/bin/orca-ide` plus the bare `~/.local/bin/orca` dispatcher on Linux, and
+  `~/.local/bin/orca` on macOS (never `/usr/local/bin`: a headless host cannot ask for
+  elevation). It claims only an empty slot or its own earlier link. An unrelated command, and a
+  desktop app's registration, are left alone and logged as `orca CLI registration skipped`. The
+  registration line on stderr also says when `~/.local/bin` is not on `PATH`.
+
+This is what the [census](#process-scoped-and-cgroup-wide-stops) invokes as
+`/home/<user>/.local/bin/orca-ide terminal list --json`. Windows gets no launcher, as with
+`orca serve`.
+
 ## Feature parity with `orca serve`
 
 Which paired-client features orcad still lacks relative to the Electron-hosted `orca serve`, and
@@ -671,9 +716,12 @@ Named here so nothing reads as implemented that is not:
   from a paired client (host-only by design).
 - **Reconciling `webClientUrl` with reachability** under the loopback default.
 - **State-schema rollback rules.**
-- **A census without the Orca CLI.** The self-managed installer reads live terminals through
-  `terminal list --json` from an Orca CLI. A host with no CLI can prove a stop safe only
-  through daemon scope isolation; an unscoped daemon there cannot be stopped by the installer.
+- **A census before the CLI is registered.** The self-managed installer reads live terminals
+  through `~/.local/bin/orca-ide terminal list --json`, which orcad now
+  [registers](#the-orca-cli-on-orcad-hosts) on every start. A host whose orcad never started
+  with this build, or whose `orca-ide` slot holds an unrelated command, still has no census and
+  can prove a stop safe only through daemon scope isolation (or `ORCAD_CENSUS_COMMAND` pointing
+  at `<data-root>/cli/bin/orca-ide`).
 - **Published standalone release assets.** `pnpm pack:orcad-release` builds the tarball and
   installer, but the release workflow does not publish them.
 - **Terminal stream resumption.** A reconnect always re-subscribes and receives a full snapshot;
