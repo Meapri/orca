@@ -1,4 +1,4 @@
-// Which local data root every `orca serve status | doctor | pairing | devices` command talks to.
+// Which local data root every `orca serve status | doctor | pairing | devices | relay` command talks to.
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { getRuntimeMetadataPath } from '../shared/runtime-bootstrap'

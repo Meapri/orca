@@ -47,9 +47,15 @@ export const VALUE_TAKING_FLAGS = new Set([
 // `--help`, so widening this would risk the one path that already works.
 const HELP_FLAGS = new Set(['--help', '-h', 'help'])
 
-// Why: `serve status|doctor|pairing|devices …` administers a running runtime; treating it as a serve
+// Why: `serve status|doctor|pairing|devices|relay …` administers a running runtime; treating it as a serve
 // launch would start a second server against the same profile instead of reaching the CLI.
-const SERVE_ADMINISTRATION_SUBCOMMANDS = new Set(['status', 'doctor', 'pairing', 'devices'])
+const SERVE_ADMINISTRATION_SUBCOMMANDS = new Set([
+  'status',
+  'doctor',
+  'pairing',
+  'devices',
+  'relay'
+])
 
 function isFlagToken(token: string | undefined): boolean {
   return Boolean(token && token.startsWith('-'))

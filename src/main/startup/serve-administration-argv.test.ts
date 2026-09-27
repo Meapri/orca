@@ -24,7 +24,9 @@ describe('serve administration subcommands', () => {
     ['/AppRun', 'serve', 'status', '--json'],
     ['/AppRun', 'serve', '--data-root', '/srv/orcad', 'doctor'],
     ['/AppRun', 'serve', 'pairing', '--rotate'],
-    ['/AppRun', 'serve', 'pairing', 'show']
+    ['/AppRun', 'serve', 'pairing', 'show'],
+    ['/AppRun', 'serve', 'relay', 'status'],
+    ['/AppRun', 'serve', 'relay', 'sign-in', '--json']
   ])('never starts a server for %j', (...argv) => {
     expect(argvRequestsServeMode(argv)).toBe(false)
     expect(normalizeServeModeArgv(argv)).toEqual(argv)

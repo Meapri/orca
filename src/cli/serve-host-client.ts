@@ -1,4 +1,4 @@
-// The one local client every `orca serve status | doctor | pairing | devices` command dials.
+// The one local client every `orca serve status | doctor | pairing | devices | relay` command dials.
 import { RuntimeClient, RuntimeClientError, type RuntimeRpcSuccess } from './runtime-client'
 import { resolveServeDataRoot } from './serve-data-root'
 
