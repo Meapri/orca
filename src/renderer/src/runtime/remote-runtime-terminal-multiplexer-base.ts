@@ -20,6 +20,7 @@ import type {
   RuntimeEnvironmentSubscriptionHandle
 } from './remote-runtime-terminal-multiplexer-types'
 import { getRuntimeEnvironmentRevision } from './runtime-environment-revision'
+import { readRemoteTerminalResumePoint } from './remote-runtime-terminal-resume'
 
 export abstract class RemoteRuntimeTerminalMultiplexerBase {
   protected readonly streams = new Map<number, RemoteRuntimeMultiplexedTerminalState>()
@@ -185,13 +186,15 @@ export abstract class RemoteRuntimeTerminalMultiplexerBase {
     // Why: close callbacks may resubscribe synchronously; release first so every replacement shares the new environment multiplexer.
     this.releaseIfCurrent(this.environmentId, this)
     for (const stream of streams) {
+      // Read before teardown clears the snapshot and resync state it depends on.
+      const resumePoint = recoverable ? readRemoteTerminalResumePoint(stream) : undefined
       discardOutputAcknowledgements(stream)
       stream.watchdog.dispose()
       clearSnapshot(stream)
       clearResyncTimer(stream)
       rejectPendingSnapshotRequest(stream, message ?? 'Remote runtime connection closed.')
       const canHandleClose = Boolean(stream.callbacks.onTransportClose)
-      stream.callbacks.onTransportClose?.({ recoverable })
+      stream.callbacks.onTransportClose?.({ recoverable, ...(resumePoint ? { resumePoint } : {}) })
       if (message && !canHandleClose) {
         stream.callbacks.onError?.(message)
       }

@@ -7,6 +7,7 @@ import { iterateTerminalOutputFrameChunks } from '../../terminal-output-frame-ch
 import { TERMINAL_MULTIPLEX_ACK_STREAM_INITIAL_WINDOW_BYTES } from '../../../../../shared/terminal-multiplex-flow-control'
 import { createTerminalOutputBatcher } from './terminal-output-batcher'
 import { appendPendingMultiplexOutput } from './terminal-stream-replay'
+import { getTerminalOutputResumeRegistry } from './terminal-output-resume-registry'
 import { updateViewportForClient } from './terminal-viewport-update'
 import type {
   MultiplexSubscribeRequest,
@@ -55,6 +56,10 @@ export async function initializeMultiplexStream(
     ackWindowBytes: TERMINAL_MULTIPLEX_ACK_STREAM_INITIAL_WINDOW_BYTES,
     supportsOutputPause: request.capabilities?.outputPause === 1,
     supportsWriteUnavailable: request.capabilities?.writeUnavailable === 1,
+    outputResume:
+      request.capabilities?.outputResume === 1
+        ? getTerminalOutputResumeRegistry(runtime).acquire(ptyId)
+        : null,
     outputPaused: false,
     supportsDesktopViewportClaims: request.capabilities?.desktopViewportClaims === 1,
     desktopClaimTail: Promise.resolve(true),

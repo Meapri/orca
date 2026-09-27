@@ -8,6 +8,7 @@ import { resolveMultiplexSubscribePty } from './terminal-multiplex-subscribe-res
 import { initializeMultiplexStream } from './terminal-multiplex-stream-initialization'
 import { publishMultiplexInitialSnapshot } from './terminal-multiplex-initial-snapshot'
 import { activateMultiplexStream } from './terminal-multiplex-live-stream'
+import { publishMultiplexResumedTail } from './terminal-multiplex-resumed-tail'
 import type { TerminalMultiplexStream } from './terminal-stream-types'
 
 export function installMultiplexSubscribeFrame(
@@ -52,7 +53,9 @@ export function installMultiplexSubscribeFrame(
       return
     }
     try {
-      const published = await publishMultiplexInitialSnapshot(state, request, stream)
+      const published =
+        publishMultiplexResumedTail(state, request, stream) ??
+        (await publishMultiplexInitialSnapshot(state, request, stream))
       if (!published) {
         return
       }
