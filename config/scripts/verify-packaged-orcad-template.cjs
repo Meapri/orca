@@ -1,11 +1,14 @@
 const { createHash } = require('node:crypto')
 const { lstatSync, readFileSync, readdirSync } = require('node:fs')
-const { basename, join } = require('node:path')
+const { basename, join, relative, sep } = require('node:path')
 const {
   ORCAD_BUILD_TARGET_FILENAME,
   ORCAD_TEMPLATE_MANIFEST_FILENAME,
   ORCAD_TEMPLATE_TARGETS_DIR,
-  orcadTemplateCommonFilenames
+  ORCAD_WEB_CLIENT_DIR,
+  ORCAD_WEB_CLIENT_MANIFEST_FILENAME,
+  orcadTemplateCommonFilenames,
+  parseOrcadWebClientManifest
 } = require('../../src/shared/orcad-artifacts.ts')
 const { ORCAD_TEMPLATE_TARGETS } = require('../../src/shared/orcad-bun-runtime.ts')
 
@@ -115,6 +118,37 @@ function verifyTarget(templateDir, target, value) {
   requireExactNames(readdirSync(targetDir), expectedFiles, `${target} file inventory`)
 }
 
+function listRelativeFiles(directory) {
+  return readdirSync(directory, { withFileTypes: true, recursive: true })
+    .filter((entry) => !entry.isDirectory())
+    .map((entry) => relative(directory, join(entry.parentPath, entry.name)).split(sep).join('/'))
+}
+
+// Why an exact inventory: a stray file under web/ would ship to every host without a pinned hash.
+function verifyWebClient(templateDir) {
+  let files
+  try {
+    files = parseOrcadWebClientManifest(
+      readFileSync(join(templateDir, ...ORCAD_WEB_CLIENT_MANIFEST_FILENAME.split('/')), 'utf8')
+    )
+  } catch (error) {
+    throw new Error(
+      `[verify-packaged-orcad-template] ${error instanceof Error ? error.message : String(error)}`
+    )
+  }
+  const webDir = join(templateDir, ORCAD_WEB_CLIENT_DIR)
+  for (const file of files) {
+    verifyFile(join(webDir, ...file.path.split('/')), file.sha256, `web client ${file.path}`)
+  }
+  const manifestName = ORCAD_WEB_CLIENT_MANIFEST_FILENAME.slice(ORCAD_WEB_CLIENT_DIR.length + 1)
+  requireExactNames(
+    listRelativeFiles(webDir).filter((name) => name !== manifestName),
+    files.map((file) => file.path),
+    'web client file inventory'
+  )
+  return files.length
+}
+
 function verifyPackagedOrcadTemplate(resourcesDir) {
   const templateDir = join(resourcesDir, 'orcad-template')
   const manifest = requireRecord(readManifest(templateDir), 'manifest')
@@ -132,6 +166,8 @@ function verifyPackagedOrcadTemplate(resourcesDir) {
     )
   }
 
+  const webClientFileCount = verifyWebClient(templateDir)
+
   const targets = requireRecord(manifest.targets, 'targets')
   requireExactNames(Object.keys(targets), ORCAD_TEMPLATE_TARGETS, 'target manifest inventory')
   requireExactNames(
@@ -143,7 +179,7 @@ function verifyPackagedOrcadTemplate(resourcesDir) {
     verifyTarget(templateDir, target, targets[target])
   }
   console.log(
-    `[verify-packaged-orcad-template] OK — verified ${ORCAD_TEMPLATE_TARGETS.length} Bun targets`
+    `[verify-packaged-orcad-template] OK — verified ${ORCAD_TEMPLATE_TARGETS.length} Bun targets and ${webClientFileCount} web client files`
   )
 }
 

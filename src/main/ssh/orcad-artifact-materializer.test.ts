@@ -19,8 +19,10 @@ import {
   ORCAD_TEMPLATE_MANIFEST_FILENAME,
   ORCAD_TEMPLATE_TARGETS_DIR,
   ORCAD_VERSION_FILENAME,
+  ORCAD_WEB_CLIENT_MANIFEST_FILENAME,
   orcadArtifactFilenames,
-  orcadTemplateCommonFilenames
+  orcadTemplateCommonFilenames,
+  serializeOrcadWebClientManifest
 } from '../../shared/orcad-artifacts'
 import type { OrcadBunTarget } from '../../shared/orcad-bun-runtime'
 import { z } from 'zod'
@@ -69,6 +71,8 @@ function createTemplate(target: OrcadBunTarget = TARGET): {
   const templateDir = join(root, 'template')
   const cacheRoot = join(root, 'cache')
   const runtimePath = join(root, 'bun-runtime')
+  const webIndex = '<!doctype html>'
+  write(join(templateDir, 'web', 'web-index.html'), webIndex)
   const common: Record<string, string> = {
     ...Object.fromEntries(orcadTemplateCommonFilenames().map((filename) => [filename, filename])),
     'orcad.js': 'orcad-entry',
@@ -78,7 +82,14 @@ function createTemplate(target: OrcadBunTarget = TARGET): {
     'windows-bun-pty-gate-entry.js': 'pty-gate-entry',
     'parcel-watcher-process-entry.js': 'watcher-process',
     'node_modules/@parcel/watcher/index.js': 'watcher-wrapper',
-    [ORCAD_EMOJI_SHORTCODE_DATASET]: '{}'
+    [ORCAD_EMOJI_SHORTCODE_DATASET]: '{}',
+    [ORCAD_WEB_CLIENT_MANIFEST_FILENAME]: serializeOrcadWebClientManifest([
+      {
+        path: 'web-index.html',
+        size: webIndex.length,
+        sha256: createHash('sha256').update(webIndex).digest('hex')
+      }
+    ])
   }
   for (const [filename, contents] of Object.entries(common)) {
     write(join(templateDir, filename), contents)
@@ -168,6 +179,17 @@ describe('assembleOrcadArtifact', () => {
       expect(readFileSync(join(artifactDir, filename)).byteLength).toBeGreaterThan(0)
     }
     expect(readFileSync(join(artifactDir, 'agent-browser-linux-x64'), 'utf8')).toBe('browser')
+  })
+
+  it('copies the manifest-pinned web client and refuses bytes the manifest does not pin', async () => {
+    const fixture = createTemplate()
+    const artifactDir = await assembleOrcadArtifact({ ...fixture, target: TARGET })
+    expect(readFileSync(join(artifactDir, 'web', 'web-index.html'), 'utf8')).toBe('<!doctype html>')
+
+    write(join(fixture.templateDir, 'web', 'web-index.html'), 'tampered')
+    await expect(assembleOrcadArtifact({ ...fixture, target: TARGET })).rejects.toThrow(
+      'web client web-index.html'
+    )
   })
 
   it('rejects a packaged native file that does not match its manifest', async () => {

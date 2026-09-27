@@ -4,6 +4,7 @@ import type {
   OrcadServerHealth
 } from '../shared/orcad-server-health-contract'
 import type { OrcadDoctorCheck } from '../main/orcad/orcad-doctor-report'
+import { formatWebClientUrlLines } from '../shared/web-client-url-lines'
 
 function mebibytes(bytes: number): string {
   return `${Math.round(bytes / 1024 ** 2)} MiB`
@@ -96,10 +97,11 @@ export function formatServePairing(pairing: OrcadPairingOfferReport, qr: string 
   if (!pairing.available) {
     return `Pairing unavailable: ${pairing.reason}\n${pairing.guidance}`
   }
-  const lines = [`Pairing URL: ${pairing.url}`, `Endpoint: ${pairing.endpoint}`]
-  if (pairing.webClientUrl) {
-    lines.push(`Web client URL: ${pairing.webClientUrl}`)
-  }
+  const lines = [
+    `${pairing.scope === 'mobile' ? 'Mobile pairing URL' : 'Pairing URL'}: ${pairing.url}`,
+    `Endpoint: ${pairing.endpoint}`,
+    ...formatWebClientUrlLines(pairing)
+  ]
   if (typeof pairing.expiresAt === 'number') {
     lines.push(
       `Expires: ${new Date(pairing.expiresAt).toISOString()} unless a client uses it first`

@@ -23,11 +23,18 @@ const ServerHealthParams = z.object({
   probe: z.boolean().optional()
 })
 
-const ServerPairingOfferParams = z.object({ rotate: z.boolean().optional() })
+// Why optional scope: an older CLI sends none and means the runtime offer. An older orcad strips
+// it and answers with a runtime offer, which the CLI detects from the reply's own `scope`.
+const ServerPairingOfferParams = z.object({
+  rotate: z.boolean().optional(),
+  scope: z.enum(['runtime', 'mobile']).optional()
+})
+
+export type OrcadPairingOfferRequest = { rotate: boolean; scope: 'runtime' | 'mobile' }
 
 export type OrcadServerAdminDeps = {
   serverHealth(options: { fresh: boolean }): Promise<OrcadServerHealth>
-  pairingOffer(options: { rotate: boolean }): ServePairingReadiness
+  pairingOffer(options: OrcadPairingOfferRequest): Promise<ServePairingReadiness>
 }
 
 export function createOrcadServerAdminMethods(deps: OrcadServerAdminDeps) {
@@ -48,7 +55,10 @@ export function createOrcadServerAdminMethods(deps: OrcadServerAdminDeps) {
             'server_pairing_local_only: run `orca serve pairing` on the server host itself'
           )
         }
-        return deps.pairingOffer({ rotate: params.rotate === true })
+        return deps.pairingOffer({
+          rotate: params.rotate === true,
+          scope: params.scope ?? 'runtime'
+        })
       }
     })
   ]

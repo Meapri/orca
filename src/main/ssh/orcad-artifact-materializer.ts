@@ -2,51 +2,39 @@ import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream, existsSync } from 'node:fs'
 import { chmod, copyFile, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { z } from 'zod'
 import { getAppEnvironment } from '../../shared/app-environment'
 import { waitForPromiseWithSignal } from '../../shared/abort-signal-reason'
 import {
   ORCAD_BUILD_TARGET_FILENAME,
   orcadBunRuntimeFilename,
   orcadArtifactHashPrefix,
-  ORCAD_TEMPLATE_MANIFEST_FILENAME,
   ORCAD_TEMPLATE_TARGETS_DIR,
   ORCAD_VERSION,
   ORCAD_VERSION_FILENAME,
   ORCAD_RIPGREP_ARTIFACTS,
   orcadArtifactFilenames,
-  orcadTemplateCommonFilenames
+  orcadWebClientArtifactFilename
 } from '../../shared/orcad-artifacts'
 import type { OrcadBunTarget } from '../../shared/orcad-bun-runtime'
 import { findOrcadCachePath } from './orcad-cache-path'
 import {
   fileSha256,
   materializeCachedOrcadBunRuntime,
-  verifyFileSha256,
   type OrcadBunRuntimeMaterializeOptions
 } from './orcad-bun-runtime-materializer'
+import {
+  readTemplateManifest,
+  verifyTemplate,
+  type OrcadTemplateManifest
+} from './orcad-template-manifest'
 
-const TemplateTargetSchema = z
-  .object({
-    targetSha256: z.string().regex(/^[a-f0-9]{64}$/u),
-    watcherSha256: z.string().regex(/^[a-f0-9]{64}$/u),
-    browserName: z
-      .string()
-      .regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/u)
-      .optional(),
-    browserSha256: z
-      .string()
-      .regex(/^[a-f0-9]{64}$/u)
-      .optional()
-  })
-  .refine((target) => Boolean(target.browserName) === Boolean(target.browserSha256), {
-    message: 'browserName and browserSha256 must either both be present or both be absent'
-  })
-const TemplateManifestSchema = z.object({
-  schemaVersion: z.literal(2),
-  commonSha256: z.record(z.string(), z.string().regex(/^[a-f0-9]{64}$/u)),
-  targets: z.record(z.string(), TemplateTargetSchema)
-})
+type ArtifactSource = {
+  filename: string
+  path: string
+  executable?: boolean
+  /** Pinned by the web client manifest, which is itself hashed; kept out of the identity hash. */
+  pinnedSha256?: string
+}
 
 type MaterializeOptions = OrcadBunRuntimeMaterializeOptions & {
   templateDir?: string
@@ -93,11 +81,18 @@ export async function assembleOrcadArtifact(args: {
   cacheRoot: string
   target: OrcadBunTarget
   runtimePath: string
-  manifest?: z.infer<typeof TemplateManifestSchema>
+  manifest?: OrcadTemplateManifest
 }): Promise<string> {
   const manifest = args.manifest ?? (await readTemplateManifest(args.templateDir))
-  await verifyTemplate(args.templateDir, args.target, manifest)
-  const sources = artifactSources(args.templateDir, args.target, args.runtimePath, manifest)
+  const webClientFiles = await verifyTemplate(args.templateDir, args.target, manifest)
+  const sources: ArtifactSource[] = [
+    ...artifactSources(args.templateDir, args.target, args.runtimePath, manifest),
+    ...webClientFiles.map((file) => ({
+      filename: orcadWebClientArtifactFilename(file),
+      path: join(args.templateDir, orcadWebClientArtifactFilename(file)),
+      pinnedSha256: file.sha256
+    }))
+  ]
   const { fullVersion, sourceHashes } = await computeArtifactIdentity(sources, args.target)
   const targetRoot = join(args.cacheRoot, args.target)
   const cached = await findOrcadCachePath(
@@ -142,8 +137,8 @@ function artifactSources(
   templateDir: string,
   target: OrcadBunTarget,
   runtimePath: string,
-  manifest: z.infer<typeof TemplateManifestSchema>
-): { filename: string; path: string; executable?: boolean }[] {
+  manifest: OrcadTemplateManifest
+): ArtifactSource[] {
   const targetDir = join(templateDir, ORCAD_TEMPLATE_TARGETS_DIR, target)
   const targetManifest = manifest.targets[target]
   if (!targetManifest) {
@@ -177,12 +172,17 @@ function artifactSources(
 }
 
 async function computeArtifactIdentity(
-  sources: { filename: string; path: string }[],
+  sources: ArtifactSource[],
   target: OrcadBunTarget
 ): Promise<{ fullVersion: string; sourceHashes: Map<string, string> }> {
   const hash = createHash('sha256').update(orcadArtifactHashPrefix(target))
   const sourceHashes = new Map<string, string>()
   for (const source of sources) {
+    if (source.pinnedSha256) {
+      // Why: matches build-orcad's version, which hashes the web client manifest, not each file.
+      sourceHashes.set(source.filename, source.pinnedSha256)
+      continue
+    }
     const sourceHash = createHash('sha256')
     for await (const chunk of createReadStream(source.path)) {
       hash.update(chunk)
@@ -214,51 +214,6 @@ async function isCompleteArtifact(
     return true
   } catch {
     return false
-  }
-}
-
-async function readTemplateManifest(
-  templateDir: string
-): Promise<z.infer<typeof TemplateManifestSchema>> {
-  return TemplateManifestSchema.parse(
-    JSON.parse(await readFile(join(templateDir, ORCAD_TEMPLATE_MANIFEST_FILENAME), 'utf8'))
-  )
-}
-
-async function verifyTemplate(
-  templateDir: string,
-  target: OrcadBunTarget,
-  manifest: z.infer<typeof TemplateManifestSchema>
-): Promise<void> {
-  const targetManifest = manifest.targets[target]
-  if (!targetManifest) {
-    throw new Error(`Packaged orcad template does not support ${target}`)
-  }
-  const commonFilenames = orcadTemplateCommonFilenames()
-  for (const filename of commonFilenames) {
-    const expected = manifest.commonSha256[filename]
-    if (!expected) {
-      throw new Error(`Packaged orcad template manifest omits ${filename}`)
-    }
-    await verifyFileSha256(join(templateDir, filename), expected, `orcad template ${filename}`)
-  }
-  const targetDir = join(templateDir, ORCAD_TEMPLATE_TARGETS_DIR, target)
-  const targetIdentityPath = join(targetDir, ORCAD_BUILD_TARGET_FILENAME)
-  await verifyFileSha256(targetIdentityPath, targetManifest.targetSha256, `${target} build target`)
-  if ((await readFile(targetIdentityPath, 'utf8')).trim() !== target) {
-    throw new Error(`Packaged orcad template target identity does not match ${target}`)
-  }
-  await verifyFileSha256(
-    join(targetDir, 'watcher.node'),
-    targetManifest.watcherSha256,
-    `${target} watcher`
-  )
-  if (targetManifest.browserName && targetManifest.browserSha256) {
-    await verifyFileSha256(
-      join(targetDir, targetManifest.browserName),
-      targetManifest.browserSha256,
-      `${target} browser`
-    )
   }
 }
 

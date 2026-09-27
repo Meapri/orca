@@ -148,6 +148,8 @@ export type OrcadPairingOfferReport =
       endpoint: string
       deviceId: string
       webClientUrl: string | null
+      /** One browser link per alternate endpoint; absent from older orcad. */
+      webClientAlternateUrls?: string[]
       scope: 'runtime' | 'mobile'
       qr: string | null
       /** Epoch ms after which the unclaimed offer stops authenticating; absent from older orcad. */

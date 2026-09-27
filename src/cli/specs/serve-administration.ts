@@ -11,17 +11,19 @@ export const SERVE_ADMINISTRATION_COMMAND_SPECS: CommandSpec[] = [
     path: ['serve', 'pairing'],
     aliases: [['serve', 'pairing', 'show']],
     summary: 'Reprint the startup pairing link and QR code of a running orcad server',
-    usage: 'orca serve pairing [show] [--rotate] [--data-root <path>] [--json]',
-    allowedFlags: [...GLOBAL_FLAGS, 'rotate', 'data-root'],
+    usage: 'orca serve pairing [show] [--mobile] [--rotate] [--data-root <path>] [--json]',
+    allowedFlags: [...GLOBAL_FLAGS, 'mobile', 'rotate', 'data-root'],
     notes: [
       'Prints the same unused, unexpired pairing offer the server printed at startup, without restarting it; once a device uses it or it expires, it prints a fresh one with the same lifetime (--pairing-expires, default 15m).',
       '--rotate revokes that unused offer (for example, one that leaked) and mints a new one. A device that already paired is never touched.',
+      "--mobile does the same for the server's phone offer (the one `orcad --mobile-pairing` prints), which needs orcad's --pairing-address to be an address the phone can dial.",
       'To mint an additional offer (a second client, a phone, a custom lifetime or name) use `orca serve pairing new`.',
       'orcad only, and on the server host only; paired clients cannot mint pairing offers.'
     ],
     examples: [
       'orca serve pairing',
       'orca serve pairing show --json',
+      'orca serve pairing --mobile',
       'orca serve pairing --rotate'
     ]
   },

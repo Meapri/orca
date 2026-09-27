@@ -213,6 +213,12 @@ choose one of:
 Never bind `0.0.0.0` on a host with a public interface. orcad logs a warning on every such
 launch.
 
+Either way the browser client is served on the same port: open
+`jq -r .pairing.webClientUrl "$XDG_RUNTIME_DIR/orcad/readiness.json"` (through the forward, on
+the same local port). To pair a phone, add `--mobile-pairing` to `ORCAD_EXTRA_ARGS` with a
+tailnet `--pairing-address`, or run `orca serve pairing --mobile` on the host for its QR (see
+[Browser client](./orcad-operations.md#browser-client)).
+
 ### Terminal survival
 
 A service stop reaches every process in the unit's cgroup. Terminals survive it only when

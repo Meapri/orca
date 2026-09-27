@@ -131,9 +131,10 @@ export class RuntimeRpcDeviceAdministration extends RuntimeRpcMobilePairing {
     }
   }
 
+  // Why the narrow unavailable type: orcad's startup mobile offer republishes the reason as-is.
   async createAdministeredPairingOffer(
     request: PairingCreateRequest
-  ): Promise<PairingCreateResult> {
+  ): Promise<Extract<PairingCreateResult, { available: true }> | PairingOfferUnavailable> {
     const exposure = await this.prepareOfferExposure(request)
     if (exposure) {
       return exposure

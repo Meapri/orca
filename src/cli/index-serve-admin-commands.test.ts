@@ -257,6 +257,78 @@ describe('orca serve status | doctor | pairing', () => {
     expect(String(log.mock.calls[0]?.[0])).toContain('Expires: 2026-01-01T00:15:00.000Z')
   })
 
+  it('asks for the phone offer with --mobile and prints its QR', async () => {
+    callMock.mockResolvedValueOnce(
+      okFixture('req_pair', {
+        available: true,
+        url: 'orca://pair?code=phone',
+        endpoint: 'ws://100.64.0.5:6768',
+        deviceId: 'phone-1',
+        webClientUrl: null,
+        scope: 'mobile',
+        qr: 'qr'
+      })
+    )
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await main(['serve', 'pairing', '--mobile'], '/tmp/repo')
+
+    expect(callMock).toHaveBeenCalledWith('server.pairingOffer', {
+      rotate: false,
+      scope: 'mobile'
+    })
+    const output = String(log.mock.calls[0]?.[0])
+    expect(output).toContain('Mobile pairing URL: orca://pair?code=phone')
+    expect(output).not.toContain('Web client URL')
+  })
+
+  it('refuses a runtime reply to --mobile from an orcad that predates the scope', async () => {
+    callMock.mockResolvedValueOnce(
+      okFixture('req_pair', {
+        available: true,
+        url: 'orca://pair?code=abc',
+        endpoint: 'ws://127.0.0.1:6768',
+        deviceId: 'device-1',
+        webClientUrl: null,
+        scope: 'runtime',
+        qr: null
+      })
+    )
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await main(['serve', 'pairing', '--mobile'], '/tmp/repo')
+
+    expect(log.mock.calls.flat().join(' ')).not.toContain('orca://pair?code=abc')
+    expect(error.mock.calls.flat().join(' ')).toContain('predates `orca serve pairing --mobile`')
+    expect(process.exitCode).toBe(1)
+  })
+
+  it('prints every web client link a runtime offer carries', async () => {
+    callMock.mockResolvedValueOnce(
+      okFixture('req_pair', {
+        available: true,
+        url: 'orca://pair?code=abc',
+        endpoint: 'ws://127.0.0.1:6768',
+        deviceId: 'device-1',
+        webClientUrl: 'http://127.0.0.1:6768/web-index.html#pairing=a',
+        webClientAlternateUrls: ['http://100.64.0.5:6768/web-index.html#pairing=b'],
+        scope: 'runtime',
+        qr: null
+      })
+    )
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await main(['serve', 'pairing'], '/tmp/repo')
+
+    const output = String(log.mock.calls[0]?.[0])
+    expect(output).toContain('Web client URL: http://127.0.0.1:6768/web-index.html#pairing=a')
+    expect(output).toContain('ssh -L 6768:127.0.0.1:6768 <server>')
+    expect(output).toContain(
+      'Web client URL (alternate): http://100.64.0.5:6768/web-index.html#pairing=b'
+    )
+  })
+
   it('runs doctor against the data root and exits 1 on a failed check', async () => {
     const dataRoot = mkdtempSync(join(tmpdir(), 'orca-doctor-cli-'))
     process.env.ORCA_USER_DATA = join(dataRoot, 'absent')
