@@ -1,6 +1,7 @@
 import type { OrcadOptions } from './orcad-entry'
 import { parseOrcadResourceLimit } from './orcad-resource-limit-flags'
 import { parsePairingOfferLifetime } from '../../shared/pairing-offer-lifetime'
+import { parseOrcadBrowserMode } from './orcad-browser-mode'
 
 /**
  * orcad's flags. A value-taking flag consumes the next token whatever it looks
@@ -46,6 +47,9 @@ export function parseArgs(argv: string[]): OrcadOptions {
       // first stays the advertised endpoint and the rest become the offer's alternates.
       options.pairingAddress ??= value
       options.pairingAddresses = [...(options.pairingAddresses ?? []), value]
+      i += 1
+    } else if (arg === '--browser') {
+      options.browser = parseOrcadBrowserMode(argv[i + 1] ?? '', '--browser')
       i += 1
     } else if (arg === '--limit') {
       const [envName, value] = parseOrcadResourceLimit(argv[i + 1] ?? '')

@@ -2,6 +2,7 @@ import { access, mkdir } from 'node:fs/promises'
 import { constants } from 'node:fs'
 import { homedir } from 'node:os'
 import { posix, win32 } from 'node:path'
+import type { RuntimeBrowserCommandHost } from '../runtime/orca-runtime-browser'
 import {
   setRuntimeBrowserUnavailableCause,
   type RuntimeBrowserCommandsFactory,
@@ -13,19 +14,25 @@ import {
 } from './external-chromium-browser-process'
 import { resolveOrcadAgentBrowserBinary } from './orcad-agent-browser-binary'
 import { ElectronServeBrowserProcess } from './electron-serve-browser-process'
+import type { OrcadBrowserMode } from './orcad-browser-mode'
 
 export type OrcadBrowserProvider = {
   kind: 'electron' | 'chromium'
   factory: RuntimeBrowserCommandsFactory
+  invoke(host: RuntimeBrowserCommandHost, method: string, args: unknown[]): Promise<unknown>
   isAvailable(): boolean
   stop(): Promise<void>
 }
 
 export type OrcadBrowserProviderOptions = {
   userDataPath: string
+  /** `auto` (default) tries Electron then Chromium; the others try only the one named. */
+  mode?: Exclude<OrcadBrowserMode, 'none'>
   environment?: NodeJS.ProcessEnv
   resolveInstalledElectronExecutable?: () => Promise<string | null>
   resolveAgentBrowserBinary?: () => string | null
+  /** Aborted by orcad shutdown so a slow sidecar start never outlives the stop deadline. */
+  signal?: AbortSignal
 }
 
 type ExecutableProbe = 'ok' | 'missing' | 'not_executable'
@@ -111,15 +118,19 @@ async function startProvider(
   return {
     kind: launch.provider,
     factory: (host) => processHandle.createCommands(host),
+    invoke: (host, method, args) => processHandle.invokeCommand(host, method, args),
     isAvailable: () => processHandle.isAvailable(),
     stop: () => processHandle.stop()
   }
 }
 
-async function startElectronServeProvider(executablePath: string): Promise<OrcadBrowserProvider> {
+async function startElectronServeProvider(
+  executablePath: string,
+  signal: AbortSignal | undefined
+): Promise<OrcadBrowserProvider> {
   const processHandle = new ElectronServeBrowserProcess(executablePath)
   try {
-    await processHandle.start()
+    await processHandle.start(signal)
   } catch (error) {
     await processHandle.stop()
     throw error
@@ -127,16 +138,18 @@ async function startElectronServeProvider(executablePath: string): Promise<Orcad
   return {
     kind: 'electron',
     factory: (host) => processHandle.createCommands(host),
+    invoke: (host, method, args) => processHandle.invokeCommand(host, method, args),
     isAvailable: () => processHandle.isAvailable(),
     stop: () => processHandle.stop()
   }
 }
 
-/** Resolve once at startup: Electron first, then the operator-supplied Chromium. */
+/** Electron first, then the operator-supplied Chromium, narrowed by `mode`. */
 export async function resolveOrcadBrowserProvider(
   options: OrcadBrowserProviderOptions
 ): Promise<OrcadBrowserProvider | null> {
   const environment = options.environment ?? process.env
+  const mode = options.mode ?? 'auto'
   await mkdir(options.userDataPath, { recursive: true, mode: 0o700 })
 
   const declined = (cause: RuntimeBrowserUnavailableCause): null => {
@@ -144,20 +157,27 @@ export async function resolveOrcadBrowserProvider(
     return null
   }
 
-  const installedElectronExecutable = await (
-    options.resolveInstalledElectronExecutable ?? resolveInstalledElectronExecutable
-  )()
+  const installedElectronExecutable =
+    mode === 'chromium'
+      ? null
+      : await (options.resolveInstalledElectronExecutable ?? resolveInstalledElectronExecutable)()
   // Why held rather than reported now: Chromium may still resolve, and if it does not, its
   // own concrete fault is the more actionable one for an operator who set the env var.
   let electronFailure: RuntimeBrowserUnavailableCause | null = null
   if (installedElectronExecutable) {
     try {
       setRuntimeBrowserUnavailableCause(null)
-      return await startElectronServeProvider(installedElectronExecutable)
+      return await startElectronServeProvider(installedElectronExecutable, options.signal)
     } catch (error) {
       console.warn('[orcad] Installed Electron browser provider unavailable:', error)
       electronFailure = { reason: 'electron_start_failed', detail: errorDetail(error) }
     }
+  }
+  if (options.signal?.aborted) {
+    return null
+  }
+  if (mode === 'electron') {
+    return declined(electronFailure ?? { reason: 'electron_not_installed' })
   }
 
   // Why the env var is read before the driver: with it set, a missing driver is a driver

@@ -1,16 +1,15 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { setTimeout as delay } from 'node:timers/promises'
 import { z } from 'zod'
 import { BrowserError } from '../browser/browser-error'
+import { createBrowserCommandDispatchProxy } from './browser-command-dispatch-proxy'
 import type {
   RuntimeBrowserCommandHost,
   RuntimeBrowserCommands
 } from '../runtime/orca-runtime-browser'
 import type { RuntimeMetadata } from '../../shared/runtime-bootstrap'
 import { BROWSER_UNAVAILABLE_ERROR_CODE } from '../../shared/runtime-types'
-import { readRuntimeMetadata } from '../runtime/runtime-metadata'
 import { spawnProcess, type SpawnedProcess } from '../../shared/child-process/run-process'
 import { sendOrcadSidecarRequest } from './orcad-sidecar-runtime-client'
 import {
@@ -26,23 +25,26 @@ import {
   electronServeEnvironment,
   processIsLive,
   reserveLoopbackPort,
-  signalProcess
+  terminateElectronServeSidecar
 } from './electron-serve-sidecar-process-control'
+import { waitForElectronServeSidecarReady } from './electron-serve-sidecar-readiness'
+import {
+  startElectronServeSidecarLifeline,
+  type ElectronServeSidecarLifeline
+} from './electron-serve-sidecar-lifeline'
 import {
   ElectronSidecarGovernance,
   type ElectronSidecarGovernanceDeps
 } from './electron-serve-browser-governance'
 
-const START_TIMEOUT_MS = 120_000
-const STOP_TIMEOUT_MS = 5_000
 const SIDECAR_TAB_CLOSE_TIMEOUT_MS = 5_000
 const BrowserPageResult = z.object({ browserPageId: z.string() }).passthrough()
 const BrowserCloseResult = z.object({ closed: z.boolean() }).passthrough()
 const BrowserTabListResult = z.object({ tabs: z.array(ElectronSidecarTabSchema) }).passthrough()
-const RuntimeStatusResult = z.object({ capabilities: z.array(z.string()).optional() }).passthrough()
 
 export class ElectronServeBrowserProcess {
   private child: SpawnedProcess | null = null
+  private lifeline: ElectronServeSidecarLifeline | null = null
   private metadata: RuntimeMetadata | null = null
   private readonly tabs = new ElectronSidecarTabRegistry()
   private sidecarDataPath: string | null = null
@@ -88,13 +90,13 @@ export class ElectronServeBrowserProcess {
     return this.governance.runMaintenance()
   }
 
-  async start(): Promise<void> {
+  async start(signal?: AbortSignal): Promise<void> {
     this.stopped = false
-    await this.startSidecar()
+    await this.startSidecar(signal)
     this.governance.arm()
   }
 
-  private async startSidecar(): Promise<void> {
+  private async startSidecar(signal?: AbortSignal): Promise<void> {
     const temporaryRoot = process.platform === 'win32' ? tmpdir() : '/tmp'
     const userDataPath = await mkdtemp(join(temporaryRoot, 'orcad-browser-'))
     this.sidecarDataPath = userDataPath
@@ -109,55 +111,28 @@ export class ElectronServeBrowserProcess {
         '--serve-no-pairing',
         `--user-data-dir=${userDataPath}`
       ],
-      env: electronServeEnvironment()
+      env: electronServeEnvironment(),
+      // Why its own group: stop and the lifeline must reach Electron's helper processes too.
+      detached: process.platform !== 'win32'
     })
     this.child = child
+    if (child.pid) {
+      this.lifeline = startElectronServeSidecarLifeline({
+        sidecarPid: child.pid,
+        sidecarDataPath: userDataPath
+      })
+    }
     for (const stream of [child.stdout, child.stderr]) {
       stream?.on('error', () => undefined)
       stream?.resume()
     }
-    const deadline = Date.now() + START_TIMEOUT_MS
-    let lastError: unknown = null
-    while (Date.now() < deadline) {
-      const metadata = readRuntimeMetadata(userDataPath)
-      if (metadata) {
-        try {
-          const status = RuntimeStatusResult.parse(
-            await sendOrcadSidecarRequest(metadata, 'status.get', undefined, 5_000)
-          )
-          if (status.capabilities?.includes('browser.headless.v1')) {
-            this.metadata = metadata
-            return
-          }
-          lastError = new Error('Installed Electron app omitted browser.headless.v1.')
-        } catch (error) {
-          lastError = error
-        }
-      }
-      if (child.exitCode !== null || child.signalCode !== null) {
-        break
-      }
-      await delay(100)
-    }
-    throw new Error(
-      `Installed Electron browser provider did not become ready: ${
-        lastError instanceof Error ? lastError.message : 'no runtime metadata'
-      }`
-    )
+    this.metadata = await waitForElectronServeSidecarReady(child, userDataPath, signal)
   }
 
   createCommands(host: RuntimeBrowserCommandHost): RuntimeBrowserCommands {
-    return new Proxy({} as RuntimeBrowserCommands, {
-      get: (_target, property) => {
-        if (property === 'then') {
-          return undefined
-        }
-        if (typeof property !== 'string') {
-          return undefined
-        }
-        return (...args: unknown[]) => this.invoke(host, property, args)
-      }
-    })
+    return createBrowserCommandDispatchProxy((method, args) =>
+      this.invokeCommand(host, method, args)
+    )
   }
   isAvailable(): boolean {
     return this.metadata !== null && processIsLive(this.metadata.pid)
@@ -171,28 +146,25 @@ export class ElectronServeBrowserProcess {
 
   private async stopSidecar(): Promise<void> {
     const child = this.child
-    const sidecarPid = this.metadata?.pid ?? child?.pid ?? null
+    // Why the spawned pid first: it leads the process group the helpers share.
+    const sidecarPid = child?.pid ?? this.metadata?.pid ?? null
     const sidecarDataPath = this.sidecarDataPath
+    const lifeline = this.lifeline
     this.child = null
     this.metadata = null
     this.sidecarDataPath = null
+    this.lifeline = null
     this.tabs.clear()
     if (sidecarPid) {
-      signalProcess(sidecarPid, 'SIGTERM')
-      const deadline = Date.now() + STOP_TIMEOUT_MS
-      while (processIsLive(sidecarPid) && Date.now() < deadline) {
-        await delay(50)
-      }
-      if (processIsLive(sidecarPid)) {
-        signalProcess(sidecarPid, 'SIGKILL')
-      }
+      await terminateElectronServeSidecar(sidecarPid)
     }
+    lifeline?.release()
     if (sidecarDataPath) {
       await rm(sidecarDataPath, { recursive: true, force: true })
     }
   }
 
-  private async invoke(
+  async invokeCommand(
     host: RuntimeBrowserCommandHost,
     method: string,
     args: unknown[]
