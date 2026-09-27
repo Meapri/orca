@@ -11,6 +11,7 @@ export const ROOT_HELP_TEXT_PRIMARY = [
   "  serve pairing             Reprint a running server's pairing link and QR",
   '  serve pairing new         Mint another pairing offer (runtime or --mobile)',
   '  serve devices             List, revoke or rotate paired devices',
+  '  serve relay               Sign orcad in to Orca Relay; show its relay status',
   '  status                    Show app/runtime/graph readiness',
   '',
   'Diagnostics:',

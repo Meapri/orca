@@ -31,6 +31,12 @@ import {
 
 type PairingCreateRequest = z.infer<typeof PairingCreateParams>
 
+const RELAY_MOBILE_ONLY_GUIDANCE =
+  'Orca Relay pairs phones only. Drop --relay for a runtime (desktop, web, CLI) pairing.'
+
+const RELAY_NOT_ENABLED_GUIDANCE =
+  'Orca Relay is not enabled on this host. Start orcad with --relay, then run `orca serve relay sign-in`.'
+
 const MOBILE_ADDRESS_REQUIRED_GUIDANCE =
   'A phone cannot dial this host by loopback. Pass --pairing-address with the LAN, Tailscale, or reverse-proxy address the phone reaches.'
 
@@ -134,6 +140,9 @@ export class RuntimeRpcDeviceAdministration extends RuntimeRpcMobilePairing {
   async createAdministeredPairingOffer(
     request: PairingCreateRequest
   ): Promise<PairingCreateResult> {
+    if (request.relay) {
+      return this.createAdministeredRelayOffer(request)
+    }
     const exposure = await this.prepareOfferExposure(request)
     if (exposure) {
       return exposure
@@ -163,6 +172,39 @@ export class RuntimeRpcDeviceAdministration extends RuntimeRpcMobilePairing {
       webClientUrl: offer.webClientUrl,
       offerExpiresAt: offer.offerExpiresAt,
       serverKeyFingerprint: fingerprintE2EEPublicKey(this.getE2EEPublicKey())
+    }
+  }
+
+  // Why a separate path: the relay is the phone's reach, so no address is required and the bind is never widened.
+  private async createAdministeredRelayOffer(
+    request: PairingCreateRequest
+  ): Promise<PairingCreateResult> {
+    if (request.scope !== 'mobile') {
+      return pairingUnavailable('relay_scope_unsupported', RELAY_MOBILE_ONLY_GUIDANCE)
+    }
+    if (!this.mobileRelayPairingProvider) {
+      return pairingUnavailable('relay_unavailable', RELAY_NOT_ENABLED_GUIDANCE)
+    }
+    const offer = await this.createMobilePairingOffer({
+      address: request.address ?? null,
+      connectionMode: 'automatic',
+      name: request.name ?? `Mobile ${new Date().toLocaleDateString()}`,
+      offerLifetimeMs: request.expiresInMs ?? DEFAULT_PAIRING_OFFER_LIFETIME_MS,
+      reachViaRelay: true
+    })
+    if (!offer.available) {
+      return { available: false, reason: offer.reason, guidance: offer.guidance }
+    }
+    return {
+      available: true,
+      deviceId: offer.deviceId,
+      scope: 'mobile',
+      pairingUrl: offer.pairingUrl,
+      endpoint: offer.endpoint,
+      webClientUrl: offer.webClientUrl,
+      offerExpiresAt: offer.offerExpiresAt ?? null,
+      serverKeyFingerprint: fingerprintE2EEPublicKey(this.getE2EEPublicKey()),
+      viaRelay: true
     }
   }
 

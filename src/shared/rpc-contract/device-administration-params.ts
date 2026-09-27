@@ -26,6 +26,8 @@ export const PairingCreateParams = z
     scope: z.enum(['runtime', 'mobile']),
     address: PairingAddressParam.optional(),
     name: z.string().trim().min(1).max(128).optional(),
-    expiresInMs: PairingLifetimeParam.optional()
+    expiresInMs: PairingLifetimeParam.optional(),
+    // Why optional and strict: an older host refuses the unknown key rather than minting a direct-only offer.
+    relay: z.boolean().optional()
   })
   .strict()

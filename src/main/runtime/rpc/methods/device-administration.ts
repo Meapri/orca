@@ -11,7 +11,7 @@ export const HOST_ONLY_DEVICE_ADMINISTRATION_MESSAGE =
 
 // Why both checks: a paired token (any scope) must never mint or revoke grants — a mobile or runtime
 // client that could would escalate to host authority — and only the owner-token socket supplies the context.
-function requireHostAdministration(ctx: RpcContext): DeviceAdministrationRpcContext {
+export function requireHostAdministration(ctx: RpcContext): DeviceAdministrationRpcContext {
   if (ctx.clientKind !== undefined || !ctx.deviceAdministration) {
     throw new Error(HOST_ONLY_DEVICE_ADMINISTRATION_MESSAGE)
   }

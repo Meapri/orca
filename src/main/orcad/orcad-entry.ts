@@ -13,7 +13,8 @@
 import { join } from 'node:path'
 import process from 'node:process'
 import { setAppEnvironment, type AppEnvironment } from '../../shared/app-environment'
-import { setSecretStore, type SecretStore } from '../../shared/secret-store'
+import { setSecretStore } from '../../shared/secret-store'
+import { createNodeSecretStore } from './orcad-node-secret-store'
 import type { ServeReadiness } from '../server/serve-readiness'
 import { resolveOrcadInstallRoot, resolveOrcadPath, resolveUserDataPath } from './orcad-app-paths'
 import { describeOrcadBindExposure, resolveOrcadBindHost } from './orcad-bind-address'
@@ -66,25 +67,6 @@ function createNodeAppEnvironment(): AppEnvironment {
   }
 }
 
-/**
- * Why not silently plaintext: `isEncryptionAvailable() === false` already makes every
- * caller fall back to unsealed storage, which is a security posture, not a detail.
- * `describeProtectionGap()` gives the reason a client can surface.
- */
-function createNodeSecretStore(): SecretStore {
-  return {
-    isEncryptionAvailable: () => false,
-    encryptString: () => {
-      throw new Error('orcad_secret_sealing_unavailable')
-    },
-    decryptString: () => {
-      throw new Error('orcad_secret_sealing_unavailable')
-    },
-    describeProtectionGap: () =>
-      'This host has no OS keyring, so credentials are stored unencrypted. Pair from a desktop to manage secrets, or install and unlock a keyring.'
-  }
-}
-
 export function installOrcadHostAdapters(): void {
   setAppEnvironment(createNodeAppEnvironment())
   setSecretStore(createNodeSecretStore())
@@ -103,6 +85,8 @@ export type OrcadOptions = {
   bind?: string
   /** Resource-governance env assignments from `--limit`; see orcad-resource-limit-flags.ts. */
   resourceLimits?: Record<string, string>
+  /** Serve phones through Orca Relay (outbound only); see orcad-relay.ts. */
+  relay?: boolean
 }
 
 export type OrcadHandle = {
@@ -163,6 +147,7 @@ async function startOrcadRuntime(
   const { AgentStatusObservedPaneIdentities, AgentStatusObservedPaneIdentityCapture } =
     await import('../runtime/agent-status-observed-pane-identity')
   const { installOrcadHeadlessParity } = await import('./orcad-headless-parity')
+  const { createOrcadRelayControl } = await import('./orcad-relay')
 
   let rpc: InstanceType<typeof OrcaRuntimeRpcServer> | null = null
   let profileStoreForShutdown:
@@ -172,8 +157,10 @@ async function startOrcadRuntime(
   let uninstallObservedStatusIdentity = (): void => {}
   let healthSurface: ReturnType<typeof createOrcadHealthSurface> | null = null
   let headlessParity: OrcadHeadlessParity | null = null
+  let relayControl: ReturnType<typeof createOrcadRelayControl> | null = null
   registerCleanup(async () => {
     try {
+      relayControl?.stop()
       await healthSurface?.stop()
       await rpc?.stop()
     } finally {
@@ -339,6 +326,11 @@ async function startOrcadRuntime(
     profileStateAuthority,
     systemdNotify
   })
+  relayControl = createOrcadRelayControl({
+    enabled: options.relay === true,
+    userDataPath: runtimeUserDataPath,
+    appVersion: getAppEnvironment().getVersion()
+  })
   rpc = new OrcaRuntimeRpcServer({
     runtime,
     userDataPath: runtimeUserDataPath,
@@ -348,7 +340,7 @@ async function startOrcadRuntime(
     // once a device has connected, so a loopback deployment would silently go wide one
     // restart after its first client paired.
     pinnedBindHost: bindHost,
-    extraMethods: healthSurface.extraMethods,
+    extraMethods: [...healthSurface.extraMethods, ...relayControl.methods],
     httpProbeHandler: healthSurface.httpProbeHandler,
     securityLogPath: join(getAppEnvironment().getPath('logs'), SECURITY_LOG_FILENAME),
     // Why required: a pinned --port that silently moved leaves every client dialing a dead port.
@@ -357,6 +349,7 @@ async function startOrcadRuntime(
       : {})
   })
   await rpc.start()
+  relayControl.attach(rpc)
   headlessParity.startScheduledWork()
   const pushService = DesktopPushService.create({
     runtime,

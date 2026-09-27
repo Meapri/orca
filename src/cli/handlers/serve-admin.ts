@@ -6,6 +6,7 @@ import { resolveServeDataRoot } from '../serve-data-root'
 import { formatServeDoctor, formatServeStatus } from '../serve-admin-format'
 import { createServeHostClient, explainServeHostFailure } from '../serve-host-client'
 import { SERVE_PAIRING_HANDLERS, SERVER_SURFACE_UNSUPPORTED } from './serve-pairing'
+import { SERVE_RELAY_HANDLERS } from './serve-relay'
 import {
   ORCAD_SERVER_HEALTH_METHOD,
   type OrcadServerHealth
@@ -86,5 +87,6 @@ export const SERVE_ADMIN_HANDLERS: Record<string, CommandHandler> = {
       process.exitCode = 1
     }
   },
-  ...SERVE_PAIRING_HANDLERS
+  ...SERVE_PAIRING_HANDLERS,
+  ...SERVE_RELAY_HANDLERS
 }

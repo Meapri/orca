@@ -37,6 +37,8 @@ export type AdministeredPairingOffer = {
   webClientUrl: string | null
   offerExpiresAt: number | null
   serverKeyFingerprint: string | null
+  /** The offer also carries an Orca Relay invite; older hosts never set it. */
+  viaRelay?: boolean
 }
 
 export type AdministeredPairingOfferUnavailable = {

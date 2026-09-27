@@ -15,6 +15,7 @@ import { OffscreenBrowserBackend } from '../browser/offscreen-browser-backend'
 import { browserManager } from '../browser/browser-manager'
 import { getDesktopRelayStatus, publishDesktopRelayStatus } from './main-process-relay-status'
 import { DesktopRelayService } from '../runtime/relay/desktop-relay-service'
+import { relayPairingProvider } from '../runtime/relay/relay-pairing-provider'
 import { getServeOptions, getBundledWebClientRoot, printServeReady } from './main-process-serve'
 import {
   bindTerminalRuntimeStartupServices,
@@ -263,13 +264,7 @@ async function launchDesktopMode(
         onStatus: publishDesktopRelayStatus
       })
       state.desktopRelayService = relayService
-      runtimeRpc.setMobileRelayPairingProvider({
-        createPairingRelay: (relayDeviceId) => relayService.createPairingRelay(relayDeviceId),
-        onDeviceRevokeQueued: (item) => relayService.onDeviceRevokeQueued(item),
-        onDemandStateChanged: () => relayService.demandStateChanged(),
-        getEndpoints: (context, params) => relayService.getEndpoints(context, params),
-        provisionRelay: (context, params) => relayService.provisionRelay(context, params)
-      })
+      runtimeRpc.setMobileRelayPairingProvider(relayPairingProvider(relayService))
       relayService.start()
       // Why: sleeping past relay-token expiry kills the broker with no retry
       // timer; resume is the moment that state becomes recoverable.
