@@ -57,6 +57,12 @@ export function createE2eeCompressionScenario({ ensureWorktree }) {
       results.find((result) => result.method === 'terminal.list')?.compressed === false,
       'terminal.list was compressed although it is not on the policy list'
     )
+    // The shipped CLI advertises the capability, so this proves its decoder reads the frames.
+    const cli = await ctx.remote(['worktree', 'list'])
+    check(
+      cli.ok === true && (cli.result?.worktrees ?? []).length > 0,
+      `the paired CLI could not read a compressed worktree.list: ${JSON.stringify(cli.error ?? null)}`
+    )
     return { untrackedFiles: UNTRACKED_FILES, results }
   }
 }
