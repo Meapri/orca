@@ -727,13 +727,14 @@ local socket (the same `0600` metadata token every local CLI command uses). A pa
 scope is refused, and `--environment` / `--pairing-code` are rejected rather than ignored. See
 [Operator CLI](#operator-cli) for how the target data root is chosen.
 
-| Command                                                                                 | Effect                                                                                                         |
-| --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `orca serve pairing [show] [--mobile] [--rotate]`                                       | orcad only: reprints a startup offer (below); `--rotate` revokes that unused offer and mints a new one         |
-| `orca serve pairing new [--mobile\|--runtime] [--pairing-address] [--expires] [--name]` | mints an additional offer against the live server; the startup offer is untouched                              |
-| `orca serve devices list [--json]`                                                      | ids, scope, pending/paired, last use, offer expiry, open connections and the server key fingerprint; no tokens |
-| `orca serve devices revoke <id>`                                                        | removes the grant, closes every socket it authenticated, and refuses it on reconnect, including after restart  |
-| `orca serve devices rotate <id>`                                                        | runtime grants only: new token for the same device id, old one refused at once; prints the new URL             |
+| Command                                                                                           | Effect                                                                                                         |
+| ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `orca serve pairing [show] [--mobile] [--rotate]`                                                 | orcad only: reprints a startup offer (below); `--rotate` revokes that unused offer and mints a new one         |
+| `orca serve pairing new [--mobile [--relay]\|--runtime] [--pairing-address] [--expires] [--name]` | mints an additional offer against the live server; the startup offer is untouched                              |
+| `orca serve devices list [--json]`                                                                | ids, scope, pending/paired, last use, offer expiry, open connections and the server key fingerprint; no tokens |
+| `orca serve devices revoke <id>`                                                                  | removes the grant, closes every socket it authenticated, and refuses it on reconnect, including after restart  |
+| `orca serve devices rotate <id>`                                                                  | runtime grants only: new token for the same device id, old one refused at once; prints the new URL             |
+| `orca serve relay status\|sign-in\|sign-out`                                                      | orcad `--relay` only: the relay account and connection ([Orca Relay](#orca-relay---relay))                     |
 
 **The startup offer.** `orca serve pairing` (and its alias `orca serve pairing show`) re-serves
 the exact offer the readiness line printed — same device id, same `expiresAt`, same
@@ -817,23 +818,24 @@ strings, never tokens or pairing URLs. The desktop app does not write this log.
 
 One command family administers a server from its own host:
 
-| Command                                                                                 | Answers from                                       |
-| --------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| `orca serve status [--fresh] [--json]`                                                  | `server.health` (orcad); `--environment` allowed   |
-| `orca serve doctor [--bind] [--port] [--json]`                                          | host probes, plus `server.health` when orcad is up |
-| `orca serve pairing [show] [--mobile] [--rotate] [--json]`                              | `server.pairingOffer` (orcad)                      |
-| `orca serve pairing new [--mobile\|--runtime] [--pairing-address] [--expires] [--name]` | `pairing.create` (any runtime)                     |
-| `orca serve devices list\|revoke <id>\|rotate <id>`                                     | `devices.*` (any runtime)                          |
+| Command                                                                                           | Answers from                                       |
+| ------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| `orca serve status [--fresh] [--json]`                                                            | `server.health` (orcad); `--environment` allowed   |
+| `orca serve doctor [--bind] [--port] [--json]`                                                    | host probes, plus `server.health` when orcad is up |
+| `orca serve pairing [show] [--mobile] [--rotate] [--json]`                                        | `server.pairingOffer` (orcad)                      |
+| `orca serve pairing new [--mobile [--relay]\|--runtime] [--pairing-address] [--expires] [--name]` | `pairing.create` (any runtime)                     |
+| `orca serve devices list\|revoke <id>\|rotate <id>`                                               | `devices.*` (any runtime)                          |
+| `orca serve relay status\|sign-in\|sign-out`                                                      | `server.relay.*` (orcad)                           |
 
 All of them, except `status --environment`, dial one local data root, resolved the same way:
 `--data-root`, else `$ORCA_USER_DATA` (orcad's own override), else `$ORCA_USER_DATA_PATH` (set
 inside an Orca terminal), else the first default root with runtime metadata — orcad's
 (`$XDG_DATA_HOME/Orca` or `~/.orca`) before the desktop profile — and orcad's root when neither
 has one. Pass `--data-root` when a desktop app and orcad both run on one machine. They run in one
-CLI handler group, and a packaged `orca-ide serve status|doctor|pairing|devices …` is handed to
+CLI handler group, and a packaged `orca-ide serve status|doctor|pairing|devices|relay …` is handed to
 the CLI instead of starting a second server against the same profile. `server.*` methods exist
-only on orcad, so against the desktop app `status` and `pairing` say the runtime does not
-publish that surface rather than reporting it down.
+only on orcad, so against the desktop app `status`, `pairing` and `relay` say the runtime does
+not publish that surface rather than reporting it down.
 
 `doctor` checks data-root ownership and mode, the Unix socket path length (the CLI cannot dial
 past `sun_path`), the instance lock, whether the listener can bind (a pinned port in use fails,

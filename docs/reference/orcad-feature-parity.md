@@ -86,27 +86,28 @@ each needs a host-side (or client-side) replacement.
 
 ## Wire compatibility of the fixes
 
-No stream frames changed. The web client and phone offer add only optional fields: `pairing.webClientAlternateUrls` and `mobilePairing` in the readiness line, the same
-alternates field on `server.pairingOffer`'s reply, and an optional `scope` param on that host-only
-method. An older orcad strips `scope` and answers with its runtime offer, which the CLI detects from
-the reply's own `scope`; an older CLI sends none and gets the runtime offer as before. Runtime
-offers encode the same pairing URL as before; only its `webClientUrl` changed from `null` to a
-link. The notification producer publishes the same `MobileNotificationDispatchEvent` shape the desktop delivery path already publishes, so
-old clients see ordinary notifications; `terminal-bell` is a source every client already
-handles. The mobile fallbacks key on an error code every existing headless host already sends,
-and a desktop host never sends it. `accounts.*` on orcad now answers with the payloads serve
-already publishes instead of an error, so every client that reads them from serve reads them from
-orcad unchanged. What orcad now publishes differently uses existing values only: a slept
-workspace's tabs read `pending-handle`, as a hibernated pane's already do; a phone wake answers
-`sleepingAgentWake: 'requested'` instead of `unsupported-headless`; a resumed agent arrives as an
-ordinary terminal at the pane's existing ids.
+No stream opcode was added. The web client and phone offer add only optional fields:
+`pairing.webClientAlternateUrls` and `mobilePairing` in the readiness line, the same alternates
+field on `server.pairingOffer`'s reply, and an optional `scope` param on that host-only method. An
+older orcad strips `scope` and answers with its runtime offer, which the CLI detects from the
+reply's own `scope`; an older CLI sends none and gets the runtime offer as before. Runtime offers
+encode the same pairing URL as before; only its `webClientUrl` changed from `null` to a link. The
+notification producer publishes the same `MobileNotificationDispatchEvent` shape the desktop
+delivery path already publishes, so old clients see ordinary notifications; `terminal-bell` is a
+source every client already handles. The mobile fallbacks key on an error code every existing
+headless host already sends, and a desktop host never sends it. `accounts.*` on orcad now answers
+with the payloads serve already publishes instead of an error, so every client that reads them from
+serve reads them from orcad unchanged. What orcad now publishes differently uses existing values
+only: a slept workspace's tabs read `pending-handle`, as a hibernated pane's already do; a phone
+wake answers `sleepingAgentWake: 'requested'` instead of `unsupported-headless`; a resumed agent
+arrives as an ordinary terminal at the pane's existing ids.
 
 Relay pairing adds an optional `relay` key to the host-only `pairing.create` params (an older host
 refuses it, which is the intended outcome for `--relay`) and orcad-only `server.relay.*` admin
 methods whose presence is the capability; the phone-facing relay wire is the desktop's, unchanged.
 Client failover only reads the existing optional `alternateEndpoints`.
 
-Host-owned editor tabs are the one negotiated change:
+Host-owned editor tabs negotiate a new client capability:
 
 - **New client capability `session-tabs.host-editor-tabs.v1`.** `files.open`/`files.openDiff`
   answer with a host tab only for a client that advertises it (or the in-process CLI). A released
