@@ -17,10 +17,19 @@ const AUDITED_NON_NET_FETCH_CALLS = new Map<string, number>([
   ['main/rate-limits/opencode-go-usage-fetcher.ts', 2],
   // Isolated cookie-jar session that does NOT apply the proxy — a pre-existing gap, not a
   // regression: no proxy has ever reached this partition. Keep it listed so it stays visible.
-  ['main/rate-limits/minimax/minimax-request-context.ts', 2],
+  // The third call is the API-key transport, through the injected HttpClient below.
+  ['main/rate-limits/minimax/minimax-request-context.ts', 3],
   // Injected HttpClient, not a session: resolves to net.fetch on defaultSession
   // (main/host/electron-http-client.ts) or to the global-fetch-audited Node fallback.
-  ['main/jira/authenticated-request.ts', 1]
+  ['main/jira/authenticated-request.ts', 1],
+  ['main/claude-accounts/oauth-refresh.ts', 1],
+  ['main/rate-limits/claude-oauth-usage-request.ts', 1],
+  ['main/rate-limits/cursor-fetcher.ts', 1],
+  ['main/rate-limits/gemini-oauth-sources.ts', 2],
+  ['main/rate-limits/gemini-usage-fetcher.ts', 1],
+  ['main/rate-limits/grok-fetcher.ts', 1],
+  ['main/rate-limits/kimi-fetcher.ts', 1],
+  ['main/rate-limits/opencode-go-usage-api.ts', 1]
 ])
 
 // `globalThis.fetch` / `global.fetch` belong to global-fetch-call-site-audit.test.ts.

@@ -36,6 +36,7 @@
  */
 
 import { getAppEnvironment, hasAppEnvironment } from '../../shared/app-environment'
+import { getCliResourcesPath } from '../cli/bundled-cli-launcher-path'
 import { prependOrcaCliDirToChildPath } from '../cli/orca-cli-child-path'
 import { ORCA_STRUCTURED_SESSION_ENV } from '../../shared/structured-session-marker'
 import { structuredWorkerIdentities } from './structured-worker-identity'
@@ -69,6 +70,6 @@ function applyOrcaCliPath(env: Record<string, string>): void {
   prependOrcaCliDirToChildPath(env, {
     isPackaged: app.isPackaged(),
     userDataPath: app.getPath('userData'),
-    resourcesPath: process.resourcesPath ?? null
+    resourcesPath: getCliResourcesPath() ?? null
   })
 }

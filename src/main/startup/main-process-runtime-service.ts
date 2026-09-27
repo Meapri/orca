@@ -16,8 +16,10 @@ import {
   closedTerminalSurfaceLedgerPath,
   createClosedTerminalSurfaceLedgerFileStorage
 } from '../runtime/closed-terminal-surface-ledger-file'
-import { prepareCodexAiVaultSessionResume } from '../codex/codex-ai-vault-session-resume'
-import { resolveHostCodexSessionSourceHome } from '../codex/codex-session-source-home'
+import {
+  attachAccountServicesToRuntime,
+  createAccountBackedRuntimeDeps
+} from '../account-services/account-backed-runtime-deps'
 import { isAgentStatusHooksEnabled } from '../agent-hooks/managed-agent-hook-controls'
 import { getDaemonProvider } from '../daemon/daemon-init'
 import type { TerminalSideEffectBatch } from '../../shared/terminal-side-effect-facts'
@@ -83,7 +85,6 @@ export function initializeMainProcessRuntime(): OrcaRuntimeService {
     closedTerminalSurfaceLedgerStorage: createClosedTerminalSurfaceLedgerFileStorage(
       closedTerminalSurfaceLedgerPath(getProfileUserDataPath())
     ),
-    prepareClaudeAuth: (target) => state.claudeRuntimeAuth!.prepareForClaudeLaunch(target),
     agentSessionClaimSigner: loadAgentSessionClaimSigner(
       getProfileUserDataPath(),
       getProfileUserDataPath()
@@ -132,28 +133,13 @@ export function initializeMainProcessRuntime(): OrcaRuntimeService {
     // constructed with this runtime and does not exist yet at this point.
     getPairedDeviceName: (pairedDeviceId) =>
       state.runtimeRpc?.getDeviceRegistry()?.getDevice(pairedDeviceId)?.name ?? null,
-    // Why: source codex-home here (runs in window AND serve) so aiVault.listSessions includes managed-Codex sessions; registerCoreHandlers is window-only.
-    getAdditionalAiVaultCodexHomePaths: () =>
-      state.codexRuntimeHome?.getHostCodexHomePathsForSessionDiscovery() ?? [],
-    prepareAiVaultSessionResume: (args) =>
-      prepareCodexAiVaultSessionResume(args, {
-        runtimeHome: state.codexRuntimeHome,
-        systemCodexHomePath: resolveHostCodexSessionSourceHome(store.getSettings())
-      }),
-    prepareCodexStructuredLaunch: ({ workspacePath, launchEnv }) =>
-      prepareCodexRuntimeHomeForLaunch(undefined, launchEnv, {
-        launchAgent: 'codex',
-        workspacePath
-      }),
-    // Why throw like prepare does: a null from an uninitialized service would
-    // map to the system home and key a catalog read to the wrong account.
-    resolveCodexStructuredLaunchHome: ({ launchEnv }) => {
-      const runtimeHome = state.codexRuntimeHome
-      if (!runtimeHome) {
-        throw new Error('Codex runtime home service is not initialized')
-      }
-      return runtimeHome.resolveHostCodexHomePathForLaunchReadOnly(launchEnv)
-    },
+    // Why here (runs in window AND serve): registerCoreHandlers is window-only.
+    ...createAccountBackedRuntimeDeps({
+      getClaudeRuntimeAuth: () => state.claudeRuntimeAuth,
+      getCodexRuntimeHome: () => state.codexRuntimeHome,
+      getSettings: () => store.getSettings(),
+      prepareCodexRuntimeHomeForLaunch
+    }),
     buildAgentHookPtyEnv: () =>
       isAgentStatusHooksEnabled(state.store?.getSettings()) ? agentHookServer.buildPtyEnv() : {},
     orchestrationEnvironmentTransport,
@@ -191,7 +177,8 @@ export function configureRuntimeServices(runtime: OrcaRuntimeService): void {
   const claudeAccounts = state.claudeAccounts
   const codexAccounts = state.codexAccounts
   const rateLimits = state.rateLimits
-  if (!store || !claudeAccounts || !codexAccounts || !rateLimits) {
+  const claudeRuntimeAuth = state.claudeRuntimeAuth
+  if (!store || !claudeAccounts || !codexAccounts || !rateLimits || !claudeRuntimeAuth) {
     throw new Error('Account services must be initialized before runtime wiring')
   }
   runtime.setArtifactService(
@@ -200,10 +187,9 @@ export function configureRuntimeServices(runtime: OrcaRuntimeService): void {
     )
   )
   runtime.setSkillCloudService(new SkillCloudService(app.getPath('userData')))
-  runtime.setAccountServices({ claudeAccounts, codexAccounts, rateLimits })
-  runtime.setCommitMessageAgentEnvironmentResolvers({
-    // Why: Codex hooks/auth live in Orca's managed runtime home even for the default path, so every launch must resolve CODEX_HOME via runtime-home.
-    prepareForCodexLaunch: prepareCodexRuntimeHomeForLaunch,
-    prepareForClaudeLaunch: (target) => state.claudeRuntimeAuth!.prepareForClaudeLaunch(target)
-  })
+  attachAccountServicesToRuntime(
+    runtime,
+    { claudeAccounts, codexAccounts, rateLimits, claudeRuntimeAuth },
+    prepareCodexRuntimeHomeForLaunch
+  )
 }

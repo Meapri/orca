@@ -217,7 +217,7 @@ it('uses the configured HTTP client for deployment downloads', async () => {
     executableSha256: sha256(extraction.executable)
   })
   const fetcher = responseFetcher(archive)
-  setMainHttpClient({ fetch: fetcher, proxySession: () => null })
+  setMainHttpClient({ fetch: fetcher, proxySession: () => null, partitionSession: () => null })
   await materializeCachedOrcadBunRuntime(TARGET, cacheRoot, {})
   expect(fetcher).toHaveBeenCalledOnce()
 })

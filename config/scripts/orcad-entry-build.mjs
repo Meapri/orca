@@ -9,7 +9,9 @@ export const ORCAD_CHILD_ENTRY_POINTS = {
   daemon: 'src/main/daemon/daemon-entry.ts',
   ptyGate: 'src/main/daemon/pty-subprocess/windows-bun-pty-gate-entry.ts',
   writer: 'src/main/persistence/profile-state/profile-state-writer-worker-entry.ts',
-  backup: 'src/main/persistence/profile-state/profile-state-backup-worker-entry.ts'
+  backup: 'src/main/persistence/profile-state/profile-state-backup-worker-entry.ts',
+  usageScan: 'src/main/usage/usage-scan-worker-entry.ts',
+  cli: 'src/cli/index.ts'
 }
 
 export const ORCAD_EXTERNAL_MODULES = [

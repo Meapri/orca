@@ -1,4 +1,5 @@
-import { session, type Session } from 'electron'
+import type { Session } from 'electron'
+import { getMainHttpClient } from '../network/http-client'
 import {
   getProxyBypassRulesFromEnvironment,
   getProxyUrlFromEnvironment,
@@ -84,7 +85,13 @@ export async function createOpenCodeRequestSession(
   authCookies: { name: string; value: string }[],
   networkProxySettings?: NetworkProxySettings
 ): Promise<Session> {
-  const openCodeSession = session.fromPartition(OPENCODE_SESSION_PARTITION)
+  const openCodeSession = getMainHttpClient().partitionSession(OPENCODE_SESSION_PARTITION)
+  if (!openCodeSession) {
+    // Why: a Node host has no Chromium cookie jar; the API-key path needs none.
+    throw new Error(
+      'OpenCode Go cookie sign-in needs the desktop app on this host; add an API key instead'
+    )
+  }
   await clearOpenCodeSessionCookies(openCodeSession)
   // The isolated cookie jar must still honor Orca, environment, and system proxies.
   await ensureProxyForOpenCodeSession(openCodeSession, networkProxySettings)

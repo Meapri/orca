@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { EventEmitter } from 'node:events'
 import type * as NodeFs from 'node:fs'
 import type * as HostCodexManagedHomeOwnership from './host-codex-managed-home-ownership'
@@ -12,6 +12,7 @@ import {
   registerCodexAccountsTestHomes,
   testState
 } from './service-test-harness'
+import { installFakeAppEnvironment } from '../../../config/scripts/vitest-host-ports-setup'
 
 // STA-4734: the login verdict and the identity read both decided "no credentials"
 // from a read that had merely failed, and doAddAccount's rollback then deleted the
@@ -22,11 +23,9 @@ import {
  * AND reports `false` from `existsSync`. Faulting only one of them lets a test pass
  * against code that still consults the other.
  */
-vi.mock('electron', () => ({
-  app: {
-    getPath: () => testState.userDataDir
-  }
-}))
+beforeEach(() => {
+  installFakeAppEnvironment({ getPath: () => testState.userDataDir })
+})
 
 vi.mock('node:os', async () => {
   const actual = await vi.importActual<typeof import('node:os')>('node:os') // eslint-disable-line @typescript-eslint/consistent-type-imports -- vi.importActual requires inline import()

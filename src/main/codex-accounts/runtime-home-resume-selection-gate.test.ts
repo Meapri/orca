@@ -14,6 +14,7 @@ import {
   teardownRuntimeHomeTest,
   testState
 } from './runtime-home-service-test-harness'
+import { installFakeAppEnvironment } from '../../../config/scripts/vitest-host-ports-setup'
 
 // STA-4422 P1g: automatic session resume picks the resumed pane's CODEX_HOME,
 // i.e. its account. The read-only resolver collapses an unreadable home to
@@ -71,11 +72,9 @@ vi.mock('node:fs', async (importOriginal) => {
   return { ...patched, default: patched }
 })
 
-vi.mock('electron', () => ({
-  app: {
-    getPath: () => testState.userDataDir
-  }
-}))
+beforeEach(() => {
+  installFakeAppEnvironment({ getPath: () => testState.userDataDir })
+})
 
 vi.mock('node:os', async () => {
   const actual = await vi.importActual<typeof import('node:os')>('node:os') // eslint-disable-line @typescript-eslint/consistent-type-imports -- vi.importActual requires inline import()

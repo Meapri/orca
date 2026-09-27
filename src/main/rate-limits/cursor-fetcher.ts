@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { net } from 'electron'
+import { getMainHttpClient } from '../network/http-client'
 import type { ProviderRateLimits, UsageRateLimitSource } from '../../shared/rate-limit-types'
 import {
   readCursorAuthSession,
@@ -81,7 +81,7 @@ async function fetchDashboardJson(
   const requestSignal = signal
     ? AbortSignal.any([signal, AbortSignal.timeout(API_TIMEOUT_MS)])
     : AbortSignal.timeout(API_TIMEOUT_MS)
-  const res = await net.fetch(url, {
+  const res = await getMainHttpClient().fetch(url, {
     // Why manual: the dashboard bounces an unusable session to /login, and
     // 'error' would surface that as a generic network failure instead of the
     // actionable sign-in message below.

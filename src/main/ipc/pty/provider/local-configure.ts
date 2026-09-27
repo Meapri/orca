@@ -1,4 +1,5 @@
 import { inheritOmpLaunchEnvironment } from '../host-env/omp-launch-environment'
+import { getCliResourcesPath } from '../../../cli/bundled-cli-launcher-path'
 import { getAppEnvironment } from '../../../../shared/app-environment'
 import type { OrcaRuntimeService } from '../../../runtime/orca-runtime'
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
@@ -73,7 +74,7 @@ export function configureLocalPtyProvider(args: {
       })
       const env = buildPtyHostEnv(id, baseEnv, {
         isPackaged: getAppEnvironment().isPackaged(),
-        resourcesPath: process.resourcesPath,
+        resourcesPath: getCliResourcesPath(),
         userDataPath: getAppEnvironment().getPath('userData'),
         selectedCodexHomePath,
         skipCodexHomeEnv,

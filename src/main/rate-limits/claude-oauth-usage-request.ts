@@ -1,4 +1,4 @@
-import { net, session } from 'electron'
+import { getMainHttpClient } from '../network/http-client'
 import type { ProviderRateLimits, RateLimitWindow } from '../../shared/rate-limit-types'
 import { ensureElectronProxyFromEnvironment } from '../network/proxy-settings'
 import { createOAuthUsageError } from './claude-oauth-usage-error'
@@ -27,7 +27,7 @@ type OAuthUsageResponse = {
 
 async function ensureProxyFromEnvironment(): Promise<void> {
   await ensureElectronProxyFromEnvironment({
-    proxySession: session.defaultSession,
+    proxySession: getMainHttpClient().proxySession() ?? undefined,
     probeUrl: OAUTH_USAGE_URL
   }).catch(() => {})
 }
@@ -69,7 +69,7 @@ export async function fetchClaudeOAuthUsage(
     : AbortSignal.timeout(API_TIMEOUT_MS)
 
   try {
-    const response = await net.fetch(OAUTH_USAGE_URL, {
+    const response = await getMainHttpClient().fetch(OAUTH_USAGE_URL, {
       headers: {
         Authorization: `Bearer ${token}`,
         'anthropic-beta': 'oauth-2025-04-20',
