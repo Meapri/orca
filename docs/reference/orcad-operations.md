@@ -253,7 +253,9 @@ An external supervisor (systemd, launchd, a process manager). orcad conforms to 
   (`terminal read` reports `exited`). That check runs right after the respawn and twice more 5 s
   apart, then on every later inventory. A PID that still exists or cannot be queried is not
   proof of either verdict and is left for the next check. The desktop app does not opt in: its
-  panes remount and cold-restore instead.
+  panes remount and cold-restore instead. An agent pane that exits this way is relaunched in the
+  same pane with its provider's resume command, and so is one whose daemon was already gone when
+  orcad started (see [orcad-feature-parity.md](./orcad-feature-parity.md)); a plain shell is not.
 - **Crash-loop containment.** At most **5 launches per 60s rolling window** per orcad run;
   past that, launches are refused with `daemon_crash_loop` and terminals fail with that
   message instead of the process forking forever. The window slides, so a repaired host
@@ -410,8 +412,10 @@ properties above, live in the shared daemon launch path, so a Linux desktop gets
 ### Terminal history retention
 
 Each daemon-backed terminal keeps a history tree (checkpoint plus incremental log, up to hundreds
-of MB) under `<data-root>/terminal-history/`. orcad sweeps it two minutes after start and every six
-hours:
+of MB) under `<data-root>/terminal-history/`. Ten seconds after start orcad runs the desktop's
+orphan GC, which removes the trees of workspaces the profile no longer knows (it refuses to run on
+an empty or unreadable live set). It also sweeps exited sessions two minutes after start and every
+six hours:
 
 - Only sessions whose PTY exit was **observed** are collectible: `meta.json` records `endedAt`
   and a numeric `exitCode`. That is the `exited` verdict of
