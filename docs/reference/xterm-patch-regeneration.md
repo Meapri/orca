@@ -4,18 +4,37 @@
 
 Orca ships `@xterm/xterm` with source changes it needs and upstream has not
 taken: the IME composition hooks, the `xterm-composition-*` custom events they
-raise, the `ICompositionHelper` surface those hooks widen, the `WidthCache`
-export the IME preedit renderer measures with, a `SortedList` fix, and a guard
-that refuses mouse reports with non-finite coordinates (#20983). pnpm applies
-them through `config/patches/@xterm__xterm@<version>.patch`.
+raise, the `ICompositionHelper` surface those hooks widen, the in-grid IME
+preedit, the adopted app caret, wide-glyph fitting, a guard that refuses mouse
+reports with non-finite coordinates (#20983), and a `SortedList` fix. pnpm
+applies them through `config/patches/@xterm__xterm@<version>.patch`.
 
-That patch pairs hand-authored source under `src/` (the files the source
-patch's `diff --git` headers name, among them `CoreBrowserTerminal.ts`,
-`Types.ts`, `input/CompositionHelper.ts`, `renderer/dom/WidthCache.ts`,
-`services/MouseCoordsService.ts`, `services/MouseService.ts` and
-`common/SortedList.ts`) with the build output those sources produce
-(`lib/xterm.js`, `lib/xterm.mjs`, and both sourcemaps). The bundle half is
-several MB of minified code. It is generated, and this document exists so nobody edits it by hand.
+That patch pairs hand-authored source with the build output those sources
+produce (`lib/xterm.js`, `lib/xterm.mjs`, and both sourcemaps). The bundle half
+is several MB of minified code. It is generated, and this document exists so
+nobody edits it by hand. The source files are:
+
+- `src/browser/input/CompositionHelper.ts`: the composition hooks, events and
+  both preedit paths (overlay and in-grid).
+- `src/browser/CoreBrowserTerminal.ts` and `src/browser/Types.ts`: wiring and the
+  `ICompositionHelper` / `ITerminal.imePreedit` / adopted-caret surfaces.
+- `src/browser/AdoptedCaret.ts`: the embedder-adopted app caret the renderers
+  draw the cursor at.
+- `src/browser/renderer/dom/DomRenderer.ts` and
+  `src/browser/renderer/dom/DomRendererRowFactory.ts`: the DOM renderer draws the
+  in-grid preedit row, the cursor, and fitted wide glyphs.
+- `src/browser/renderer/dom/WidthCache.ts`: exports the font-variant canvas the
+  overlay's preedit cell measurement reuses, and measures wide glyphs to fit.
+- `src/browser/renderer/shared/WideGlyphFit.ts` and
+  `src/browser/services/RenderService.ts`: the wide-glyph fit both renderers
+  share, and its redraw when the option changes.
+- `src/browser/services/MouseCoordsService.ts` and
+  `src/browser/services/MouseService.ts`: the non-finite mouse-coordinate guard.
+- `src/common/services/OptionsService.ts` and `src/common/services/Services.ts`:
+  the `imePreeditInGrid` and `fitWideGlyphs` options.
+- `src/common/SortedList.ts`: the `SortedList` fix.
+
+Update this list whenever the source patch gains or drops a file.
 
 The core patch also carries the in-grid IME preedit (`imePreeditInGrid`, the
 `IImePreedit` surface on `ITerminal`, and its use in the DOM renderer). The
@@ -289,7 +308,7 @@ rerun. The bundle hunks need no attention at any point.
 A vendored `@xterm/xterm` fork removes the patch entirely, but it moves Orca off
 the published package, so every upstream beta becomes a merge rather than a
 version bump, and Orca inherits responsibility for building and publishing a
-package it does not own. The patch is a few small source edits against a commit
+package it does not own. The patch is a bounded set of source hunks against a commit
 that reproduces byte for byte; a fork is a much larger standing cost for the
 same result.
 

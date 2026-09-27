@@ -19,10 +19,14 @@ Rendering > "Draw IME Composition in Terminal Cells", default on). The preedit i
 then laid out the way `InputHandler.print` would store it and composed into the
 cursor row only in what the DOM or WebGL renderer draws: underlined, over the
 cursor cell's background, the committed tail pushed right, end-aligned at the
-right edge, the cursor at the IME caret. It never reaches the buffer, selection,
-serialize output, or the pty, and commit bytes and `xterm-composition-*` events
-are unchanged. The composer placeholder mask and the app-caret anchor feed it
-through `terminal-ime-grid-preedit.ts` instead of styling the overlay.
+right edge, the cursor at the IME caret (`selectionEnd`, which is the end of the
+active clause while a Japanese or Chinese phrase converts). It never reaches the
+buffer, selection, serialize output, or the pty, and commit bytes and
+`xterm-composition-*` events are unchanged. The composer placeholder mask and
+the app-caret anchor feed it through `terminal-ime-grid-preedit.ts` instead of
+styling the overlay, and follow the path the open composition latched at
+`compositionstart`, not the live option, so a mid-composition toggle cannot split
+ownership.
 
 `terminal-ime-xterm-grid-preedit.test.ts` covers the model; the e2e
 `terminal-ime-grid-preedit.spec.ts` reads the renderer's frame. The overlay

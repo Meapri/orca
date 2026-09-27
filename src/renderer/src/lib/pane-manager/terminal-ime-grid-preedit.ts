@@ -18,6 +18,8 @@ export function resolveTerminalImePreeditInGrid(setting: boolean | undefined): b
 
 type GridPreeditCompositionHelper = {
   readonly hasGridPreedit: boolean
+  /** Latched at compositionstart, unlike the option, which can change mid-composition. */
+  readonly isGridPreeditActive: boolean
   setPreeditHidesTail: (hidesTail: boolean) => void
   setPreeditAnchor: (anchor: { x: number; y: number } | undefined) => void
 }
@@ -30,6 +32,7 @@ function isGridPreeditCompositionHelper(value: unknown): value is GridPreeditCom
   return (
     isRecord(value) &&
     typeof value.hasGridPreedit === 'boolean' &&
+    typeof value.isGridPreeditActive === 'boolean' &&
     typeof value.setPreeditHidesTail === 'function' &&
     typeof value.setPreeditAnchor === 'function'
   )
@@ -38,15 +41,12 @@ function isGridPreeditCompositionHelper(value: unknown): value is GridPreeditCom
 function gridPreeditCompositionHelper(terminal: Terminal): GridPreeditCompositionHelper | null {
   const core: unknown = '_core' in terminal ? terminal._core : undefined
   const helper: unknown = isRecord(core) ? core._compositionHelper : undefined
-  if (!isGridPreeditCompositionHelper(helper)) {
-    return null
-  }
-  return terminal.options.imePreeditInGrid === true ? helper : null
+  return isGridPreeditCompositionHelper(helper) ? helper : null
 }
 
-/** Whether this terminal draws its IME preedit in the cell grid rather than the overlay. */
+/** Whether the open composition draws its IME preedit in the cell grid rather than the overlay. */
 export function isTerminalImePreeditInGrid(terminal: Terminal): boolean {
-  return gridPreeditCompositionHelper(terminal) !== null
+  return gridPreeditCompositionHelper(terminal)?.isGridPreeditActive === true
 }
 
 /** Whether the grid draws a preedit, or a commit still waiting for the app's echo. */
@@ -54,7 +54,9 @@ export function isTerminalImePreeditDrawn(terminal: Terminal): boolean {
   return gridPreeditCompositionHelper(terminal)?.hasGridPreedit === true
 }
 
-/** Hides the row tail the in-grid preedit would push right; a no-op on the overlay path. */
+// Why: the setters are ungated so a mid-composition toggle cannot strand stale state; xterm reads
+// them only while a grid composition is open.
+/** Hides the row tail the in-grid preedit would push right; unused on the overlay path. */
 export function setTerminalImePreeditHidesTail(terminal: Terminal, hidesTail: boolean): void {
   gridPreeditCompositionHelper(terminal)?.setPreeditHidesTail(hidesTail)
 }

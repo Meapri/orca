@@ -243,7 +243,7 @@ index 497afcf535f3eaca00889525a77e15eb633ccd96..7cee04996e9bff6603aec38beb6f93aa
  
  export interface IBrowser {
 diff --git a/src/browser/input/CompositionHelper.ts b/src/browser/input/CompositionHelper.ts
-index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..d4568f948342aa664704995f8a706483bbae5584 100644
+index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..efb5006ad88e62e96a785f34634f0ac133af03c5 100644
 --- a/src/browser/input/CompositionHelper.ts
 +++ b/src/browser/input/CompositionHelper.ts
 @@ -1,10 +1,22 @@
@@ -336,7 +336,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..d4568f948342aa664704995f8a706483
  
    /**
     * The position within the input textarea's value of the current composition.
-@@ -36,52 +99,219 @@ export class CompositionHelper {
+@@ -36,52 +99,227 @@ export class CompositionHelper {
     */
    private _compositionSuffix: string;
  
@@ -437,6 +437,14 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..d4568f948342aa664704995f8a706483
 +  /** Whether the renderer draws a preedit or a held commit, so an embedder keeps its anchor current. */
 +  public get hasGridPreedit(): boolean {
 +    return this._gridPreedit !== undefined || this._gridEcho !== undefined;
++  }
++
++  /**
++   * Whether the open composition draws in the grid. Latched at `compositionstart`, so it can
++   * differ from `imePreeditInGrid` when the option changes mid-composition.
++   */
++  public get isGridPreeditActive(): boolean {
++    return this._gridPreedit !== undefined;
 +  }
 +
 +  /** A held commit pins the layout to where the app will echo it; otherwise the input position. */
@@ -567,7 +575,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..d4568f948342aa664704995f8a706483
    }
  
    /**
-@@ -89,22 +319,269 @@ export class CompositionHelper {
+@@ -89,22 +327,269 @@ export class CompositionHelper {
     * @param ev The event.
     */
    public compositionupdate(ev: Pick<CompositionEvent, 'data'>): void {
@@ -846,7 +854,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..d4568f948342aa664704995f8a706483
    }
  
    /**
-@@ -113,7 +590,19 @@ export class CompositionHelper {
+@@ -113,7 +598,19 @@ export class CompositionHelper {
     * @returns Whether the Terminal should continue processing the keydown event.
     */
    public keydown(ev: KeyboardEvent): boolean {
@@ -867,7 +875,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..d4568f948342aa664704995f8a706483
        if (ev.keyCode === 20 || ev.keyCode === 229) {
          // 20 is CapsLock, 229 is Enter
          // Continue composing if the keyCode is the "composition character"
-@@ -128,6 +617,10 @@ export class CompositionHelper {
+@@ -128,6 +625,10 @@ export class CompositionHelper {
        this._finalizeComposition(false);
      }
  
@@ -878,7 +886,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..d4568f948342aa664704995f8a706483
      if (ev.keyCode === 229) {
        // If the "composition character" is used but gets to this point it means a non-composition
        // character (eg. numbers and punctuation) was pressed when the IME was active.
-@@ -135,6 +628,78 @@ export class CompositionHelper {
+@@ -135,6 +636,78 @@ export class CompositionHelper {
        return false;
      }
  
@@ -957,7 +965,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..d4568f948342aa664704995f8a706483
      return true;
    }
  
-@@ -146,23 +711,55 @@ export class CompositionHelper {
+@@ -146,23 +719,55 @@ export class CompositionHelper {
     *   compositionend event is triggered, such as enter, so that the composition is sent before
     *   the command is executed.
     */
@@ -1024,7 +1032,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..d4568f948342aa664704995f8a706483
  
        // Since composition* events happen before the changes take place in the textarea on most
        // browsers, use a setTimeout with 0ms time to allow the native compositionend event to
-@@ -172,35 +769,314 @@ export class CompositionHelper {
+@@ -172,35 +777,314 @@ export class CompositionHelper {
        // - The last compositionupdate event's data property does not always accurately describe
        //   the character, a counter example being Korean where an ending consonsant can move to
        //   the following character if the following input is a vowel.
@@ -1058,11 +1066,11 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..d4568f948342aa664704995f8a706483
 +        pending.finalizerTimer = undefined;
 +        if (this._compositionTransactionId === pending.transactionId) {
 +          this._isAwaitingCompositionEnd = false;
-         }
--      }, 0);
++        }
 +        if (this._pendingComposition === pending) {
 +          this._sendPendingComposition(pending, true);
-+        }
+         }
+-      }, 0);
 +      });
 +    }
 +  }
@@ -1366,7 +1374,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..d4568f948342aa664704995f8a706483
    }
  
    /**
-@@ -222,6 +1098,9 @@ export class CompositionHelper {
+@@ -222,6 +1106,9 @@ export class CompositionHelper {
  
          const diff = newValue.replace(oldValue, '');
  
@@ -1376,7 +1384,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..d4568f948342aa664704995f8a706483
          this._dataAlreadySent = diff;
  
          if (newValue.length > oldValue.length) {
-@@ -236,6 +1115,186 @@ export class CompositionHelper {
+@@ -236,6 +1123,186 @@ export class CompositionHelper {
      }, 0);
    }
  
@@ -1414,10 +1422,10 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..d4568f948342aa664704995f8a706483
 +      return;
 +    }
 +    const start = this._compositionPosition.start;
++    // A converting clause arrives as a non-collapsed selection whose end is the insertion point.
 +    const caret = this._textarea.selectionEnd;
-+    const collapsed = caret !== null && caret === this._textarea.selectionStart;
 +    // Only trust the selection once the textarea holds exactly the preedit it describes.
-+    const offset = collapsed && this._textarea.value.substring(start, start + preedit.text.length) === preedit.text
++    const offset = caret !== null && this._textarea.value.substring(start, start + preedit.text.length) === preedit.text
 +      ? caret - start
 +      : undefined;
 +    if (preedit.setCaret(offset)) {
@@ -1563,7 +1571,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..d4568f948342aa664704995f8a706483
    /**
     * Positions the composition view on top of the cursor and the textarea just below it (so the
     * IME helper dialog is positioned correctly).
-@@ -243,9 +1302,26 @@ export class CompositionHelper {
+@@ -243,9 +1310,26 @@ export class CompositionHelper {
     *   necessary as the IME events across browsers are not consistently triggered.
     */
    public updateCompositionElements(dontRecurse?: boolean): void {
@@ -1591,7 +1599,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..d4568f948342aa664704995f8a706483
  
      if (this._bufferService.buffer.isCursorInViewport) {
        const cursorX = Math.min(this._bufferService.buffer.x, this._bufferService.cols - 1);
-@@ -254,31 +1330,371 @@ export class CompositionHelper {
+@@ -254,31 +1338,371 @@ export class CompositionHelper {
        const cursorTop = this._bufferService.buffer.y * this._renderService.dimensions.css.cell.height;
        const cursorLeft = cursorX * this._renderService.dimensions.css.cell.width;
  
@@ -1654,9 +1662,9 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..d4568f948342aa664704995f8a706483
 -      setTimeout(() => this.updateCompositionElements(true), 0);
 +      this._cancelDeferredTimer(this._compositionViewTimer);
 +      this._compositionViewTimer = this._defer(() => this.updateCompositionElements(true));
-     }
-   }
- }
++    }
++  }
++}
 +
 +const CJK = /^[\p{Script_Extensions=Han}\p{Script_Extensions=Hiragana}\p{Script_Extensions=Katakana}\uac00-\ud7a3\u3131-\u318e\uff01-\uff60]$/u;
 +const NATIVE = /[\p{Mark}\p{Extended_Pictographic}]/u;
@@ -1849,7 +1857,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..d4568f948342aa664704995f8a706483
 +        continue;
 +      }
 +      cells.push({ codepoints: [code], width: Math.min(2, Math.max(1, width)), end: offset });
-+    }
+     }
 +    return cells;
 +  }
 +
@@ -1970,8 +1978,8 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..d4568f948342aa664704995f8a706483
 +    this._work.content = 1 << Content.WIDTH_SHIFT;
 +    this._work.combinedData = '';
 +    line.setCell(x, this._work);
-+  }
-+}
+   }
+ }
 diff --git a/src/browser/renderer/dom/DomRenderer.ts b/src/browser/renderer/dom/DomRenderer.ts
 index 657217f7104c97ce54b98e88b381b325b061604c..7dd9f672ae767ce1229416d528f9a5c38de9613f 100644
 --- a/src/browser/renderer/dom/DomRenderer.ts

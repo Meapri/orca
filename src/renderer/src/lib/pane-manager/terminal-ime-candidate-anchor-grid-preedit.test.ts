@@ -124,6 +124,23 @@ describe('installTerminalImeCandidateAnchor with in-grid preedit', () => {
     expect(renderedRow(container, 9)).toBe('  → 안녕 하세요a한가b')
   })
 
+  it('follows the path the open composition started on when the option flips mid-way', async () => {
+    const { terminal, container } = openTerminal(true, { cols: 100, rows: 30 })
+    await write(terminal, CURSOR_AGENT_TYPED)
+    const reads = screenRectReads(container)
+    installTerminalImeCandidateAnchor(terminal)
+    compose(terminal, '가')
+    terminal.options.imePreeditInGrid = false
+    const update = new CompositionEvent('compositionupdate', { bubbles: true })
+    Object.defineProperty(update, 'data', { value: '각' })
+    terminal.textarea!.value = '각'
+    terminal.textarea!.dispatchEvent(update)
+    await settle()
+
+    expect(reads).not.toHaveBeenCalled()
+    expect(renderedRow(container, 9)).toBe('  → 안녕 하세요a한각b')
+  })
+
   it('keeps positioning the textarea itself on the overlay path', async () => {
     const { terminal, container } = openTerminal(false)
     await write(terminal, '$ ls')

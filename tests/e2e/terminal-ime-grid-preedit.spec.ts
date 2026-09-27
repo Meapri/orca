@@ -33,11 +33,12 @@ async function sampleRenderedPreedit(page: Page, preedit: string): Promise<GridP
 async function setCompositionWithCaret(
   session: CDPSession,
   text: string,
-  caret: number
+  caret: number,
+  selectionStart = caret
 ): Promise<void> {
   await session.send('Input.imeSetComposition', {
     text,
-    selectionStart: caret,
+    selectionStart,
     selectionEnd: caret
   })
 }
@@ -139,6 +140,15 @@ test.describe('Terminal in-grid IME preedit', () => {
         .toBe(4)
       await setCompositionWithCaret(arena.session, '日本語', 3)
       await expect.poll(async () => (await sampleGridPreedit(orcaPage)).cursorColumn).toBe(8)
+      // Clause conversion selects the active clause; the insertion point is its end.
+      await setCompositionWithCaret(arena.session, '日本語', 2, 1)
+      await expect
+        .poll(async () => (await sampleGridPreedit(orcaPage)).cursorColumn, {
+          message: 'the cursor did not follow the end of the selected clause'
+        })
+        .toBe(6)
+      await setCompositionWithCaret(arena.session, '日本語', 1, 0)
+      await expect.poll(async () => (await sampleGridPreedit(orcaPage)).cursorColumn).toBe(4)
       await setImeComposition(arena.session, '')
       completed = true
     } finally {
