@@ -5,7 +5,10 @@ import {
   ORCAD_BUILD_TARGET_FILENAME,
   ORCAD_TEMPLATE_MANIFEST_FILENAME,
   ORCAD_TEMPLATE_TARGETS_DIR,
-  orcadTemplateCommonFilenames
+  ORCAD_WEB_CLIENT_INDEX,
+  ORCAD_WEB_CLIENT_MANIFEST_FILENAME,
+  orcadTemplateCommonFilenames,
+  serializeOrcadWebClientManifest
 } from '../../src/shared/orcad-artifacts.ts'
 import { ORCAD_TEMPLATE_TARGETS } from '../../src/shared/orcad-bun-runtime.ts'
 
@@ -19,10 +22,16 @@ export async function writeOrcadTemplateTestFixture(resourcesDir) {
   const templateDir = join(resourcesDir, 'orcad-template')
   const commonFilenames = orcadTemplateCommonFilenames()
   const commonSha256 = {}
+  const webIndex = Buffer.from('<!doctype html>')
+  const webIndexSha256 = await write(join(templateDir, 'web', ORCAD_WEB_CLIENT_INDEX), webIndex)
   for (const filename of commonFilenames) {
     commonSha256[filename] = await write(
       join(templateDir, ...filename.split('/')),
-      Buffer.from(`common:${filename}`)
+      filename === ORCAD_WEB_CLIENT_MANIFEST_FILENAME
+        ? serializeOrcadWebClientManifest([
+            { path: ORCAD_WEB_CLIENT_INDEX, size: webIndex.length, sha256: webIndexSha256 }
+          ])
+        : Buffer.from(`common:${filename}`)
     )
   }
   const targets = {}

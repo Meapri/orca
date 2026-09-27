@@ -30,6 +30,12 @@ export const ORCAD_PARCEL_WATCHER_NATIVE = 'node_modules/@parcel/watcher/watcher
 export const ORCAD_EMOJI_SHORTCODE_DATASET =
   'node_modules/emojibase-data/en/shortcodes/emojibase.json'
 
+// The browser client orcad serves; see the manifest parser below.
+export const ORCAD_WEB_CLIENT_DIR = 'web'
+export const ORCAD_WEB_CLIENT_MANIFEST_FILENAME = 'web/orcad-web-client.json'
+export const ORCAD_WEB_CLIENT_INDEX = 'web-index.html'
+export const ORCAD_WEB_CLIENT_MANIFEST_SCHEMA_VERSION = 1
+
 export const ORCAD_VERSION = '0.1.0'
 
 // Kept here because build-orcad.mjs imports this manifest directly under Node type stripping.
@@ -80,6 +86,8 @@ export const ORCAD_ARTIFACTS: readonly OrcadArtifact[] = [
   { filename: ORCAD_PARCEL_WATCHER_ENTRY },
   { filename: ORCAD_PARCEL_WATCHER_NATIVE },
   { filename: ORCAD_EMOJI_SHORTCODE_DATASET },
+  // Pins every web client file by hash; see orcad-web-client-artifact.ts.
+  { filename: ORCAD_WEB_CLIENT_MANIFEST_FILENAME },
   ...ORCAD_RIPGREP_ARTIFACTS.map((filename) => ({ filename })),
   ...ORCAD_RIPGREP_LICENSE_ARTIFACTS.map((filename) => ({ filename }))
 ]
@@ -111,4 +119,83 @@ export function orcadTemplateCommonFilenames(): string[] {
       filename !== ORCAD_BUILD_TARGET_FILENAME &&
       filename !== ORCAD_PARCEL_WATCHER_NATIVE
   )
+}
+
+/**
+ * The browser client orcad serves from its own install directory.
+ *
+ * Why a manifest and not one ORCAD_ARTIFACTS entry per file: the Vite bundle is ~1000
+ * content-hashed files whose names change every build. The manifest is the one fixed artifact;
+ * it pins every file's size and SHA-256, so hashing it into the install identity commits to the
+ * whole bundle.
+ */
+
+export type OrcadWebClientFile = {
+  /** POSIX path relative to the web client directory. */
+  path: string
+  size: number
+  sha256: string
+}
+
+const SHA256_PATTERN = /^[a-f0-9]{64}$/u
+const SEGMENT_PATTERN = /^[A-Za-z0-9_@+~][A-Za-z0-9._@+~-]*$/u
+
+/** Why strict: each path is joined onto an install directory and copied or served from there. */
+export function isSafeOrcadWebClientPath(path: string): boolean {
+  if (path.length === 0 || path.length > 512) {
+    return false
+  }
+  return path.split('/').every((segment) => SEGMENT_PATTERN.test(segment) && segment !== '..')
+}
+
+export function parseOrcadWebClientManifest(text: string): OrcadWebClientFile[] {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    throw new Error('orcad web client manifest is not valid JSON')
+  }
+  if (!isRecord(parsed) || parsed.schemaVersion !== ORCAD_WEB_CLIENT_MANIFEST_SCHEMA_VERSION) {
+    throw new Error('orcad web client manifest has an unsupported schemaVersion')
+  }
+  if (!Array.isArray(parsed.files)) {
+    throw new Error('orcad web client manifest has no file list')
+  }
+  const seen = new Set<string>()
+  const files: OrcadWebClientFile[] = []
+  for (const entry of parsed.files) {
+    if (
+      !isRecord(entry) ||
+      typeof entry.path !== 'string' ||
+      !isSafeOrcadWebClientPath(entry.path) ||
+      typeof entry.size !== 'number' ||
+      !Number.isSafeInteger(entry.size) ||
+      entry.size < 0 ||
+      typeof entry.sha256 !== 'string' ||
+      !SHA256_PATTERN.test(entry.sha256) ||
+      seen.has(entry.path)
+    ) {
+      throw new Error('orcad web client manifest has an invalid file entry')
+    }
+    seen.add(entry.path)
+    files.push({ path: entry.path, size: entry.size, sha256: entry.sha256 })
+  }
+  if (!seen.has(ORCAD_WEB_CLIENT_INDEX)) {
+    throw new Error(`orcad web client manifest does not list ${ORCAD_WEB_CLIENT_INDEX}`)
+  }
+  return files
+}
+
+export function serializeOrcadWebClientManifest(files: readonly OrcadWebClientFile[]): string {
+  const sorted = files.toSorted((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
+  return `${JSON.stringify({ schemaVersion: ORCAD_WEB_CLIENT_MANIFEST_SCHEMA_VERSION, files: sorted }, null, 2)}\n`
+}
+
+/** Install-relative names of the manifest's files, e.g. `web/assets/index-abc.js`. */
+export function orcadWebClientArtifactFilename(file: Pick<OrcadWebClientFile, 'path'>): string {
+  return `${ORCAD_WEB_CLIENT_DIR}/${file.path}`
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }

@@ -14,8 +14,12 @@ import {
   ORCAD_VERSION,
   ORCAD_VERSION_FILENAME,
   ORCAD_RIPGREP_ARTIFACTS,
+  ORCAD_WEB_CLIENT_MANIFEST_FILENAME,
   orcadArtifactFilenames,
-  orcadTemplateCommonFilenames
+  orcadTemplateCommonFilenames,
+  orcadWebClientArtifactFilename,
+  parseOrcadWebClientManifest,
+  type OrcadWebClientFile
 } from '../../shared/orcad-artifacts'
 import type { OrcadBunTarget } from '../../shared/orcad-bun-runtime'
 import { findOrcadCachePath } from './orcad-cache-path'
@@ -47,6 +51,14 @@ const TemplateManifestSchema = z.object({
   commonSha256: z.record(z.string(), z.string().regex(/^[a-f0-9]{64}$/u)),
   targets: z.record(z.string(), TemplateTargetSchema)
 })
+
+type ArtifactSource = {
+  filename: string
+  path: string
+  executable?: boolean
+  /** Pinned by the web client manifest, which is itself hashed; kept out of the identity hash. */
+  pinnedSha256?: string
+}
 
 type MaterializeOptions = OrcadBunRuntimeMaterializeOptions & {
   templateDir?: string
@@ -96,8 +108,15 @@ export async function assembleOrcadArtifact(args: {
   manifest?: z.infer<typeof TemplateManifestSchema>
 }): Promise<string> {
   const manifest = args.manifest ?? (await readTemplateManifest(args.templateDir))
-  await verifyTemplate(args.templateDir, args.target, manifest)
-  const sources = artifactSources(args.templateDir, args.target, args.runtimePath, manifest)
+  const webClientFiles = await verifyTemplate(args.templateDir, args.target, manifest)
+  const sources: ArtifactSource[] = [
+    ...artifactSources(args.templateDir, args.target, args.runtimePath, manifest),
+    ...webClientFiles.map((file) => ({
+      filename: orcadWebClientArtifactFilename(file),
+      path: join(args.templateDir, orcadWebClientArtifactFilename(file)),
+      pinnedSha256: file.sha256
+    }))
+  ]
   const { fullVersion, sourceHashes } = await computeArtifactIdentity(sources, args.target)
   const targetRoot = join(args.cacheRoot, args.target)
   const cached = await findOrcadCachePath(
@@ -143,7 +162,7 @@ function artifactSources(
   target: OrcadBunTarget,
   runtimePath: string,
   manifest: z.infer<typeof TemplateManifestSchema>
-): { filename: string; path: string; executable?: boolean }[] {
+): ArtifactSource[] {
   const targetDir = join(templateDir, ORCAD_TEMPLATE_TARGETS_DIR, target)
   const targetManifest = manifest.targets[target]
   if (!targetManifest) {
@@ -177,12 +196,17 @@ function artifactSources(
 }
 
 async function computeArtifactIdentity(
-  sources: { filename: string; path: string }[],
+  sources: ArtifactSource[],
   target: OrcadBunTarget
 ): Promise<{ fullVersion: string; sourceHashes: Map<string, string> }> {
   const hash = createHash('sha256').update(orcadArtifactHashPrefix(target))
   const sourceHashes = new Map<string, string>()
   for (const source of sources) {
+    if (source.pinnedSha256) {
+      // Why: matches build-orcad's version, which hashes the web client manifest, not each file.
+      sourceHashes.set(source.filename, source.pinnedSha256)
+      continue
+    }
     const sourceHash = createHash('sha256')
     for await (const chunk of createReadStream(source.path)) {
       hash.update(chunk)
@@ -229,7 +253,7 @@ async function verifyTemplate(
   templateDir: string,
   target: OrcadBunTarget,
   manifest: z.infer<typeof TemplateManifestSchema>
-): Promise<void> {
+): Promise<OrcadWebClientFile[]> {
   const targetManifest = manifest.targets[target]
   if (!targetManifest) {
     throw new Error(`Packaged orcad template does not support ${target}`)
@@ -260,6 +284,18 @@ async function verifyTemplate(
       `${target} browser`
     )
   }
+  // The manifest's own bytes were verified above as a common artifact.
+  const webClientFiles = parseOrcadWebClientManifest(
+    await readFile(join(templateDir, ORCAD_WEB_CLIENT_MANIFEST_FILENAME), 'utf8')
+  )
+  for (const file of webClientFiles) {
+    await verifyFileSha256(
+      join(templateDir, orcadWebClientArtifactFilename(file)),
+      file.sha256,
+      `orcad template web client ${file.path}`
+    )
+  }
+  return webClientFiles
 }
 
 export function getOrcadTemplateCandidates(): string[] {

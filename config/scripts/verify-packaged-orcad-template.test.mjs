@@ -65,6 +65,24 @@ describe('verifyPackagedOrcadTemplate', () => {
     }
   )
 
+  it('rejects web client bytes that disagree with the pinned manifest', async () => {
+    const fixture = await createFixture()
+    await writeFile(join(fixture.templateDir, 'web', 'web-index.html'), 'mutated')
+
+    expect(() => verifyPackagedOrcadTemplate(fixture.root)).toThrow(
+      'web client web-index.html checksum mismatch'
+    )
+  })
+
+  it('rejects a web client file the manifest does not pin', async () => {
+    const fixture = await createFixture()
+    await writeFile(join(fixture.templateDir, 'web', 'stray.js'), 'unpinned')
+
+    expect(() => verifyPackagedOrcadTemplate(fixture.root)).toThrow(
+      'web client file inventory mismatch'
+    )
+  })
+
   it('rejects a missing target before the package reaches deployment', async () => {
     const fixture = await createFixture()
     const manifestPath = join(fixture.templateDir, ORCAD_TEMPLATE_MANIFEST_FILENAME)

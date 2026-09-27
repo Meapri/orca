@@ -16,7 +16,10 @@ import {
   ORCAD_TEMPLATE_MANIFEST_FILENAME,
   ORCAD_TEMPLATE_TARGETS_DIR,
   ORCAD_RIPGREP_ARTIFACTS,
-  orcadTemplateCommonFilenames
+  ORCAD_WEB_CLIENT_MANIFEST_FILENAME,
+  orcadTemplateCommonFilenames,
+  orcadWebClientArtifactFilename,
+  parseOrcadWebClientManifest
 } from '../../src/shared/orcad-artifacts.ts'
 import { orcadAgentBrowserNativeName } from '../../src/shared/orcad-agent-browser-name.ts'
 import { ORCAD_TEMPLATE_TARGETS } from '../../src/shared/orcad-bun-runtime.ts'
@@ -101,6 +104,14 @@ async function main() {
       join(outputDir, filename),
       ORCAD_RIPGREP_ARTIFACTS.some((artifact) => artifact === filename && artifact.endsWith('/rg'))
     )
+  }
+  // Why not in commonSha256: the manifest (which is) already pins each file's hash.
+  const webClientFiles = parseOrcadWebClientManifest(
+    readFileSync(join(buildDir, ORCAD_WEB_CLIENT_MANIFEST_FILENAME), 'utf8')
+  )
+  for (const file of webClientFiles) {
+    const filename = orcadWebClientArtifactFilename(file)
+    copy(join(buildDir, filename), join(outputDir, filename))
   }
   const targets = Object.fromEntries(
     await Promise.all(

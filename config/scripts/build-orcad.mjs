@@ -25,6 +25,7 @@ import process from 'node:process'
 import { smokeProfileStateWorkers } from './profile-state-worker-smoke.mjs'
 import { materializeWatcherPackage } from './orcad-watcher-package.mjs'
 import { stageOrcadWindowsProcessTree } from './orcad-windows-process-tree.mjs'
+import { stageOrcadWebClient } from './orcad-web-client-stage.mjs'
 import {
   ORCAD_BUILD_TARGET_FILENAME,
   ORCAD_EMOJI_SHORTCODE_DATASET,
@@ -150,6 +151,8 @@ for (const artifact of ORCAD_RIPGREP_ARTIFACTS) {
 cpSync(join(ROOT, 'resources', 'licenses', 'ripgrep'), join(OUT_DIR, 'ripgrep', 'licenses'), {
   recursive: true
 })
+// Why in every build: orcad serves the paired browser client from its own install directory.
+const webClientFiles = stageOrcadWebClient(OUT_DIR)
 
 /** Why one call per child and not one `outdir` build: esbuild mirrors each entry's source
  *  directory under `outdir`, and both children must land flat beside orcad.js — that is where
@@ -324,7 +327,7 @@ if (process.exitCode !== 1) {
   })
   writeFileSync(join(OUT_DIR, ORCAD_VERSION_FILENAME), fullVersion)
   console.log(
-    `[build-orcad] ok — ${fullVersion}, ${(output.bytes / 1024 / 1024).toFixed(2)} MB, ${Object.keys(output.inputs).length} modules, zero electron and node:sqlite imports, Bun ${ORCAD_BUN_VERSION} included.`
+    `[build-orcad] ok — ${fullVersion}, ${(output.bytes / 1024 / 1024).toFixed(2)} MB, ${Object.keys(output.inputs).length} modules, zero electron and node:sqlite imports, Bun ${ORCAD_BUN_VERSION} and a ${webClientFiles.length}-file web client included.`
   )
 }
 
