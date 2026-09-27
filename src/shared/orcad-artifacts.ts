@@ -32,6 +32,9 @@ export const ORCAD_EMOJI_SHORTCODE_DATASET =
 
 export const ORCAD_VERSION = '0.1.0'
 
+/** The bundled `orca` CLI orcad registers for its PTYs and service user (orcad-cli-launcher.ts). */
+export const ORCAD_CLI_BUNDLE_FILENAME = 'orca-cli.js'
+
 // Kept here because build-orcad.mjs imports this manifest directly under Node type stripping.
 export const ORCAD_RIPGREP_ARTIFACTS = [
   'ripgrep/linux-x64/rg',
@@ -75,6 +78,7 @@ export const ORCAD_ARTIFACTS: readonly OrcadArtifact[] = [
   { filename: 'profile-state-backup-worker-entry.js' },
   // Worker thread the usage stores scan transcripts on, for automation-run usage figures.
   { filename: 'usage-scan-worker-entry.js' },
+  { filename: ORCAD_CLI_BUNDLE_FILENAME },
   // Target-specific even when the JavaScript bundle is shared across packaged slots.
   { filename: ORCAD_BUILD_TARGET_FILENAME },
   // orcad never depends on a host runtime or host-installed native module.

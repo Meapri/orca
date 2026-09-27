@@ -20,6 +20,10 @@ import type { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { scheduleAllPendingHistoryTreeRemovals } from '../terminal-history-deletion'
 import { collectWorktreeTrashSweepRoots, sweepStaleWorktreeTrash } from '../worktree-trash'
 import type { OrcadAccountServices } from './orcad-account-services'
+import { getAppEnvironment } from '../../shared/app-environment'
+import { setHostCliResourcesPath } from '../cli/bundled-cli-launcher-path'
+import { prepareOrcadCliLauncher } from './orcad-cli-launcher'
+import { registerOrcadCli } from './orcad-cli-registration'
 
 export type OrcadHeadlessParity = {
   /** Serve arms these only once its RPC transport is up; orcad keeps that order. */
@@ -36,6 +40,10 @@ export function installOrcadHeadlessParity(options: {
   const { runtime, store, agentHookServer, accounts } = options
   // Same placeholder serve publishes: no renderer will ever publish a graph on this host.
   runtime.syncWindowGraph(HEADLESS_RUNTIME_WINDOW_ID, { tabs: [], leaves: [] })
+  const dataRoot = getAppEnvironment().getPath('userData')
+  // Why before RPC binds: the first PTY's PATH must already reach this runtime's `orca`.
+  const cliResourcesPath = prepareOrcadCliLauncherSafely(dataRoot)
+  setHostCliResourcesPath(cliResourcesPath)
   const uninstallRename = installFirstWorkRenameSubscription(agentHookServer, () =>
     firstWorkRenameDeps(store, runtime)
   )
@@ -73,6 +81,9 @@ export function installOrcadHeadlessParity(options: {
           console.warn('[agent-hooks] failed to reconcile managed hooks on startup:', error)
         })
       }
+      if (cliResourcesPath) {
+        void registerOrcadCliAtStartup(dataRoot, cliResourcesPath)
+      }
       // A quit mid-delete leaves tombstoned history and trashed checkouts that only this reclaims.
       scheduleAllPendingHistoryTreeRemovals()
       void sweepStaleWorktreeTrash(
@@ -88,5 +99,32 @@ export function installOrcadHeadlessParity(options: {
       uninstallNotifications()
       uninstallRename()
     }
+  }
+}
+
+function prepareOrcadCliLauncherSafely(dataRoot: string): string | null {
+  try {
+    return prepareOrcadCliLauncher({
+      platform: process.platform,
+      dataRoot,
+      installRoot: getAppEnvironment().getAppPath(),
+      runtimePath: process.execPath
+    })
+  } catch (error) {
+    console.warn('[orcad] orca CLI launcher unavailable:', error)
+    return null
+  }
+}
+
+async function registerOrcadCliAtStartup(dataRoot: string, resourcesPath: string): Promise<void> {
+  try {
+    const result = await registerOrcadCli({ platform: process.platform, dataRoot, resourcesPath })
+    console.error(
+      result.state === 'installed'
+        ? `[orcad] orca CLI registered at ${result.commandPath}${result.pathConfigured === false ? ' (not on PATH)' : ''}`
+        : `[orcad] orca CLI registration skipped: ${result.reason}`
+    )
+  } catch (error) {
+    console.warn('[orcad] orca CLI registration failed:', error)
   }
 }

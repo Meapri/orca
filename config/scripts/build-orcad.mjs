@@ -27,6 +27,7 @@ import { materializeWatcherPackage } from './orcad-watcher-package.mjs'
 import { stageOrcadWindowsProcessTree } from './orcad-windows-process-tree.mjs'
 import {
   ORCAD_BUILD_TARGET_FILENAME,
+  ORCAD_CLI_BUNDLE_FILENAME,
   ORCAD_EMOJI_SHORTCODE_DATASET,
   orcadBunRuntimeFilename,
   ORCAD_PARCEL_WATCHER_ENTRY,
@@ -55,6 +56,8 @@ const DAEMON_OUT_FILE = join(OUT_DIR, 'daemon-entry.js')
 const PTY_GATE_ENTRY = join(ROOT, ORCAD_CHILD_ENTRY_POINTS.ptyGate)
 const PTY_GATE_OUT_FILE = join(OUT_DIR, 'windows-bun-pty-gate-entry.js')
 const USAGE_SCAN_OUT_FILE = join(OUT_DIR, 'usage-scan-worker-entry.js')
+// Why shipped: agents in orcad PTYs and the host installer's census shell out to `orca`.
+const CLI_OUT_FILE = join(OUT_DIR, ORCAD_CLI_BUNDLE_FILENAME)
 const OUT_FILE = join(OUT_DIR, 'orcad.js')
 const BUILD_TARGET = process.env.ORCAD_BUILD_TARGET
 if (!BUILD_TARGET) {
@@ -180,6 +183,7 @@ const childResults = await Promise.all([
   buildForkedChild(DAEMON_ENTRY, DAEMON_OUT_FILE),
   buildForkedChild(PTY_GATE_ENTRY, PTY_GATE_OUT_FILE),
   buildForkedChild(join(ROOT, ORCAD_CHILD_ENTRY_POINTS.usageScan), USAGE_SCAN_OUT_FILE),
+  buildForkedChild(join(ROOT, ORCAD_CHILD_ENTRY_POINTS.cli), CLI_OUT_FILE),
   ...['writer', 'backup'].map((role) =>
     buildForkedChild(
       join(ROOT, ORCAD_CHILD_ENTRY_POINTS[role]),
@@ -293,6 +297,20 @@ if (graphErrors.length > 0) {
         `Expected a clean load check, got status=${daemonSmoke.status ?? 'none'} ` +
         `signal=${daemonSmoke.signal ?? 'none'} ` +
         `error=${daemonSmoke.error?.message ?? 'none'}\n${daemonSmokeOutput.slice(0, 2000)}`
+    )
+    process.exitCode = 1
+  }
+  // Why --help: it parses every command spec without dialing a runtime, so a clean exit proves
+  // the bundled CLI loads under plain Node. The PTY smoke covers dialing orcad itself.
+  const cliSmoke = spawnSync(process.execPath, [CLI_OUT_FILE, '--help'], {
+    encoding: 'utf8',
+    timeout: 60_000
+  })
+  if (cliSmoke.error || cliSmoke.signal || cliSmoke.status !== 0) {
+    console.error(
+      `[build-orcad] the bundled orca CLI lost Node load compatibility.\n` +
+        `status=${cliSmoke.status ?? 'none'} signal=${cliSmoke.signal ?? 'none'}\n` +
+        `${`${cliSmoke.stdout ?? ''}${cliSmoke.stderr ?? ''}`.slice(0, 2000)}`
     )
     process.exitCode = 1
   }
