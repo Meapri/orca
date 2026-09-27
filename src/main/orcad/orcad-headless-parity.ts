@@ -22,6 +22,8 @@ import { installHostAgentNotifications } from '../notifications/headless-agent-n
 import type { Store } from '../persistence'
 import type { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { scheduleAllPendingHistoryTreeRemovals } from '../terminal-history-deletion'
+import { cancelHistoryGc, scheduleHistoryGc } from '../terminal-history-gc'
+import { getKnownWorktreeIdsForHistoryGc } from '../window/history-gc-worktree-ids'
 import { collectWorktreeTrashSweepRoots, sweepStaleWorktreeTrash } from '../worktree-trash'
 
 export type OrcadHeadlessParity = {
@@ -82,6 +84,8 @@ export function installOrcadHeadlessParity(options: {
       }
       // A quit mid-delete leaves tombstoned history and trashed checkouts that only this reclaims.
       scheduleAllPendingHistoryTreeRemovals()
+      // Same orphan-history GC the desktop arms from its main window, over the same live set.
+      scheduleHistoryGc(async () => getKnownWorktreeIdsForHistoryGc(store))
       void sleepingAgents.resumeAfterRestart().catch((error: unknown) => {
         console.warn('[agent-resume] cold restore after restart failed:', error)
       })
@@ -95,6 +99,7 @@ export function installOrcadHeadlessParity(options: {
       stopped = true
       // Why first: shutdown's own PTY teardown must not read as agents to resume.
       sleepingAgents.uninstall()
+      cancelHistoryGc()
       automations.stop()
       uninstallNotifications()
       uninstallRename()

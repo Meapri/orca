@@ -28,6 +28,10 @@ vi.mock('../agent-hooks/managed-agent-hook-controls', async (importOriginal) => 
 vi.mock('../terminal-history-deletion', () => ({
   scheduleAllPendingHistoryTreeRemovals: () => diskHygiene.push('history')
 }))
+vi.mock('../terminal-history-gc', () => ({
+  scheduleHistoryGc: () => diskHygiene.push('history-gc'),
+  cancelHistoryGc: () => diskHygiene.push('history-gc-cancelled')
+}))
 vi.mock('../worktree-trash', () => ({
   collectWorktreeTrashSweepRoots: () => [],
   sweepStaleWorktreeTrash: async () => {
@@ -131,10 +135,11 @@ describe('installOrcadHeadlessParity', () => {
 
       parity.startScheduledWork()
       await Promise.resolve()
-      expect(diskHygiene).toEqual(['history', 'trash'])
+      expect(diskHygiene).toEqual(['history', 'history-gc', 'trash'])
       expect(hookInstalls).toHaveLength(1)
       expect(hookInstalls[0]?.shouldContinue?.('claude')).toBe(true)
       parity.uninstall()
+      expect(diskHygiene.at(-1)).toBe('history-gc-cancelled')
       // A reconcile still running at shutdown stops before its next agent.
       expect(hookInstalls[0]?.shouldContinue?.('claude')).toBe(false)
     } finally {
