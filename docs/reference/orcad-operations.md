@@ -101,8 +101,13 @@ exactly as before. Every other place the listener is reachable goes into the off
 3. with a specific-IP bind, that IP.
 
 A loopback bind adds nothing, since only an SSH forward reaches it. At most 8 alternates are
-offered. A desktop client stores each as an endpoint of the same pairing; when a connect to the
-preferred one goes unanswered it prefers the next, and whichever connects stays preferred. Older
+offered. The desktop, the web client and the phone store each as an address of the same pairing
+(`src/shared/pairing-endpoint-failover.ts` is the one rule they share): when a connect to the
+preferred one goes unanswered the next is dialed, and whichever completes a handshake stays
+preferred (the web client and phone persist it, so the next launch dials the last good address).
+Only an unanswered connect rotates; a host that answered and then refused proves the address
+works. The web client tries every address once before its backoff applies; the phone rotates on
+each redial. An address typed into the phone's Edit Host drops the paired alternates. Older
 clients ignore the field and dial `endpoint`.
 
 ## Transport over the internet
@@ -125,7 +130,10 @@ Every frame is E2EE ciphertext, so these behaviours are about the WebSocket carr
 - **Discarded terminal frames** close the socket with 1013 so the client reconnects and
   resubscribes, rather than leaving it attached to a multiplex that no longer exists.
 - **Resume.** On OS resume or network online the desktop probes every remote-runtime socket with
-  an 8 s deadline and restarts reconnect backoff from 250 ms.
+  an 8 s deadline and restarts reconnect backoff from 250 ms. The web client does the same on the
+  signals a browser has — `online`, a back/forward-cache `pageshow` and a Page Lifecycle `resume` —
+  probing a connected socket with the same 8 s deadline, or skipping the rest of the backoff when
+  disconnected. The phone's resume triggers predate this and are unchanged.
 
 ## Data root and the instance lock
 
@@ -293,7 +301,7 @@ scope does. They carry, commented out, the optional [systemd notify](#who-superv
 lines exactly as orcad implements them (`Type=notify`, `NotifyAccess=all`, `WatchdogSec=60`),
 [resource-limit](#resource-governance) examples as `Environment=` lines, and `Nice=` with the
 `LimitNICE=` it needs. Further orcad flags — `--limit key=value`, `--pairing-expires`, extra
-`--pairing-address` values — go in `ORCAD_EXTRA_ARGS` in `orcad.env`.
+`--pairing-address` values, `--relay` — go in `ORCAD_EXTRA_ARGS` in `orcad.env`.
 
 The readiness line (it carries the startup pairing credential) goes to
 `$XDG_RUNTIME_DIR/orcad/readiness.json` (`/run/orcad/readiness.json` for the system unit). The
@@ -580,9 +588,52 @@ Runtime and mobile offers can coexist: pairing scope is chosen per offer, not pe
 server can take a phone and be saved as an environment by a peer host without a restart
 (`--mobile-pairing` on `orca serve` still only picks which scope the startup offer uses). A mobile
 offer needs `--pairing-address` set to what the phone dials, and pairs on the direct path without
-Orca Relay. On a loopback-pinned orcad the address vouches for a reverse proxy or tunnel; the bind
-is never widened. Mobile pairings cannot be rotated in place because the token also keys the
+Orca Relay unless it is minted with `--relay` (see [Orca Relay](#orca-relay---relay)). On a
+loopback-pinned orcad the address vouches for a reverse proxy or tunnel; the bind is never
+widened. Mobile pairings cannot be rotated in place because the token also keys the
 phone's Relay and push identity: revoke and pair again.
+
+### Orca Relay (`--relay`)
+
+A VPS behind a firewall, with no port a phone can reach and no tailnet, can still serve phones
+through Orca Relay. orcad keeps one **outbound** connection to a relay cell; the phone connects to
+the same cell and the relay splices the two. Every phone frame is E2EE v2 ciphertext keyed to this
+host's pinned public key (`orca-e2ee-keypair.json`), so the relay forwards bytes it cannot read —
+the same design the desktop uses (`src/main/runtime/relay/`), served unchanged from orcad.
+
+1. Start orcad with `--relay`. Nothing else changes: the bind stays pinned and loopback remains the
+   default.
+2. `orca serve relay sign-in` on the host signs it in to an Orca account (the relay authenticates
+   hosts by account). It prints a URL to open in any browser; the browser then returns to a
+   loopback port on the host, so from another machine forward that port first with the printed
+   `ssh -N -L <port>:127.0.0.1:<port> <host>`. The CLI waits up to 5 minutes.
+3. `orca serve pairing new --mobile --relay` mints a phone offer that also carries a relay invite.
+   `--pairing-address` becomes optional: the phone races the direct address against the relay and
+   keeps whichever answers, so a phone on the host's LAN still goes direct.
+
+`orca serve relay status` reports the flag, the account, where its session is kept and the relay
+connection. The host holds a relay connection only while a relay-paired phone exists (or a relay
+offer is being minted), so `standby` is the normal idle state. `orca serve relay sign-out` tells
+relay-paired phones the host signed out and unlinks the account; direct pairings keep working.
+
+**Session storage.** orcad has no OS keyring, so without `--relay` an account session would live in
+memory only. With `--relay` it is kept in an owner-only (`0600`) file under
+`<data-root>/profiles/<id>/`, the same posture as the device tokens and the E2EE private key. The
+desktop app never reads that file format.
+
+**Endpoints.** Production defaults are `login.onorca.dev` and `relay.onorca.dev`; the
+`ORCA_CLOUD_*` and `ORCA_RELAY_URL` variables override them, and because orcad is a packaged build
+only HTTPS overrides are accepted.
+
+**Verification.** `node config/scripts/orcad-relay-live-smoke.mjs` runs the real relay from
+`cloud/apps/relay` (combined role, SQLite), a fake account API, and a built orcad bound to
+loopback; signs in through the CLI; mints a relay offer whose direct address is unroutable; and
+runs the real mobile pairing client (`mobile/src/transport/relay-pairing-live.test.ts`) through the
+relay, including a reconnect on the installed resume credential. It records every byte the relay
+forwards and fails if an RPC method, a host reply or the device token appears in it (with a
+positive control that the relay's own cleartext control frames are visible). It needs
+`pnpm build:orcad`, the CLI compiled to `out/cli`, and `pnpm install` plus the relay contract
+build in `cloud/`. It never contacts a production endpoint.
 
 ### Security log
 
@@ -678,9 +729,14 @@ Named here so nothing reads as implemented that is not:
   installer, but the release workflow does not publish them.
 - **Terminal stream resumption.** A reconnect always re-subscribes and receives a full snapshot;
   there is no replay from the last acknowledged sequence.
-- **Relay pairing for orcad.** The cloud relay is wired only in the desktop app; orcad offers
-  direct endpoints only.
-- **Endpoint failover and resume probing outside the desktop.** The web client and mobile app do
-  not read `alternateEndpoints`, and the web client has no resume-triggered probe.
+- **Relay for runtime clients.** Orca Relay v1 carries phones only; a desktop or the web client
+  still needs a direct address (tailnet, reverse proxy, or an SSH forward) to reach orcad.
+- **A headless sign-in without a browser.** `orca serve relay sign-in` needs a browser on some
+  machine and, off the host, an SSH forward of its loopback callback port; there is no device-code
+  flow.
+- **Relay on `orca serve`.** The Electron serve mode does not start the relay either; only the
+  desktop app window and orcad `--relay` do.
+- **Relay in the startup offer.** The readiness block's offer stays a runtime offer; mint relay
+  offers with `orca serve pairing new --mobile --relay`.
 - **Compress-before-encrypt.** JSON state is not compressed before encryption, so the stream
   itself stays roughly as large as its plaintext.

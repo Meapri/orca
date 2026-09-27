@@ -28,6 +28,7 @@ Status: **parity** — same behavior; **fixed** — was missing on orcad and is 
 | Automation run usage figures                   | Claude/Codex usage stores                      | no usage stores; runs record no usage                                                                                                                                                                             | gap (low)                    |
 | History tombstone drain, worktree-trash sweep  | at startup                                     | Was skipped. Now at startup                                                                                                                                                                                       | fixed                        |
 | Push service (gateway session, registrations)  | `startDesktopPushService`                      | `DesktopPushService` (`orcad-entry.ts`)                                                                                                                                                                           | parity                       |
+| Orca Relay for phones                          | not started (desktop app window only)          | Opt-in `--relay`: the desktop's `DesktopRelayService` behind `orcad-relay.ts`; sign-in with `orca serve relay sign-in`, relay offers with `orca serve pairing new --mobile --relay`                               | fixed (orcad only)           |
 | Web client static root / `webClientUrl`        | `webClientRoot: getBundledWebClientRoot()`     | not passed; no browser UI is served and pairing offers carry `webClientUrl: null`                                                                                                                                 | gap (high for browser users) |
 | Mobile-scoped pairing offer, QR                | `--mobile-pairing`, QR in ready block          | always `scope: runtime`, `qr: null`                                                                                                                                                                               | gap (medium)                 |
 | Claude auth / Codex runtime-home prep for PTYs | account-backed prep                            | none; an agent needing it fails with its own message                                                                                                                                                              | gap (medium)                 |
@@ -56,9 +57,20 @@ each needs a host-side (or client-side) replacement.
 | `worktree.sleep`                                                 | silent no-op that still returns the worktree id                                                                                                                                                                                                                                                                     | gap (low)      |
 | Orphan terminal-history GC                                       | armed from the main window only                                                                                                                                                                                                                                                                                     | gap (low)      |
 
+## Clients
+
+| Feature                                       | Behavior                                                                                                                                                                | Status |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| `alternateEndpoints` failover outside desktop | The web client and the phone store every offered address and fail over on an unanswered connect, keeping the last good one (`src/shared/pairing-endpoint-failover.ts`). | fixed  |
+| Resume probe in the web client                | `online`, back/forward-cache restore and Page Lifecycle `resume` probe a live socket with the desktop's 8 s deadline or skip the remaining reconnect backoff.           | fixed  |
+
 ## Wire compatibility of the fixes
 
-No RPC params, stream frames or capabilities changed. The notification producer publishes the
+Relay pairing adds an optional `relay` key to the host-only `pairing.create` params (an older host
+refuses it, which is the intended outcome for `--relay`) and orcad-only `server.relay.*` admin
+methods whose presence is the capability; the phone-facing relay wire is the desktop's, unchanged.
+Client failover only reads the existing optional `alternateEndpoints`. Otherwise no RPC params,
+stream frames or capabilities changed. The notification producer publishes the
 same `MobileNotificationDispatchEvent` shape the desktop delivery path already publishes, so
 old clients see ordinary notifications. The mobile fallbacks key on an error code every
 existing headless host already sends, and a desktop host never sends it.
