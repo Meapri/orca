@@ -141,8 +141,8 @@ Every frame is E2EE ciphertext, so these behaviours are about the WebSocket carr
   and untouched. Mobile (E2EE v2 framing) and browser clients do not advertise the capability
   and receive plain frames, as does every older client.
 
-- **Terminal stream resumption.** A reconnecting desktop view used to re-subscribe and take a
-  full snapshot. The host now keeps, per terminal, a ring of its most recent output (256 KiB,
+- **Terminal stream resumption.** A reconnecting terminal view (desktop app or web client) used
+  to re-subscribe and take a full snapshot. The host now keeps, per terminal, a ring of its most recent output (256 KiB,
   held for 10 minutes after the last stream detaches, at most 64 idle rings) in the output
   sequence domain. A client that negotiates `outputResume` on the multiplex `Subscribe` frame is
   told a run token in the `subscribed` event; on reconnect it presents that token and the
@@ -747,10 +747,10 @@ Named here so nothing reads as implemented that is not:
   through daemon scope isolation; an unscoped daemon there cannot be stopped by the installer.
 - **Published standalone release assets.** `pnpm pack:orcad-release` builds the tarball and
   installer, but the release workflow does not publish them.
-- **Stream resumption beyond the desktop.** Only the desktop renderer presents a resume point;
-  the mobile app and the web client still take a full snapshot on every reconnect. A run token
-  that rotates while a client is attached (a sequence gap) is not republished, so that client's
-  next reconnect takes the snapshot. A reconnect whose missed tail is larger than one screen
+- **Stream resumption on mobile.** The desktop app and the web client share the pane code that
+  presents a resume point; the mobile app still takes a full snapshot on every reconnect. A run
+  token that rotates while a client is attached (a sequence gap) is not republished, so that
+  client's next reconnect takes the snapshot. A reconnect whose missed tail is larger than one screen
   sends more bytes than the snapshot would (see
   [Transport over the internet](#transport-over-the-internet)); there is no size-based choice.
 - **Relay pairing for orcad.** The cloud relay is wired only in the desktop app; orcad offers
