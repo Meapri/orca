@@ -3,8 +3,7 @@ import WebSocket from 'ws'
 import { abortSignalReason } from './abort-signal-reason'
 import type { PairingOffer } from './pairing'
 import { scheduleOrphanedRemoteRuntimeSocketClose } from './remote-runtime-abort-orphaned-socket'
-import { encrypt } from './e2ee-crypto'
-import { decryptE2EEText } from './e2ee-text-compression'
+import { decryptE2EEText, encryptE2EEText } from './e2ee-text-compression'
 import {
   serializeRemoteRuntimePayload,
   serializeRemoteRuntimeRpcRequest
@@ -234,7 +233,7 @@ export class RemoteRuntimeRequestConnection {
       return
     }
     this.ws?.send(
-      encrypt(
+      encryptE2EEText(
         serializeRemoteRuntimePayload({
           type: 'e2ee_auth',
           deviceToken: this.pairing.deviceToken,
@@ -287,7 +286,7 @@ export class RemoteRuntimeRequestConnection {
       return
     }
     try {
-      ws.send(encrypt(serializedRequest, sharedKey))
+      ws.send(encryptE2EEText(serializedRequest, sharedKey))
     } catch (error) {
       this.rejectPendingRequest(requestId, toRemoteRuntimeRequestError(error))
     }

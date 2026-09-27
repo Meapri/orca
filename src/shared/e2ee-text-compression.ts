@@ -1,7 +1,12 @@
-// Why Node-only (node:zlib): only the desktop main process and the CLI decode compressed frames,
-// and only they advertise the capability; browser and mobile clients never receive one.
+// Why Node-only (node:zlib): the host compresses, and only Node clients (desktop main process,
+// CLI) advertise decoding; browser and mobile clients never receive a compressed frame.
 import { deflateRawSync, inflateRawSync } from 'node:zlib'
-import { decryptBytes, MAX_E2EE_ENCRYPTED_BASE64_CHARACTERS } from './e2ee-crypto'
+import {
+  decryptBytes,
+  encrypt,
+  encryptBytes,
+  MAX_E2EE_ENCRYPTED_BASE64_CHARACTERS
+} from './e2ee-crypto'
 
 /** A client that advertises this decodes host->client text frames compressed before encryption. */
 export const E2EE_TEXT_DEFLATE_CAPABILITY = 'e2ee.text-deflate.v1' as const
@@ -42,6 +47,22 @@ export function compressE2EETextPayload(plaintext: string): Uint8Array | null {
   return framed
 }
 
+/** The host's legacy-framing text seal: deflated only for an opted-in reply to a client that decodes it. */
+export function sealE2EETextReply(
+  response: string,
+  sharedKey: Uint8Array,
+  options: E2EETextReplyOptions | undefined,
+  clientCapabilities: readonly string[]
+): string {
+  const compressed =
+    options?.compressible === true && clientCapabilities.includes(E2EE_TEXT_DEFLATE_CAPABILITY)
+      ? compressE2EETextPayload(response)
+      : null
+  return compressed
+    ? Buffer.from(encryptBytes(compressed, sharedKey)).toString('base64')
+    : encrypt(response, sharedKey)
+}
+
 export function decodeE2EETextPayload(plaintext: Uint8Array): string | null {
   if (plaintext[0] !== COMPRESSED_MARKER) {
     return new TextDecoder().decode(plaintext)
@@ -68,3 +89,6 @@ export function decryptE2EEText(encrypted: string, sharedKey: Uint8Array): strin
   const plaintext = decryptBytes(bundle, sharedKey)
   return plaintext ? decodeE2EETextPayload(plaintext) : null
 }
+
+// Why plain: client-to-host text is never compressed, so the pair stays asymmetric by design.
+export const encryptE2EEText = encrypt
