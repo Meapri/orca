@@ -271,6 +271,30 @@ a new opcode or capability. Each is safe for a stated reason, and the reason is 
   new decoder drops malformed or excess entries instead of refusing the offer (Rule 4's intent). A
   client must keep treating `endpoint` as the primary: the field is advice, not a replacement.
 
+## Worked example: negotiated changes with no new opcode
+
+Terminal stream resumption and compress-before-encrypt both change what the host sends, so they
+are Rule 3, and both are gated the way Rule 2 gates an opcode, without adding one.
+
+- **`outputResume`.** The client advertises it in the `Subscribe` frame's `capabilities` and may
+  add an optional `resume: { token, seq }` (Rule 1; old hosts strip both, and a malformed
+  `resume` degrades to absent rather than dropping the subscribe). Only a host that negotiated
+  it echoes `capabilities.outputResume` with a `resumeToken`, and only then may it answer with
+  `subscribed.resumed` and send Output frames _instead of_ the snapshot. An old client never
+  advertises, so it always gets the snapshot; a new client against an old host sees no echo,
+  holds no resume point, and takes the snapshot. The client accepts `resumed` only when its
+  `fromSeq` equals the sequence it asked for. `cross-version-terminal-resume.unit.test.ts` runs
+  all four pairings against the newest release, deriving what the old side negotiates from its
+  own journey rather than writing it down, and the existing terminal journey asserts a host
+  echoes only capabilities the client advertised.
+- **`e2ee.text-deflate.v1`.** Advertised in `e2ee_auth.clientCapabilities` by the Node
+  transports only (the shared list that mobile reuses does not carry it). A host compresses a
+  text reply only for a socket that advertised it; the marker byte is NUL, which no JSON
+  plaintext starts with, so a decoder can never misread a plain frame. An old host ignores the
+  string and a new client reads plain frames unchanged. The E2EE v2 framing is untouched. This
+  path is outside the cross-version harness; `e2ee-channel-text-compression.test.ts` pins that a
+  non-advertising client and a non-allowlisted reply are never compressed.
+
 ## Known debt: JSON-RPC errors drop Node's string code
 
 An error raised on an SSH host crosses the relay as JSON-RPC, and

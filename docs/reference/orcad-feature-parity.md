@@ -63,6 +63,13 @@ same `MobileNotificationDispatchEvent` shape the desktop delivery path already p
 old clients see ordinary notifications. The mobile fallbacks key on an error code every
 existing headless host already sends, and a desktop host never sends it.
 
+Terminal stream resumption, compress-before-encrypt for listing replies and the killed-driver
+browser reap were added later. The first two live in the shared runtime, so `orca serve` and
+orcad behave the same (parity); they add negotiated capabilities (`outputResume`,
+`e2ee.text-deflate.v1`) described in
+[remote-wire-compatibility.md](./remote-wire-compatibility.md#worked-example-negotiated-changes-with-no-new-opcode).
+The reap applies to orcad's external Chromium provider only.
+
 ## Follow-ups
 
 1. Serve the bundled web client from orcad and reconcile `webClientUrl` with the loopback bind.
