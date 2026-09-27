@@ -283,9 +283,11 @@ export async function subscribeRemoteRuntimeTransport<TResult>(
     const monitoredWs = ws
     liveness = startRemoteRuntimeSocketLiveness({
       ping: () => {
-        if (monitoredWs.readyState === WebSocket.OPEN) {
-          monitoredWs.ping(REMOTE_RUNTIME_SOCKET_PING_PAYLOAD)
+        if (monitoredWs.readyState !== WebSocket.OPEN) {
+          return false
         }
+        monitoredWs.ping(REMOTE_RUNTIME_SOCKET_PING_PAYLOAD)
+        return true
       },
       onDead: () => {
         fail(

@@ -63,7 +63,8 @@ export function probeAllRemoteRuntimeSocketsNow(
 }
 
 export function startRemoteRuntimeSocketLiveness(args: {
-  ping: () => void
+  /** Returns false when nothing was sent, e.g. the socket is still connecting. */
+  ping: () => boolean
   onDead: () => void
   options?: RemoteRuntimeSocketLivenessOptions
   now?: () => number
@@ -125,7 +126,10 @@ export function startRemoteRuntimeSocketLiveness(args: {
       return
     }
     activitySinceResumeProbe = false
-    tryPing()
+    // Why: a socket still connecting has no path to probe yet; a deadline with no ping could kill it mid-handshake.
+    if (!tryPing()) {
+      return
+    }
     resumeProbeTimer = setTimeout(() => {
       resumeProbeTimer = null
       if (!stopped && !activitySinceResumeProbe) {
@@ -136,11 +140,12 @@ export function startRemoteRuntimeSocketLiveness(args: {
     unrefTimer(resumeProbeTimer)
   }
 
-  function tryPing(): void {
+  function tryPing(): boolean {
     try {
-      args.ping()
+      return args.ping()
     } catch {
       // Why: ping() can throw while a socket is mid-teardown; the probe deadline still settles it.
+      return true
     }
   }
 

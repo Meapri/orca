@@ -20,7 +20,7 @@ describe('remote runtime resume probe', () => {
     vi.useRealTimers()
   })
 
-  function start(onDead = vi.fn(), ping = vi.fn()) {
+  function start(onDead = vi.fn(), ping = vi.fn(() => true)) {
     const monitor = startRemoteRuntimeSocketLiveness({
       ping,
       onDead,
@@ -63,6 +63,22 @@ describe('remote runtime resume probe', () => {
     await vi.advanceTimersByTimeAsync(2_000)
     expect(live.onDead).toHaveBeenCalledTimes(1)
     expect(stopped.onDead).not.toHaveBeenCalled()
+  })
+
+  it('does not arm a deadline for a socket that is still connecting', async () => {
+    let open = false
+    const ping = vi.fn(() => open)
+    const { onDead } = start(vi.fn(), ping)
+
+    probeAllRemoteRuntimeSocketsNow(2_000)
+    await vi.advanceTimersByTimeAsync(2_000)
+    expect(onDead).not.toHaveBeenCalled()
+
+    // Once open, the next resume probes it normally.
+    open = true
+    probeAllRemoteRuntimeSocketsNow(2_000)
+    await vi.advanceTimersByTimeAsync(2_000)
+    expect(onDead).toHaveBeenCalledTimes(1)
   })
 })
 
