@@ -5,8 +5,8 @@
  * `notifications:dispatch`, whose delivery service fans out to paired phones. A headless host
  * (`orca serve`, orcad) has no renderer, so phones registered for push never heard anything
  * (#20706). This derives the same two events from the hook server's status tap and hands them to
- * the same mobile fan-out. It stands down whenever a renderer is attached, so the desktop keeps a
- * single producer.
+ * the same mobile fan-out, and does the same for terminal bells. It stands down whenever a
+ * renderer is attached, so the desktop keeps a single producer.
  */
 import { buildAgentNotificationId } from '../../shared/agent-notification-id'
 import { reserveNotificationCooldown } from '../../shared/notification-burst-cooldown'
@@ -21,10 +21,16 @@ import {
 
 // Matches the renderer coordinator: a `done` followed by more work within this window is a milestone, not a finish.
 export const HEADLESS_AGENT_DONE_QUIET_MS = 1_500
+// Matches the renderer's BEL delay, so a same-burst agent completion wins over the bell.
+export const HEADLESS_TERMINAL_BELL_GRACE_MS = 250
 const MAX_TRACKED_PANES = 500
+
+/** A BEL main parsed off a PTY, with the attribution the runtime resolved for it. */
+export type HeadlessTerminalBell = { paneKey?: string; tabId?: string; worktreeId?: string }
 
 export type HeadlessAgentNotificationDeps = {
   subscribeStatus: (listener: (event: EnrichedAgentHookEventPayload) => void) => () => void
+  subscribeTerminalBells?: (listener: (bell: HeadlessTerminalBell) => void) => () => void
   subscribeStatusDrop: (listener: (paneKey: string) => void) => () => void
   dispatchMobileNotification: (event: MobileNotificationDispatchEvent) => void
   readNotificationSettings: () => NotificationSettings | undefined
@@ -65,6 +71,8 @@ function defaultSchedule(run: () => void, delayMs: number): { cancel(): void } {
 export function installHeadlessAgentNotifications(deps: HeadlessAgentNotificationDeps): () => void {
   const panes = new Map<string, PaneState>()
   const recentMobileNotifications = new Map<string, number>()
+  const lastAgentDispatchAtByWorktree = new Map<string, number>()
+  const pendingBells = new Map<string, { cancel(): void }>()
   const now = deps.now ?? Date.now
   const schedule = deps.schedule ?? defaultSchedule
   const translate = deps.translate ?? untranslatedNotificationText
@@ -115,6 +123,7 @@ export function installHeadlessAgentNotifications(deps: HeadlessAgentNotificatio
     if (!reserveNotificationCooldown(recentMobileNotifications, cooldownKey, emittedAt)) {
       return
     }
+    lastAgentDispatchAtByWorktree.set(worktreeId ?? 'global', emittedAt)
     const payload = event.payload
     const text = buildNotificationText(
       {
@@ -207,11 +216,72 @@ export function installHeadlessAgentNotifications(deps: HeadlessAgentNotificatio
     }, HEADLESS_AGENT_DONE_QUIET_MS)
   }
 
+  function dispatchBell(bell: HeadlessTerminalBell): void {
+    if (deps.isRendererAttached() || (bell.paneKey && panes.get(bell.paneKey)?.pendingDone)) {
+      // A pending agent completion is the richer notification for the same burst.
+      return
+    }
+    const worktreeId =
+      (bell.tabId ? deps.resolveWorktreeIdForTab(bell.tabId) : undefined) ?? bell.worktreeId
+    const emittedAt = now()
+    const agentDispatchedAt = lastAgentDispatchAtByWorktree.get(worktreeId ?? 'global')
+    if (
+      agentDispatchedAt !== undefined &&
+      emittedAt - agentDispatchedAt < HEADLESS_AGENT_DONE_QUIET_MS
+    ) {
+      return
+    }
+    const settings = deps.readNotificationSettings()
+    const desktopAllowed = settings ? settings.enabled && settings.terminalBell : true
+    const cooldownKey = JSON.stringify([desktopAllowed, 'terminal-bell', worktreeId ?? 'global'])
+    if (!reserveNotificationCooldown(recentMobileNotifications, cooldownKey, emittedAt)) {
+      return
+    }
+    const text = buildNotificationText(
+      {
+        source: 'terminal-bell',
+        worktreeId,
+        paneKey: bell.paneKey,
+        ...(worktreeId ? deps.resolveWorkspaceLabels(worktreeId) : {})
+      },
+      translate
+    )
+    deps.dispatchMobileNotification({
+      type: 'notification',
+      emittedAt,
+      source: 'terminal-bell',
+      ...(!desktopAllowed ? { desktopAllowed: false } : {}),
+      title: text.title,
+      body: text.body,
+      ...(worktreeId ? { worktreeId } : {})
+    })
+  }
+
+  function observeBell(bell: HeadlessTerminalBell): void {
+    const key = bell.paneKey ?? bell.tabId ?? bell.worktreeId ?? 'global'
+    if (deps.isRendererAttached() || pendingBells.has(key)) {
+      return
+    }
+    pendingBells.set(
+      key,
+      schedule(() => {
+        pendingBells.delete(key)
+        dispatchBell(bell)
+      }, HEADLESS_TERMINAL_BELL_GRACE_MS)
+    )
+  }
+
   const unsubscribeStatus = deps.subscribeStatus(observe)
   const unsubscribeDrop = deps.subscribeStatusDrop(forgetPane)
+  const unsubscribeBells = deps.subscribeTerminalBells?.(observeBell) ?? (() => {})
   return () => {
     unsubscribeStatus()
     unsubscribeDrop()
+    unsubscribeBells()
+    for (const pending of pendingBells.values()) {
+      pending.cancel()
+    }
+    pendingBells.clear()
     for (const paneKey of panes.keys()) {
       forgetPane(paneKey)
     }

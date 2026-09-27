@@ -47,12 +47,28 @@ export function resolveHostNotificationLabels(
 export function installHostAgentNotifications(options: {
   server: AgentStatusTap
   store: NotificationLabelStore
-  runtime: Pick<OrcaRuntimeService, 'dispatchMobileNotification'>
+  runtime: Pick<OrcaRuntimeService, 'dispatchMobileNotification' | 'onClientEvent'>
   isRendererAttached: () => boolean
 }): () => void {
   const { server, store, runtime } = options
   return installHeadlessAgentNotifications({
     subscribeStatus: (listener) => server.subscribeEnrichedStatus(listener),
+    // Why the client-event bus: subscribing is what arms main's BEL scan, exactly as a paired
+    // desktop's side-effect stream does; replays restore titles and never carry attention.
+    subscribeTerminalBells: (listener) =>
+      runtime.onClientEvent((event) => {
+        if (
+          event.type === 'terminalSideEffects' &&
+          !event.batch.replay &&
+          event.batch.facts.some((fact) => fact.kind === 'bell')
+        ) {
+          listener({
+            ...(event.batch.paneKey ? { paneKey: event.batch.paneKey } : {}),
+            ...(event.batch.tabId ? { tabId: event.batch.tabId } : {}),
+            ...(event.batch.worktreeId ? { worktreeId: event.batch.worktreeId } : {})
+          })
+        }
+      }),
     subscribeStatusDrop: (listener) => server.subscribeStatusDrop(listener),
     dispatchMobileNotification: (event) => runtime.dispatchMobileNotification(event),
     readNotificationSettings: () => store.getSettings().notifications,
