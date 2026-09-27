@@ -33,6 +33,22 @@ export type SleepingAgentRecordSource = {
   terminalResumeEligible?: false
 }
 
+/** Whether a source can become a record at all; cheap enough to gate any tab lookup on. */
+export function hasResumableSleepingAgentIdentity(
+  source: Pick<
+    SleepingAgentRecordSource,
+    'agentType' | 'providerSession' | 'terminalResumeEligible'
+  >
+): boolean {
+  const agent = source.agentType
+  return (
+    source.terminalResumeEligible !== false &&
+    isResumableTuiAgent(agent) &&
+    source.providerSession !== undefined &&
+    getAgentResumeArgv(agent, source.providerSession) !== null
+  )
+}
+
 /** One record format for every capture site, so any cold restore can read what another wrote. */
 export function buildSleepingAgentSessionRecord(args: {
   source: SleepingAgentRecordSource

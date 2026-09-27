@@ -6,7 +6,8 @@ import type {
 } from '../../../../shared/agent-session-resume'
 import {
   buildSleepingAgentSessionRecord,
-  copySleepingAgentLaunchConfig
+  copySleepingAgentLaunchConfig,
+  hasResumableSleepingAgentIdentity
 } from '../../../../shared/sleeping-agent-session-record'
 import type { TerminalTab } from '../../../../shared/terminal-tab-types'
 import { findTabForAgentEntry } from './agent-status-pane-key-tab-binding'
@@ -22,6 +23,10 @@ export function sleepingRecordFromEntry(args: {
   launchConfig?: SleepingAgentLaunchConfig
   origin?: SleepingAgentSessionRecord['origin']
 }): SleepingAgentSessionRecord | null {
+  // Why first: the tab lookup indexes the whole tab tree, and most status rows are not resumable.
+  if (!hasResumableSleepingAgentIdentity(args.entry)) {
+    return null
+  }
   const tab = args.tab ?? findTabForAgentEntry(args.state, args.worktreeId, args.entry)
   return buildSleepingAgentSessionRecord({
     source: args.entry,
