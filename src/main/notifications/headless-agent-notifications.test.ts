@@ -5,7 +5,9 @@ import type { NotificationSettings } from '../../shared/notification-settings-ty
 import { getDefaultNotificationSettings } from '../../shared/constants'
 import {
   HEADLESS_AGENT_DONE_QUIET_MS,
-  installHeadlessAgentNotifications
+  HEADLESS_TERMINAL_BELL_GRACE_MS,
+  installHeadlessAgentNotifications,
+  type HeadlessTerminalBell
 } from './headless-agent-notifications'
 
 const WORKTREE_ID = 'repo-1::/srv/work/feature'
@@ -14,6 +16,7 @@ const PANE_KEY = 'tab-1:leaf-1'
 type Harness = {
   emit: (event: EnrichedAgentHookEventPayload) => void
   drop: (paneKey: string) => void
+  bell: (bell: HeadlessTerminalBell) => void
   advance: (ms: number) => void
   dispatched: MobileNotificationDispatchEvent[]
   setRendererAttached: (attached: boolean) => void
@@ -25,6 +28,7 @@ function createHarness(): Harness {
   let clock = 1_000_000
   let statusListener: ((event: EnrichedAgentHookEventPayload) => void) | null = null
   let dropListener: ((paneKey: string) => void) | null = null
+  let bellListener: ((bell: HeadlessTerminalBell) => void) | null = null
   let rendererAttached = false
   let settings = getDefaultNotificationSettings()
   const timers: { at: number; run: () => void; cancelled: boolean }[] = []
@@ -40,6 +44,12 @@ function createHarness(): Harness {
       dropListener = listener
       return () => {
         dropListener = null
+      }
+    },
+    subscribeTerminalBells: (listener) => {
+      bellListener = listener
+      return () => {
+        bellListener = null
       }
     },
     dispatchMobileNotification: (event) => dispatched.push(event),
@@ -61,6 +71,7 @@ function createHarness(): Harness {
   return {
     emit: (event) => statusListener?.(event),
     drop: (paneKey) => dropListener?.(paneKey),
+    bell: (bell) => bellListener?.(bell),
     advance: (ms) => {
       clock += ms
       for (const timer of timers.splice(0)) {
@@ -215,5 +226,67 @@ describe('installHeadlessAgentNotifications', () => {
     harness.emit(status('done', { stateStartedAt: 600 }))
     harness.advance(HEADLESS_AGENT_DONE_QUIET_MS)
     expect(harness.dispatched).toHaveLength(0)
+  })
+})
+
+describe('headless terminal-bell notifications', () => {
+  const bell = { paneKey: PANE_KEY, tabId: 'tab-1' }
+
+  it('announces a bell after the grace window, as desktop-disallowed while bells are off', () => {
+    harness.bell(bell)
+    expect(harness.dispatched).toHaveLength(0)
+
+    harness.advance(HEADLESS_TERMINAL_BELL_GRACE_MS)
+
+    expect(harness.dispatched).toEqual([
+      expect.objectContaining({
+        source: 'terminal-bell',
+        worktreeId: WORKTREE_ID,
+        title: 'Bell in feature',
+        body: 'orca · Attention requested',
+        desktopAllowed: false
+      })
+    ])
+  })
+
+  it('lets host notification settings allow the bell', () => {
+    harness.setSettings({ ...getDefaultNotificationSettings(), enabled: true, terminalBell: true })
+    harness.bell(bell)
+    harness.advance(HEADLESS_TERMINAL_BELL_GRACE_MS)
+
+    expect(harness.dispatched[0]).not.toHaveProperty('desktopAllowed')
+  })
+
+  it('yields to an agent completion from the same burst', () => {
+    harness.emit(status('working'))
+    harness.emit(status('done', { stateStartedAt: 200 }))
+    harness.bell(bell)
+    harness.advance(HEADLESS_TERMINAL_BELL_GRACE_MS)
+    harness.advance(HEADLESS_AGENT_DONE_QUIET_MS)
+    harness.bell(bell)
+    harness.advance(HEADLESS_TERMINAL_BELL_GRACE_MS)
+
+    expect(harness.dispatched.map((event) => event.source)).toEqual(['agent-task-complete'])
+  })
+
+  it('collapses repeated bells and stays silent under a renderer or after uninstall', () => {
+    harness.bell(bell)
+    harness.bell(bell)
+    harness.advance(HEADLESS_TERMINAL_BELL_GRACE_MS)
+    harness.bell(bell)
+    harness.advance(HEADLESS_TERMINAL_BELL_GRACE_MS)
+    expect(harness.dispatched).toHaveLength(1)
+
+    harness.advance(10_000)
+    harness.setRendererAttached(true)
+    harness.bell(bell)
+    harness.advance(HEADLESS_TERMINAL_BELL_GRACE_MS)
+    harness.setRendererAttached(false)
+    harness.bell(bell)
+    harness.uninstall()
+    harness.advance(HEADLESS_TERMINAL_BELL_GRACE_MS)
+    harness.bell(bell)
+    harness.advance(HEADLESS_TERMINAL_BELL_GRACE_MS)
+    expect(harness.dispatched).toHaveLength(1)
   })
 })

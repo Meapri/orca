@@ -33,16 +33,7 @@ export function deterministicAgentSessionUuid(seed: string): string {
   return `${value.slice(0, 8)}-${value.slice(8, 12)}-${value.slice(12, 16)}-${value.slice(16, 20)}-${value.slice(20)}`
 }
 
-export function copySleepingAgentLaunchConfig(
-  config: SleepingAgentLaunchConfig
-): SleepingAgentLaunchConfig {
-  return {
-    ...(config.agentCommand ? { agentCommand: config.agentCommand } : {}),
-    agentArgs: config.agentArgs,
-    agentEnv: { ...config.agentEnv },
-    ...(config.ompResumeFilePath ? { ompResumeFilePath: config.ompResumeFilePath } : {})
-  }
-}
+export { copySleepingAgentLaunchConfig } from '../../shared/sleeping-agent-session-record'
 
 export function normalizeAgentLaunchCommandForMatch(command: string): string {
   return command.trim().replace(/\s+/g, ' ')

@@ -11,7 +11,8 @@ import { teardownRpcDeadline } from './worktree-teardown'
 
 export class OrcaRuntimeWithSleepResolvedWorktreeTerminals extends OrcaRuntimeWithStopTerminalsForWorktree {
   protected async sleepResolvedWorktreeTerminals(
-    worktree: ResolvedWorktree
+    worktree: ResolvedWorktree,
+    options: { preserveSurfaces?: boolean } = {}
   ): Promise<RuntimeWorktreeTerminalSleepResult> {
     const sleepDeadline = Date.now() + WORKTREE_TERMINAL_SLEEP_TIMEOUT_MS
     const releaseMutation = await this.acquireWorktreeTerminalMutation(
@@ -150,6 +151,16 @@ export class OrcaRuntimeWithSleepResolvedWorktreeTerminals extends OrcaRuntimeWi
       const orderedLivePtyIds = [...livePtyIds].sort()
       releaseReversibleRendererStops =
         ptyController.markReversibleStops?.(orderedLivePtyIds) ?? (() => {})
+      if (options.preserveSurfaces) {
+        // Why: with no renderer holding the tab rows, the host keeps each pane as a parked
+        // surface for wake, exactly as an exact keep-history stop does for one hibernated pane.
+        for (const ptyId of orderedLivePtyIds) {
+          this.intentionalHandlelessPtyStops.set(
+            ptyId,
+            this.ptysById.get(ptyId)?.incarnationId ?? null
+          )
+        }
+      }
       const stopResults = await Promise.allSettled(
         orderedLivePtyIds.map(async (ptyId) => ({
           ptyId,
@@ -158,7 +169,11 @@ export class OrcaRuntimeWithSleepResolvedWorktreeTerminals extends OrcaRuntimeWi
             deadlineMs: teardownRpcDeadline(sleepDeadline)
           })
         }))
-      )
+      ).finally(() => {
+        if (options.preserveSurfaces) {
+          orderedLivePtyIds.forEach((ptyId) => this.intentionalHandlelessPtyStops.delete(ptyId))
+        }
+      })
       const successfulStopPtyIds = orderedLivePtyIds.filter((_, index) => {
         const result = stopResults[index]
         return result?.status === 'fulfilled' && result.value.stopped

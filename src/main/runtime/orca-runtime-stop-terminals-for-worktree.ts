@@ -243,7 +243,8 @@ export class OrcaRuntimeWithStopTerminalsForWorktree extends OrcaRuntimeWithReso
   }
 
   async sleepTerminalsForWorktree(
-    worktreeSelector: string
+    worktreeSelector: string,
+    options: { preserveSurfaces?: boolean } = {}
   ): Promise<RuntimeWorktreeTerminalSleepResult> {
     const worktree = await this.resolveWorktreeSelector(worktreeSelector)
     const existing = this.terminalSleepByWorktreeId.get(worktree.id)
@@ -251,7 +252,7 @@ export class OrcaRuntimeWithStopTerminalsForWorktree extends OrcaRuntimeWithReso
       return await existing
     }
 
-    const sleeping = this.sleepResolvedWorktreeTerminals(worktree)
+    const sleeping = this.sleepResolvedWorktreeTerminals(worktree, options)
     this.terminalSleepByWorktreeId.set(worktree.id, sleeping)
     try {
       return await sleeping

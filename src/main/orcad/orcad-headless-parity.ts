@@ -5,6 +5,10 @@
 import { HEADLESS_RUNTIME_WINDOW_ID } from '../../shared/runtime-types'
 import type { AgentHookServer } from '../agent-hooks/server'
 import { installFirstWorkRenameSubscription } from '../agent-hooks/first-work-rename-subscription'
+import {
+  installHeadlessSleepingAgentHost,
+  type HeadlessSleepingAgentStatusSource
+} from '../agent-hooks/headless-sleeping-agent-host'
 import { firstWorkRenameDeps } from '../agent-hooks/first-work-rename-runtime'
 import {
   installManagedAgentHooks,
@@ -18,6 +22,8 @@ import { installHostAgentNotifications } from '../notifications/headless-agent-n
 import type { Store } from '../persistence'
 import type { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { scheduleAllPendingHistoryTreeRemovals } from '../terminal-history-deletion'
+import { cancelHistoryGc, scheduleHistoryGc } from '../terminal-history-gc'
+import { getKnownWorktreeIdsForHistoryGc } from '../window/history-gc-worktree-ids'
 import { collectWorktreeTrashSweepRoots, sweepStaleWorktreeTrash } from '../worktree-trash'
 import type { OrcadAccountServices } from './orcad-account-services'
 import { getAppEnvironment } from '../../shared/app-environment'
@@ -34,7 +40,8 @@ export type OrcadHeadlessParity = {
 export function installOrcadHeadlessParity(options: {
   runtime: OrcaRuntimeService
   store: Store
-  agentHookServer: Pick<AgentHookServer, 'subscribeEnrichedStatus' | 'subscribeStatusDrop'>
+  agentHookServer: Pick<AgentHookServer, 'subscribeEnrichedStatus' | 'subscribeStatusDrop'> &
+    HeadlessSleepingAgentStatusSource
   accounts: Pick<OrcadAccountServices, 'claudeUsage' | 'codexUsage' | 'stop'>
 }): OrcadHeadlessParity {
   const { runtime, store, agentHookServer, accounts } = options
@@ -65,6 +72,12 @@ export function installOrcadHeadlessParity(options: {
     headlessDispatcher: createRuntimeHeadlessAutomationDispatcher(runtime)
   })
   runtime.setAutomationService(automations)
+  // Why: nothing else records or replays an idle agent's resume identity on this host (#21743).
+  const sleepingAgents = installHeadlessSleepingAgentHost({
+    server: agentHookServer,
+    store,
+    runtime
+  })
   let stopped = false
   return {
     startScheduledWork: () => {
@@ -86,6 +99,11 @@ export function installOrcadHeadlessParity(options: {
       }
       // A quit mid-delete leaves tombstoned history and trashed checkouts that only this reclaims.
       scheduleAllPendingHistoryTreeRemovals()
+      // Same orphan-history GC the desktop arms from its main window, over the same live set.
+      scheduleHistoryGc(async () => getKnownWorktreeIdsForHistoryGc(store))
+      void sleepingAgents.resumeAfterRestart().catch((error: unknown) => {
+        console.warn('[agent-resume] cold restore after restart failed:', error)
+      })
       void sweepStaleWorktreeTrash(
         collectWorktreeTrashSweepRoots(store.getRepos(), store.getSettings())
       ).catch((error: unknown) => {
@@ -94,6 +112,9 @@ export function installOrcadHeadlessParity(options: {
     },
     uninstall: () => {
       stopped = true
+      // Why first: shutdown's own PTY teardown must not read as agents to resume.
+      sleepingAgents.uninstall()
+      cancelHistoryGc()
       automations.stop()
       accounts.stop()
       uninstallNotifications()

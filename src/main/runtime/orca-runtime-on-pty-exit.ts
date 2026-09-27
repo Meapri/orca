@@ -10,8 +10,11 @@ import { SSH_EXIT_UNCONFIRMED_REASON } from '../../shared/pty-liveness-verdict'
 import type { RetiredTerminalSurface } from './mobile-session-terminal-retirement'
 import { parsePaneKey } from '../../shared/stable-pane-id'
 import { advertisedUrlWatcher } from '../ports/advertised-url-watcher'
+import type { HeadlessAgentResumeHost } from './headless-agent-resume-host'
 
 export class OrcaRuntimeWithOnPtyExit extends OrcaRuntimeWithOnClientDisconnected {
+  protected headlessAgentResumeHost: HeadlessAgentResumeHost | null = null
+
   onPtyExit(
     ptyId: string,
     exitCode: number,
@@ -35,10 +38,9 @@ export class OrcaRuntimeWithOnPtyExit extends OrcaRuntimeWithOnClientDisconnecte
     const observedCause = options.cause ?? resolveUnreportedExitCause(exitCode)
     const stopNeverConfirmed =
       observedCause.kind === 'unknown' && observedCause.reason === 'stop_unverified'
+    const stopWasRequested = this.stopRequestedPtyIds.has(ptyId)
     const exitCause: TerminalExitCause =
-      this.stopRequestedPtyIds.has(ptyId) && !stopNeverConfirmed
-        ? OPERATOR_CLOSE_EXIT_CAUSE
-        : observedCause
+      stopWasRequested && !stopNeverConfirmed ? OPERATOR_CLOSE_EXIT_CAUSE : observedCause
     this.stopRequestedPtyIds.delete(ptyId)
     const preservesAbnormalSshSurface =
       this.isSshOwnedPtyId(ptyId) &&
@@ -264,7 +266,36 @@ export class OrcaRuntimeWithOnPtyExit extends OrcaRuntimeWithOnClientDisconnecte
       }
     }
     this.pruneDisconnectedPtyRecords()
+    this.observeHeadlessAgentResumeExit(
+      [
+        ...exitPaneKeys,
+        ...exactSurfaces.map((surface) => `${surface.parentTabId}:${surface.leafId}`)
+      ],
+      stopWasRequested ? OPERATOR_CLOSE_EXIT_CAUSE : exitCause,
+      retirement
+    )
     return retirement
+  }
+
+  setHeadlessAgentResumeHost(host: HeadlessAgentResumeHost | null): void {
+    this.headlessAgentResumeHost = host
+  }
+
+  private observeHeadlessAgentResumeExit(
+    paneKeys: string[],
+    cause: TerminalExitCause,
+    retirement: Promise<void> | undefined
+  ): void {
+    try {
+      this.headlessAgentResumeHost?.observeTerminalExit({
+        paneKeys: [...new Set(paneKeys)],
+        cause,
+        retirement
+      })
+    } catch (error) {
+      // An observer cannot change exit cleanup.
+      console.warn('[agent-resume] exit observer failed', error)
+    }
   }
 
   private notifyPtyExitListeners(ptyId: string): void {

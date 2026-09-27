@@ -76,6 +76,11 @@ both refusal codes already exist and clients already handle them — `adopted` h
 tab off to the host's, and the refusals are rethrown rather than retried through the legacy path.
 The plain-shell degrade is the one cold restore already takes when it cannot resume.
 
+A host with no renderer resumes its own lost agent panes (orcad, see
+[orcad-feature-parity.md](./orcad-feature-parity.md)) through this same `terminal.ensureAgentSession`
+path, placed at the pane's own ids, so it is deduped against client cold restores and refused for a
+retired surface exactly like theirs.
+
 ## Who drives a shared PTY's geometry
 
 `RemoteDesktopTerminalFloor` (`src/main/runtime/remote-desktop-terminal-floor.ts`) holds one owner
