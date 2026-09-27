@@ -28,6 +28,12 @@ describe('remote runtime resubscribe failing after the recovery deadline', () =>
   } | null = null
   let resolvePaneCalls = 0
   let holdResolvePane: { reject: (error: Error) => void } | null = null
+  let hangLateResolvePane = true
+  let streamOpens = 0
+  const lateStreamOpen: { hang: boolean; release: (() => void) | null } = {
+    hang: false,
+    release: null
+  }
 
   function latestStreamId(): number {
     const frame = subscriptionSendBinary.mock.calls
@@ -62,10 +68,14 @@ describe('remote runtime resubscribe failing after the recovery deadline', () =>
     subscriptionSendBinary.mockReset()
     resolvePaneCalls = 0
     holdResolvePane = null
+    hangLateResolvePane = true
+    streamOpens = 0
+    lateStreamOpen.hang = false
+    lateStreamOpen.release = null
     const runtimeCall = vi.fn(async (request: { method: string; params?: unknown }) => {
       if (request.method === 'terminal.resolvePane') {
         resolvePaneCalls += 1
-        if (holdResolvePane === null && resolvePaneCalls > 1) {
+        if (hangLateResolvePane && holdResolvePane === null && resolvePaneCalls > 1) {
           // Why: the post-deadline attempt hangs so the test observes that it was issued.
           return new Promise<never>((_resolve, reject) => {
             holdResolvePane = { reject }
@@ -87,6 +97,12 @@ describe('remote runtime resubscribe failing after the recovery deadline', () =>
     })
     const runtimeSubscribe = vi.fn(
       async (_args: unknown, callbacks: typeof subscriptionCallbacks) => {
+        streamOpens += 1
+        if (lateStreamOpen.hang && streamOpens > 1) {
+          await new Promise<void>((resolve) => {
+            lateStreamOpen.release = resolve
+          })
+        }
         subscriptionCallbacks = callbacks
         queueMicrotask(() =>
           subscriptionCallbacks?.onResponse({ ok: true, result: { type: 'ready' } })
@@ -133,6 +149,37 @@ describe('remote runtime resubscribe failing after the recovery deadline', () =>
     expect(retryAllRemoteRuntimePtyRecoveriesNow()).toBe(1)
     await vi.advanceTimersByTimeAsync(0)
     expect(resolvePaneCalls).toBeGreaterThan(callsBeforeResume)
+    transport.destroy?.()
+  })
+
+  it('parks a late success whose stream opened after the deadline', async () => {
+    hangLateResolvePane = false
+    lateStreamOpen.hang = true
+    const { createRemoteRuntimePtyTransport } = await import('./remote-runtime-pty-transport')
+    const { retryAllRemoteRuntimePtyRecoveriesNow } =
+      await import('./remote-runtime-pty-recovery-state')
+    const transport = createRemoteRuntimePtyTransport('env-1', {
+      worktreeId: 'wt-1',
+      tabId: 'tab-1',
+      leafId: 'pane:1'
+    })
+    transport.attach({ existingPtyId: FIRST_PTY_ID, cols: 80, rows: 24, callbacks: {} })
+    await vi.waitFor(() => expect(subscriptionSendBinary).toHaveBeenCalled())
+    emitSnapshot(latestStreamId())
+
+    vi.useFakeTimers()
+    subscriptionCallbacks?.onClose?.()
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.waitFor(() => expect(lateStreamOpen.release).not.toBeNull())
+
+    // The stream open stays in flight past the whole window, then succeeds.
+    await vi.advanceTimersByTimeAsync(REMOTE_RUNTIME_AUTO_RECOVERY_TIMEOUT_MS + 1)
+    expect(transport.getRecoveryState?.().phase).toBe('disconnected')
+    lateStreamOpen.release?.()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(transport.getRecoveryState?.().phase).toBe('disconnected')
+
+    expect(retryAllRemoteRuntimePtyRecoveriesNow()).toBe(1)
     transport.destroy?.()
   })
 })
