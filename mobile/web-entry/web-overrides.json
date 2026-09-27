@@ -182,6 +182,10 @@
       "reason": "react-native-web's keydown handler withholds onSubmitEditing whenever the Enter keydown reports a composition \u2014 nativeEvent.isComposing, or the Android keyCode 229 that stands for it \u2014 which is a soft keyboard's normal state mid-word, so Enter on the page neither sent the line nor cleared the field while native Android's editor action fired as it always does. Both terminal fields reach their send through onSubmitEditing alone and both are bound here: the live input's carriage return, and the buffered command field's draft. The native file binds nothing, because that editor action needs no help; this one listens for beforeinput and acts on insertLineBreak and insertParagraph, the browser's own end-of-line signals. react-native-web calls preventDefault on every keydown it does submit on, so those events exist only in the cases it dropped and never produce a second carriage return; an IME still choosing a candidate reports insertCompositionText and is left alone."
     },
     {
+      "file": "src/transport/host-endpoint-preference.web.ts",
+      "reason": "Endpoint failover persists the last address that completed a handshake into the native host store; the page never persists host metadata (see host-store.web.ts), so the preference write is a no-op there and the bridge's native side keeps the record."
+    },
+    {
       "file": "src/transport/host-app-version-store.web.ts",
       "reason": "The page keeps no record of the host's status.get app version because nothing in it reads one — the reader is the native troubleshoot screen's — and a key the page only writes is not page state, so it is not admitted through page-storage-keys.ts and every mount's write was refused and logged instead."
     },
