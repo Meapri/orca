@@ -517,7 +517,7 @@ index f61206b13824e6925efebd041261a2d125d0f527..053cfa47ae44b9b3b690521e20edd333
 +  }
  }
 diff --git a/src/WebglRenderer.ts b/src/WebglRenderer.ts
-index a951efba5c75e82735cd39b6b22c4b5d5fad5928..68201dfcffe914d5b7080ef2fde553a36c91d0fa 100644
+index a951efba5c75e82735cd39b6b22c4b5d5fad5928..6e877fcaf1bc4611dbc092d9e34986f503870f44 100644
 --- a/src/WebglRenderer.ts
 +++ b/src/WebglRenderer.ts
 @@ -7,6 +7,7 @@ import { ITerminal } from 'browser/Types';
@@ -536,7 +536,7 @@ index a951efba5c75e82735cd39b6b22c4b5d5fad5928..68201dfcffe914d5b7080ef2fde553a3
  import { Terminal } from '@xterm/xterm';
  import { GlyphRenderer } from './GlyphRenderer';
  import { RectangleRenderer } from './RectangleRenderer';
-@@ -32,10 +34,35 @@ const enum Constants {
+@@ -32,10 +34,36 @@ const enum Constants {
    MERGE_RETRY_LIMIT = 32
  }
  
@@ -569,10 +569,11 @@ index a951efba5c75e82735cd39b6b22c4b5d5fad5928..68201dfcffe914d5b7080ef2fde553a3
 +  private _cursorMotionSample: ICursorMotionSample | undefined;
 +  /** The absolute row the last pass drew an adopted caret on, so a moved caret repaints it. */
 +  private _adoptedCaretRow: number | undefined;
++  private _adoptedCaretX: number | undefined;
    private _charAtlasDisposable = this._register(new MutableDisposable());
    private _charAtlas: ITextureAtlas | undefined;
    private _devicePixelRatio: number;
-@@ -55,7 +82,7 @@ export class WebglRenderer extends Disposable implements IRenderer {
+@@ -55,7 +83,7 @@ export class WebglRenderer extends Disposable implements IRenderer {
  
    public readonly dimensions: IRenderDimensions;
  
@@ -581,7 +582,7 @@ index a951efba5c75e82735cd39b6b22c4b5d5fad5928..68201dfcffe914d5b7080ef2fde553a3
    private _isAttached: boolean;
    private _contextRestorationTimeout: number | undefined;
  
-@@ -151,6 +178,7 @@ export class WebglRenderer extends Disposable implements IRenderer {
+@@ -151,6 +179,7 @@ export class WebglRenderer extends Disposable implements IRenderer {
      }));
  
      this._register(addDisposableListener(this._coreBrowserService.mainDocument, 'mousedown', () => this._cursorBlinkStateManager.value?.restartBlinkAnimation()));
@@ -589,7 +590,7 @@ index a951efba5c75e82735cd39b6b22c4b5d5fad5928..68201dfcffe914d5b7080ef2fde553a3
  
      this._core.screenElement!.appendChild(this._canvas);
  
-@@ -190,6 +218,7 @@ export class WebglRenderer extends Disposable implements IRenderer {
+@@ -190,6 +219,7 @@ export class WebglRenderer extends Disposable implements IRenderer {
    }
  
    public handleResize(cols: number, rows: number): void {
@@ -597,7 +598,7 @@ index a951efba5c75e82735cd39b6b22c4b5d5fad5928..68201dfcffe914d5b7080ef2fde553a3
      // Update character and canvas dimensions
      this._updateDimensions();
  
-@@ -339,6 +368,7 @@ export class WebglRenderer extends Disposable implements IRenderer {
+@@ -339,6 +369,7 @@ export class WebglRenderer extends Disposable implements IRenderer {
    }
  
    public clear(): void {
@@ -605,7 +606,7 @@ index a951efba5c75e82735cd39b6b22c4b5d5fad5928..68201dfcffe914d5b7080ef2fde553a3
      this._clearModel(true);
      for (const l of this._renderLayers) {
        l.reset(this._terminal);
-@@ -386,7 +416,10 @@ export class WebglRenderer extends Disposable implements IRenderer {
+@@ -386,7 +417,10 @@ export class WebglRenderer extends Disposable implements IRenderer {
      // page's version, so re-run the update and force a full texture rebind.
      let merged = false;
      let mergeRetries = 0;
@@ -617,7 +618,7 @@ index a951efba5c75e82735cd39b6b22c4b5d5fad5928..68201dfcffe914d5b7080ef2fde553a3
        merged = true;
        this._clearModel(true);
        this._updateModel(0, this._terminal.rows - 1);
-@@ -397,10 +430,63 @@ export class WebglRenderer extends Disposable implements IRenderer {
+@@ -397,10 +431,63 @@ export class WebglRenderer extends Disposable implements IRenderer {
  
      // Render
      this._rectangleRenderer.value.renderBackgrounds();
@@ -682,7 +683,7 @@ index a951efba5c75e82735cd39b6b22c4b5d5fad5928..68201dfcffe914d5b7080ef2fde553a3
    }
  
    private _updateCursorBlink(): void {
-@@ -442,15 +528,30 @@ export class WebglRenderer extends Disposable implements IRenderer {
+@@ -442,15 +529,35 @@ export class WebglRenderer extends Disposable implements IRenderer {
      end = clamp(end, terminal.rows - 1, 0);
      const cursorStyle = this._coreService.decPrivateModes.cursorStyle ?? terminal.options.cursorStyle ?? 'block';
  
@@ -705,7 +706,12 @@ index a951efba5c75e82735cd39b6b22c4b5d5fad5928..68201dfcffe914d5b7080ef2fde553a3
 +        end = Math.max(end, y);
 +      }
 +    }
++    // The real cursor stays parked while the app moves its caret, so restart blink as its move would.
++    if (adopted && (adopted.row !== this._adoptedCaretRow || adopted.x !== this._adoptedCaretX)) {
++      this._cursorBlinkStateManager.value?.restartBlinkAnimation();
++    }
 +    this._adoptedCaretRow = adopted?.row;
++    this._adoptedCaretX = adopted?.x;
      let lastCursorX = -1;
      const isCursorVisible =
        this._coreService.isCursorInitialized &&
@@ -716,7 +722,7 @@ index a951efba5c75e82735cd39b6b22c4b5d5fad5928..68201dfcffe914d5b7080ef2fde553a3
      this._model.cursor = undefined;
      let modelUpdated = false;
  
-@@ -467,12 +568,15 @@ export class WebglRenderer extends Disposable implements IRenderer {
+@@ -467,12 +574,15 @@ export class WebglRenderer extends Disposable implements IRenderer {
          this._setRowBlinkState(y, false);
          continue;
        }
@@ -734,7 +740,7 @@ index a951efba5c75e82735cd39b6b22c4b5d5fad5928..68201dfcffe914d5b7080ef2fde553a3
        for (x = 0; x < terminal.cols; x++) {
          lastBg = this._cellColorResolver.result.bg;
          line.loadCell(x, cell);
-@@ -546,7 +650,7 @@ export class WebglRenderer extends Disposable implements IRenderer {
+@@ -546,7 +656,7 @@ export class WebglRenderer extends Disposable implements IRenderer {
              };
              lastCursorX = cursorX + cell.getWidth() - 1;
            }
@@ -743,7 +749,7 @@ index a951efba5c75e82735cd39b6b22c4b5d5fad5928..68201dfcffe914d5b7080ef2fde553a3
                ((this._coreBrowserService.isFocused &&
                cursorStyle === 'block') ||
                (this._coreBrowserService.isFocused === false &&
-@@ -610,6 +714,17 @@ export class WebglRenderer extends Disposable implements IRenderer {
+@@ -610,6 +720,17 @@ export class WebglRenderer extends Disposable implements IRenderer {
      if (modelUpdated) {
        this._rectangleRenderer.value!.updateBackgrounds(this._model);
      }
