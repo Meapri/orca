@@ -1,4 +1,4 @@
-import { app, ipcMain, type WebContents } from 'electron'
+import { app, ipcMain, shell, type WebContents } from 'electron'
 import type { Store } from '../persistence'
 import { relaunchApp, type AppRelaunchReason } from '../app-relaunch'
 import type {
@@ -274,7 +274,9 @@ export function registerOrcaProfileHandlers(
   ipcMain.handle(
     'orcaProfiles:connectCurrent',
     async (): Promise<ConnectCurrentOrcaProfileResult> => {
-      const result = await connectCurrentOrcaProfile(getProfileUserDataPath())
+      const result = await connectCurrentOrcaProfile(getProfileUserDataPath(), {
+        openAuthorizeUrl: (url) => shell.openExternal(url)
+      })
       if (result.status === 'connected') {
         options.onAuthMutation?.()
       }
