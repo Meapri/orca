@@ -3,7 +3,10 @@ import {
   notifyTerminalFollowOutputWaiters
 } from './terminal-follow-output-waiters'
 import { isTerminalScrollIntentRebuildInFlight } from './terminal-scroll-intent-rebuild'
-import { anchorPinnedScrollIntent, resolvePinnedViewportY } from './terminal-scroll-intent-anchor'
+import {
+  anchorPinnedScrollIntent,
+  resolvePinnedScrollRestore
+} from './terminal-scroll-intent-anchor'
 import {
   readKeyedTerminalScrollIntent,
   readKeyedTerminalScrollIntentBinding,
@@ -324,7 +327,7 @@ export function enforceTerminalCurrentScrollIntent(terminal: TerminalScrollInten
   const snapshot = {
     kind: existing.kind,
     bufferType: existing.bufferType,
-    viewportY: resolvePinnedViewportY(terminal, existing),
+    viewportY: existing.viewportY,
     baseY: existing.baseY,
     revision: existing.revision
   }
@@ -336,12 +339,8 @@ export function enforceTerminalCurrentScrollIntent(terminal: TerminalScrollInten
     // resuming must follow live output, not freeze at that stale line.
     snapshot.kind = 'followOutput'
   }
-  const current = readTerminalScrollBufferSnapshot(terminal)
-  // Why: a shorter live buffer than the stored intent means the buffer was
-  // rebuilt (snapshot replay/remount); absolute lines are renumbered there.
-  const restoreBy =
-    snapshot.kind === 'pinnedViewport' && current && current.baseY < snapshot.baseY
-      ? 'bottomOffset'
-      : 'viewportLine'
-  restoreTerminalStructuralScrollIntent(terminal, snapshot, { restoreBy })
+  const restore = resolvePinnedScrollRestore(terminal, existing, snapshot)
+  restoreTerminalStructuralScrollIntent(terminal, restore.snapshot, {
+    restoreBy: restore.restoreBy
+  })
 }
