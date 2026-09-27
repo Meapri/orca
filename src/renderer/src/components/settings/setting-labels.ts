@@ -19,6 +19,7 @@ export const SETTING_LABELS: Partial<Record<keyof GlobalSettings, string>> = {
   terminalMouseHideWhileTyping: 'Mouse Hide While Typing',
   terminalInlineImages: 'Inline Images',
   terminalImePreeditInGrid: 'Draw IME Composition in Terminal Cells',
+  terminalFitWideGlyphs: 'Fit and Center Wide Characters',
   terminalWordSeparator: 'Word Separator',
   primarySelectionMiddleClickPaste: 'Middle-click Paste from Selection',
   terminalFocusFollowsMouse: 'Focus Follows Mouse',

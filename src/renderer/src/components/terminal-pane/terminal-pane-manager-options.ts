@@ -31,6 +31,7 @@ import { resolveTerminalLayoutActiveLeafId } from './terminal-layout-leaf-ids'
 import type { TerminalPaneManagerOptionsContext } from './terminal-pane-mount-context'
 import { resolveTerminalInlineImagesEnabled } from '../../../../shared/terminal-inline-images-settings'
 import { resolveTerminalImePreeditInGrid } from '@/lib/pane-manager/terminal-ime-grid-preedit'
+import { resolveTerminalFitWideGlyphs } from '@/lib/pane-manager/terminal-wide-glyph-fit'
 
 /** Builds the imperative PaneManager option bag from the mount context. */
 export function createTerminalPaneManagerOptions(
@@ -160,7 +161,10 @@ export function createTerminalPaneManagerOptions(
         macOptionIsMeta: context.deps.effectiveMacOptionAsAltRef.current === 'true',
         lineHeight: normalizeTerminalLineHeight(currentSettings?.terminalLineHeight),
         wordSeparator: currentSettings?.terminalWordSeparator,
-        imePreeditInGrid: resolveTerminalImePreeditInGrid(currentSettings?.terminalImePreeditInGrid)
+        imePreeditInGrid: resolveTerminalImePreeditInGrid(
+          currentSettings?.terminalImePreeditInGrid
+        ),
+        fitWideGlyphs: resolveTerminalFitWideGlyphs(currentSettings?.terminalFitWideGlyphs)
       }
     },
     terminalTuiScrollSensitivity: () =>

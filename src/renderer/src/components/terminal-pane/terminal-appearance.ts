@@ -34,6 +34,7 @@ import { maybePushMode2031Flip } from './terminal-mode-2031-replies'
 import { resolveTerminalMinimumContrastRatio } from '@/lib/terminal-contrast-correction'
 import { resolveTerminalInlineImagesEnabled } from '../../../../shared/terminal-inline-images-settings'
 import { resolveTerminalImePreeditInGrid } from '@/lib/pane-manager/terminal-ime-grid-preedit'
+import { resolveTerminalFitWideGlyphs } from '@/lib/pane-manager/terminal-wide-glyph-fit'
 import { resolveTerminalCursorAnimationEnabled } from '../../../../shared/terminal-cursor-animation-settings'
 import { resolveTerminalAdoptAppCaretEnabled } from '../../../../shared/terminal-app-caret-settings'
 
@@ -227,6 +228,11 @@ export function applyTerminalAppearance(
     pane.terminal.options.imePreeditInGrid = resolveTerminalImePreeditInGrid(
       settings.terminalImePreeditInGrid
     )
+    // Why value-gated: a write clears the renderer and rebuilds the glyph atlas.
+    const fitWideGlyphs = resolveTerminalFitWideGlyphs(settings.terminalFitWideGlyphs)
+    if (pane.terminal.options.fitWideGlyphs !== fitWideGlyphs) {
+      pane.terminal.options.fitWideGlyphs = fitWideGlyphs
+    }
     // Why unconditional: the helper no-ops when addon state already matches, so this keeps new panes and live toggles in sync.
     manager.setPaneLigaturesEnabled(pane.id, ligaturesEnabled)
     // Why unconditional: setInlineImagesEnabled is idempotent (attach no-ops when

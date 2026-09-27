@@ -4,6 +4,8 @@ export type TerminalExperienceSettings = {
   terminalFontFallbackFamily?: string
   /** Draw the IME preedit as terminal cells, not xterm's DOM overlay (the fallback); undefined means on. */
   terminalImePreeditInGrid?: boolean
+  /** Enlarge CJK fallback glyphs toward their two cells and center wide glyphs; undefined means on. */
+  terminalFitWideGlyphs?: boolean
   /** GPU cursor glide and blink fade (WebGL renderer only). Undefined means on. */
   terminalCursorAnimation?: boolean
   /** Draw the terminal cursor at the lone inverse cell a TUI paints as its caret while hiding the cursor. Undefined means on. */

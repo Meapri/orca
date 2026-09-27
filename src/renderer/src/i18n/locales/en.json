@@ -18203,7 +18203,20 @@
       },
       "TerminalRendering": {
         "imePreeditInGrid": "Draw IME Composition in Terminal Cells",
-        "imePreeditInGridDescription": "Render text being composed with an input method (Korean, Japanese, Chinese) as terminal cells at the cursor. Turn off to use the floating overlay instead."
+        "imePreeditInGridDescription": "Render text being composed with an input method (Korean, Japanese, Chinese) as terminal cells at the cursor. Turn off to use the floating overlay instead.",
+        "fitWideGlyphs": "Fit and Center Wide Characters",
+        "fitWideGlyphsDescription": "Enlarge Korean, Chinese and Japanese characters drawn from a fallback font toward their two-cell width, never taller than the line, and center them so text does not look spaced out.",
+        "fitWideGlyphsSearch": {
+          "wide": "wide",
+          "cjk": "cjk",
+          "korean": "korean",
+          "hangul": "hangul",
+          "chinese": "chinese",
+          "japanese": "japanese",
+          "fallback": "fallback",
+          "spacing": "spacing",
+          "center": "center"
+        }
       }
     },
     "terminalComposer": {
