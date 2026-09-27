@@ -35,8 +35,21 @@ function resultOf<T>(response: unknown, schema: z.ZodType<T>): T {
   return schema.parse(z.object({ ok: z.literal(true), result: z.unknown() }).parse(response).result)
 }
 
-function headlessRuntime(): { runtime: Runtime; dispatcher: InstanceType<typeof RpcDispatcher> } {
-  const runtime = new OrcaRuntimeService(store)
+function memoryFile(): { read: () => string | null; write: (serialized: string) => void } {
+  let serialized: string | null = null
+  return {
+    read: () => serialized,
+    write: (next) => {
+      serialized = next
+    }
+  }
+}
+
+function headlessRuntime(deps?: ConstructorParameters<typeof OrcaRuntimeService>[2]): {
+  runtime: Runtime
+  dispatcher: InstanceType<typeof RpcDispatcher>
+} {
+  const runtime = new OrcaRuntimeService(store, undefined, deps)
   // The placeholder graph orcad and `orca serve` publish: headless authority, no renderer.
   runtime.syncWindowGraph(HEADLESS_RUNTIME_WINDOW_ID, { tabs: [], leaves: [] })
   // The harness's worktree mocks name a fake path; route file reads to this test's real directory.
@@ -190,6 +203,35 @@ describe('host-owned editor tabs on a renderer-less host', () => {
         mode: 'edit',
         language: 'typescript'
       })
+    ])
+  })
+
+  it('republishes an editor-only workspace to fleet-wide lists after a host restart', async () => {
+    const storage = {
+      hostEditorTabStorage: memoryFile(),
+      closedTerminalSurfaceLedgerStorage: memoryFile()
+    }
+    const before = headlessRuntime(storage)
+    const opened = await call(before.dispatcher, PHONE, 'files.open', {
+      worktree: WORKTREE,
+      relativePath: 'app.ts'
+    })
+    const { tabId } = resultOf(opened, z.object({ tabId: z.string() }))
+
+    // A fresh runtime over the same files is what a restarted orcad sees.
+    const after = headlessRuntime(storage)
+    const listed = await call(after.dispatcher, WEB, 'session.tabs.listAll', {})
+    const { snapshots } = resultOf(
+      listed,
+      z.object({
+        snapshots: z.array(
+          z.looseObject({ worktree: z.string(), tabs: z.array(z.looseObject({ id: z.string() })) })
+        )
+      })
+    )
+
+    expect(snapshots.find((snapshot) => snapshot.worktree === TEST_WORKTREE_ID)?.tabs).toEqual([
+      expect.objectContaining({ id: tabId, type: 'file', relativePath: 'app.ts' })
     ])
   })
 

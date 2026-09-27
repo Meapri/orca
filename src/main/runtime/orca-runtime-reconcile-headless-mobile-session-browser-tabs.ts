@@ -10,6 +10,7 @@ import { headlessBrowserTabsUnchanged } from './mobile-session-browser-equality'
 import { appendBrowserTabOrder } from './mobile-session-browser-group-projection'
 import { reconcileHostEditorTabsIntoSnapshot } from './host-editor-tab-projection'
 import { getHeadlessMobileSessionGroupId } from './mobile-session-layout-projection'
+import { splitWorktreeIdForFilesystem } from '../../shared/worktree/id'
 import { parseAppSshPtyId, toComparableRelaySshPtyId } from '../../shared/ssh-pty-id'
 import { toSshExecutionHostId } from '../../shared/execution-host'
 import { parsePaneKey } from '../../shared/stable-pane-id'
@@ -106,6 +107,17 @@ export class OrcaRuntimeWithReconcileHeadlessMobileSessionBrowserTabs extends Or
   }
 
   protected publishHostEditorTabs(worktreeId: string): void {
+    this.ensureHostEditorTabsSnapshot(worktreeId)
+    this.notifyMobileSessionTabsChanged(worktreeId)
+  }
+
+  protected ensureHostEditorTabsSnapshot(worktreeId: string): void {
+    const repoId = splitWorktreeIdForFilesystem(worktreeId)?.repoId
+    const repos = repoId ? this.store?.getRepos?.() : undefined
+    // Why: tabs of a repo removed while this host was down must not surface a phantom workspace.
+    if (repos && !repos.some((repo) => repo.id === repoId)) {
+      return
+    }
     this.hydrateHeadlessMobileSessionTabsFromWorkspaceSession(worktreeId)
     if (!this.mobileSessionTabsByWorktree.has(worktreeId)) {
       // Why: a workspace with no terminal or browser row yet still needs a snapshot to carry it.
@@ -121,7 +133,6 @@ export class OrcaRuntimeWithReconcileHeadlessMobileSessionBrowserTabs extends Or
       })
     }
     this.reconcileHeadlessMobileSessionEditorTabs(worktreeId)
-    this.notifyMobileSessionTabsChanged(worktreeId)
   }
 
   protected isServeOwnedPtyId(ptyId: string | null | undefined): boolean {

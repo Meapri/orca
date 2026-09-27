@@ -16,7 +16,7 @@ export type RuntimeHostEditorTabsPorts = {
   resolveFileTarget(worktreeId: string): Promise<{ executionHostId: ExecutionHostId }>
   requireStore(): Store
   publish(worktreeId: string): void
-  retire(worktreeId: string, tabId: string): void
+  retire(worktreeId: string, tabIds: readonly string[]): void
 }
 
 export function createRuntimeHostEditorTabs(

@@ -82,6 +82,16 @@ export class HostEditorTabStore {
     )
   }
 
+  worktreeIds(): string[] {
+    return [
+      ...new Set(
+        this.load()
+          .filter((tab) => !this.isRetired(tab.id))
+          .map((tab) => tab.worktreeId)
+      )
+    ]
+  }
+
   find(worktreeId: string, tabId: string): HostEditorTabRecord | null {
     return this.list(worktreeId).find((tab) => tab.id === tabId) ?? null
   }
@@ -106,6 +116,16 @@ export class HostEditorTabStore {
     }
     this.commit(tabs.filter((tab) => tab !== closed))
     return closed
+  }
+
+  /** Drops every tab of a removed workspace; answers the ids it dropped. */
+  forgetWorktree(worktreeId: string): string[] {
+    const tabs = this.load()
+    const forgotten = tabs.filter((tab) => tab.worktreeId === worktreeId)
+    if (forgotten.length > 0) {
+      this.commit(tabs.filter((tab) => tab.worktreeId !== worktreeId))
+    }
+    return forgotten.map((tab) => tab.id)
   }
 
   private commit(next: HostEditorTabRecord[]): void {

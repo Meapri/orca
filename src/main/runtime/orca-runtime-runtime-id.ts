@@ -179,8 +179,8 @@ export class OrcaRuntimeWithRuntimeId {
       resolveFileTarget: (worktreeId) => this.resolveRuntimeFileTarget(`id:${worktreeId}`),
       requireStore: () => this.requireStore(),
       publish: (worktreeId) => this.publishHostEditorTabs(worktreeId),
-      retire: (worktreeId, tabId) =>
-        this.closedTerminalSurfaceLedger.recordClosedTabs(worktreeId, [tabId])
+      retire: (worktreeId, tabIds) =>
+        this.closedTerminalSurfaceLedger.recordClosedTabs(worktreeId, tabIds)
     })
   }
 

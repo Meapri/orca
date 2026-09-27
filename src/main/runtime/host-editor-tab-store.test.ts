@@ -93,6 +93,17 @@ describe('HostEditorTabStore', () => {
     expect(state.serialized).toBe(newer)
   })
 
+  it('forgets every tab of a removed workspace and reports which ids it dropped', () => {
+    const store = new HostEditorTabStore(null, { mintId: sequentialIds() })
+    store.open(NOTES)
+    store.open({ ...NOTES, worktreeId: 'wt-2' })
+
+    expect(store.worktreeIds()).toEqual(['wt-1', 'wt-2'])
+    expect(store.forgetWorktree('wt-1')).toEqual(['tab-1'])
+    expect(store.worktreeIds()).toEqual(['wt-2'])
+    expect(store.forgetWorktree('wt-1')).toEqual([])
+  })
+
   it('drops one malformed row without losing the rest', () => {
     const { storage } = memoryStorage()
     new HostEditorTabStore(storage, { mintId: () => 'good' }).open(NOTES)

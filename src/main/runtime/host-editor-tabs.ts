@@ -18,8 +18,8 @@ export type HostEditorTabsHost = {
   openFileAccess(worktreeId: string, filePath: string): Promise<HostMarkdownFileAccess>
   /** Rebuild the worktree's session-tabs snapshot and notify subscribers. */
   publish(worktreeId: string): void
-  /** Tombstone a closed id in the closed-surface ledger before the close is acknowledged. */
-  retire(worktreeId: string, tabId: string): void
+  /** Tombstone closed ids in the closed-surface ledger before the close is acknowledged. */
+  retire(worktreeId: string, tabIds: readonly string[]): void
 }
 
 export type HostEditorTabOpenInput = {
@@ -46,6 +46,11 @@ export class HostEditorTabs {
 
   hasTabs(worktreeId?: string): boolean {
     return this.host.ownsEditorTabs() && this.store.hasTabs(worktreeId)
+  }
+
+  /** Workspaces holding host tabs, so a fleet-wide list reaches one with no terminal yet. */
+  worktreeIds(): string[] {
+    return this.host.ownsEditorTabs() ? this.store.worktreeIds() : []
   }
 
   sessionTabs(worktreeId: string): HostEditorSessionTab[] {
@@ -79,11 +84,23 @@ export class HostEditorTabs {
     if (!this.host.ownsEditorTabs() || !this.store.find(worktreeId, tabId)) {
       return false
     }
-    this.host.retire(worktreeId, tabId)
+    this.host.retire(worktreeId, [tabId])
     this.store.close(worktreeId, tabId)
     this.savedVersionByTabId.delete(tabId)
     this.host.publish(worktreeId)
     return true
+  }
+
+  /** A removed workspace takes its tabs with it; ids are tombstoned so no stale client revives one. */
+  forgetWorktree(worktreeId: string): void {
+    const ids = this.store.list(worktreeId).map((tab) => tab.id)
+    if (ids.length > 0) {
+      this.host.retire(worktreeId, ids)
+    }
+    this.store.forgetWorktree(worktreeId)
+    for (const id of ids) {
+      this.savedVersionByTabId.delete(id)
+    }
   }
 
   /** Null when the id is not a host markdown tab, so the caller keeps its own refusal. */
