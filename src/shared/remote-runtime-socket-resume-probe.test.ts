@@ -104,6 +104,19 @@ describe('SharedControlReconnectScheduler.retryNow after an outage', () => {
     expect(scheduler.attemptCount).toBe(0)
   })
 
+  it('restarts the ladder even when the wake lands while a reconnect is already opening', () => {
+    const scheduler = new SharedControlReconnectScheduler()
+    const open = vi.fn()
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      scheduler.scheduleWithIdleBackoff(false, open)
+      vi.runOnlyPendingTimers()
+    }
+    // The last open() is in flight, so no timer is pending for retryNow to advance.
+    expect(scheduler.isScheduled).toBe(false)
+    expect(scheduler.retryNow()).toBe(false)
+    expect(scheduler.attemptCount).toBe(0)
+  })
+
   it('does nothing when no reconnect is pending', () => {
     const scheduler = new SharedControlReconnectScheduler()
     expect(scheduler.retryNow()).toBe(false)
