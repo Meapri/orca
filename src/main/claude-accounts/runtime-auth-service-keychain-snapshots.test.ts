@@ -2,7 +2,7 @@ import {
   cleanupRuntimeAuthTestState,
   createClaudeAccount,
   createClaudeCredentialsJson,
-  createElectronMock,
+  installTestUserDataEnvironment,
   createKeychainMock,
   createManagedClaudeAuth,
   createOauthRefreshMock,
@@ -18,7 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-vi.mock('electron', () => createElectronMock())
+beforeEach(() => installTestUserDataEnvironment())
 
 vi.mock('./oauth-refresh', () => createOauthRefreshMock())
 

@@ -6,11 +6,14 @@ import type { GlobalSettings } from '../../shared/global-settings-types'
 import type { CodexManagedAccount } from '../../shared/managed-account-types'
 import type * as NodeOs from 'node:os'
 import { readHookTrustEntries } from '../codex/config-toml-trust'
+import { installFakeAppEnvironment } from '../../../config/scripts/vitest-host-ports-setup'
 
 const testState = { userData: '', home: '' }
 const previousEnv: Record<string, string | undefined> = {}
 
-vi.mock('electron', () => ({ app: { getPath: () => testState.userData } }))
+beforeEach(() => {
+  installFakeAppEnvironment({ getPath: () => testState.userData })
+})
 vi.mock('node:os', async () => {
   const actual = await vi.importActual<typeof NodeOs>('node:os')
   return { ...actual, homedir: () => testState.home }

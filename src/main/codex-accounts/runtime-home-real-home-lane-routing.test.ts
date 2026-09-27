@@ -20,6 +20,7 @@ import {
 } from './runtime-home-service-test-harness'
 import { hasCompletedCodexSessionBackfillMarker } from '../codex/codex-session-backfill-marker'
 import { getCodexSessionBackfillDate } from '../codex/codex-session-backfill-scan-dates'
+import { installFakeAppEnvironment } from '../../../config/scripts/vitest-host-ports-setup'
 
 function expectBaselineKeptWithLaunchDatePending(markerPath: string): void {
   const marker = JSON.parse(readFileSync(markerPath, 'utf-8')) as {
@@ -37,11 +38,9 @@ vi.mock('../codex/codex-daemon-socket-path-guard', async (importOriginal) => ({
   applyCodexDaemonSocketGuard: (config: string) => config
 }))
 
-vi.mock('electron', () => ({
-  app: {
-    getPath: () => testState.userDataDir
-  }
-}))
+beforeEach(() => {
+  installFakeAppEnvironment({ getPath: () => testState.userDataDir })
+})
 
 vi.mock('node:os', async () => {
   const actual = await vi.importActual<typeof import('node:os')>('node:os') // eslint-disable-line @typescript-eslint/consistent-type-imports -- vi.importActual requires inline import()

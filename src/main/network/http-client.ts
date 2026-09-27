@@ -23,11 +23,14 @@ export type MainHttpClient = {
   fetch(url: string, init?: RequestInit): Promise<Response>
   /** The Chromium session whose proxy state applies, or null on a host without one. */
   proxySession(): Session | null
+  /** An isolated Chromium cookie jar, or null on a host without Chromium. */
+  partitionSession(partition: string): Session | null
 }
 
 const nodeHttpClient: MainHttpClient = {
   fetch: (url, init) => globalThis.fetch(url, init),
-  proxySession: () => null
+  proxySession: () => null,
+  partitionSession: () => null
 }
 
 let current: MainHttpClient = nodeHttpClient
