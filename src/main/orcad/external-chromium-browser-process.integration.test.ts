@@ -143,4 +143,76 @@ describe('ExternalChromiumBrowserProcess integration', () => {
     },
     COLD_BROWSER_START_TIMEOUT_MS
   )
+
+  // Why a real kill of the driver, not the browser: its Chromium tree is re-parented and keeps
+  // the profile locked, so only a reap on relaunch leaves a browser the new driver can own.
+  it.runIf(Boolean(executablePath) && process.platform !== 'win32')(
+    'reaps the Chromium tree a killed driver left behind when orcad relaunches it',
+    async () => {
+      const root = await mkdtemp(join(tmpdir(), 'orcad-external-browser-driver-kill-'))
+      const profilePath = join(root, 'browser-chromium')
+      const resolveProvider = () =>
+        resolveOrcadBrowserProvider({
+          userDataPath: root,
+          environment: { ORCA_BROWSER_EXECUTABLE: executablePath },
+          resolveInstalledElectronExecutable: async () => null
+        })
+      let relaunched: Awaited<ReturnType<typeof resolveProvider>> = null
+      const first = await resolveProvider()
+      try {
+        if (!first) {
+          throw new Error('External Chromium provider did not resolve.')
+        }
+        await first.factory(commandHost).browserTabCreate({ page: 'first', url: 'about:blank' })
+        const orphaned = await browserMainPids(profilePath)
+        expect(orphaned.length).toBeGreaterThan(0)
+        const driverPids = await parentPids(orphaned)
+        for (const pid of driverPids) {
+          process.kill(pid, 'SIGKILL')
+        }
+        await expect.poll(async () => processesAlive(driverPids), { timeout: 10_000 }).toBe(false)
+        // The driver is gone and its browser is not: the leak this reap exists for.
+        expect(await processesAlive(orphaned)).toBe(true)
+
+        // A restarted orcad resolves the same provider on the same state root.
+        relaunched = await resolveProvider()
+        if (!relaunched) {
+          throw new Error('External Chromium provider did not relaunch.')
+        }
+        await expect(
+          relaunched
+            .factory(commandHost)
+            .browserTabCreate({ page: 'relaunched', url: 'about:blank' })
+        ).resolves.toEqual({ browserPageId: 'relaunched' })
+        await expect.poll(async () => processesAlive(orphaned), { timeout: 10_000 }).toBe(false)
+      } finally {
+        await relaunched?.stop()
+        await first?.stop().catch(() => undefined)
+        const survivors = await browserMainPids(profilePath)
+        for (const pid of survivors) {
+          process.kill(pid, 'SIGKILL')
+        }
+        await rm(root, { recursive: true, force: true })
+      }
+      expect(await browserMainPids(profilePath)).toEqual([])
+    },
+    COLD_BROWSER_START_TIMEOUT_MS
+  )
 })
+
+async function parentPids(pids: readonly number[]): Promise<number[]> {
+  const listing = await runProcess({ program: 'ps', args: ['-o', 'ppid=', '-p', pids.join(',')] })
+  return [...new Set(listing.stdout.split('\n').map((line) => Number(line.trim())))].filter(
+    (pid) => Number.isSafeInteger(pid) && pid > 1
+  )
+}
+
+async function processesAlive(pids: readonly number[]): Promise<boolean> {
+  const listing = await runProcess({
+    program: 'ps',
+    args: ['-o', 'pid=,stat=', '-p', pids.join(',')]
+  })
+  return listing.stdout
+    .split('\n')
+    .some((line) => line.trim().length > 0 && !line.trim().split(/\s+/)[1]?.startsWith('Z'))
+}

@@ -127,4 +127,28 @@ describe('orcad external-chromium agent-browser environment', () => {
     expect(issued.some((args) => args.includes('close'))).toBe(true)
     expect(issued.some((args) => args.includes('open'))).toBe(true)
   })
+
+  // Why: a killed driver cannot `close`, and its re-parented Chromium would otherwise keep the
+  // profile locked so every relaunch hands off to a browser nothing drives.
+  it('reaps the profile tree after a close the dead driver could not perform', async () => {
+    runProcessMock.mockResolvedValue({
+      code: 1,
+      signal: null,
+      stdout: '',
+      stderr: 'daemon not running',
+      timedOut: false
+    })
+    const reap = vi.fn(async () => ({ signalled: [4242], killed: [] }))
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const session = new ExternalChromiumBrowserSession(
+      '/opt/orca/agent-browser',
+      { executablePath: BASE.executablePath, provider: 'chromium' },
+      '/state',
+      reap
+    )
+    await session.stop()
+
+    expect(commands().some((args) => args.includes('close'))).toBe(true)
+    expect(reap).toHaveBeenCalledWith(expect.stringContaining('browser-chromium'))
+  })
 })

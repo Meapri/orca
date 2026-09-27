@@ -23,6 +23,7 @@ import {
   isBrowserDriverFailure
 } from './external-chromium-browser-health'
 import { BROWSER_UNAVAILABLE_ERROR_CODE } from '../../shared/runtime-types'
+import type { ExternalChromiumReapOutcome } from './external-chromium-orphan-reaper'
 
 const MAINTENANCE_INTERVAL_MS = 60_000
 // Why short: a renderer that cannot report its URL in this long is dead or spinning forever.
@@ -32,6 +33,7 @@ export type ExternalChromiumBrowserProcessOptions = {
   limits?: BrowserTabLimits
   now?: () => number
   maintenanceIntervalMs?: number
+  reapProfileProcesses?: (profilePath: string) => Promise<ExternalChromiumReapOutcome>
 }
 
 export class ExternalChromiumBrowserProcess {
@@ -53,7 +55,12 @@ export class ExternalChromiumBrowserProcess {
     statePath: string,
     options: ExternalChromiumBrowserProcessOptions = {}
   ) {
-    this.session = new ExternalChromiumBrowserSession(agentBrowserPath, launch, statePath)
+    this.session = new ExternalChromiumBrowserSession(
+      agentBrowserPath,
+      launch,
+      statePath,
+      options.reapProfileProcesses
+    )
     this.tabs = new ExternalChromiumTabRegistry(this.session)
     const now = options.now ?? Date.now
     this.reclaimer = createExternalChromiumTabReclaimer(
