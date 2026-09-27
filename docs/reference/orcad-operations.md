@@ -292,7 +292,7 @@ The unit templates it installs set `RestartPreventExitStatus=78`, `TimeoutStopSe
 scope does. They carry, commented out, the optional [systemd notify](#who-supervises-orcad)
 lines exactly as orcad implements them (`Type=notify`, `NotifyAccess=all`, `WatchdogSec=60`),
 [resource-limit](#resource-governance) examples as `Environment=` lines, and `Nice=` with the
-`LimitNICE=` it needs. Further orcad flags — `--limit key=value`, `--pairing-expires`, extra
+`LimitNICE=` it needs. Further orcad flags — `--limit key=value`, `--pairing-expires`, `--browser none`, extra
 `--pairing-address` values — go in `ORCAD_EXTRA_ARGS` in `orcad.env`.
 
 The readiness line (it carries the startup pairing credential) goes to
@@ -439,6 +439,28 @@ app driven as a `--serve` sidecar, and an operator-supplied Chromium via `ORCA_B
   because the driver needs one attached page.
 - A command naming a reclaimed tab fails like any closed tab, and the tab list is republished.
 
+### Browser provider start and selection
+
+`--browser none|auto|electron|chromium` (or `ORCA_BROWSER_PROVIDER`; the flag wins, unset means
+`auto`) picks the backend. `auto` tries the installed Orca desktop app (macOS `/Applications`,
+Linux `orca-ide`) and then `ORCA_BROWSER_EXECUTABLE`; `electron` and `chromium` try only that
+one; `none` never starts a browser and reports `browser_unavailable` (`disabled`).
+
+The provider starts **after** readiness is published, so a slow or hung sidecar (an Electron app
+under a fresh, empty `HOME` can take the full 120 s) never delays the readiness line, `/readyz`
+or a deploy's activation gate. Until it answers, `status.get` reports `browser_unavailable`
+(`starting`) and `browser.headless.v1` is not advertised; a browser command that arrives in that
+window waits for the same start instead of failing. A start that fails reports its concrete
+cause (`electron_start_failed`, `electron_not_installed`, `unconfigured`, …) and is retried by a
+later command, spaced by the relaunch budget below. A client that read `status.get` during the
+start sees the browser capability only when it next reads status.
+
+The Electron sidecar runs with `ORCA_BACKGROUND_LAUNCH=1` (on macOS: no Dock tile, no menu bar)
+in its own process group. On POSIX a small watcher process holds a pipe from orcad; when orcad
+dies — including `SIGKILL` — the pipe closes and the watcher kills the sidecar's whole group
+within about 3 s and removes its `/tmp/orcad-browser-*` profile. A graceful stop releases the
+watcher after orcad has stopped the sidecar itself.
+
 The browser runs in its own process tree, so its death never takes orcad down (#16084); what
 changed is that orcad now recovers it instead of staying broken:
 
@@ -505,7 +527,7 @@ an open vocabulary: render `message`, and never switch on `code` exhaustively.
 | `terminal_daemon_unscoped`             | warning  | Under a systemd service on Linux, the daemon shares the service cgroup.                                                                                                                                         |
 | `event_loop_lagging`                   | warning  | The event loop stalled at least 1s within the last minute.                                                                                                                                                      |
 | `watchdog_probe_unavailable`           | warning  | A self-watchdog probe has never succeeded, so it cannot detect a wedge.                                                                                                                                         |
-| `browser_unavailable`                  | warning  | No browser backend (from `status.get`); `reason` says why, e.g. `unconfigured`, `electron_start_failed`, or `provider_unhealthy` for a browser that stopped answering.                                          |
+| `browser_unavailable`                  | warning  | No browser backend (from `status.get`); `reason` says why, e.g. `starting` (still launching after readiness), `disabled` (`--browser none`), `unconfigured`, `electron_start_failed`, or `provider_unhealthy`.  |
 | `terminal_resource_limits_unavailable` | warning  | Configured [terminal limits](#terminal-and-agent-limits-linux-systemd) are not in force; `reason` is `systemd_scope_unavailable`, `scope_properties_rejected` or `set_property_failed`. Terminals keep working. |
 
 Every entry comes from one registry, `deriveOrcadDegradations` in
@@ -652,11 +674,6 @@ Named here so nothing reads as implemented that is not:
   no mechanism that re-isolates such a daemon after the fact.
 - **libc slot.** There is no honest health value to publish until native libc detection owns
   it.
-- **A fast start beside a stalled desktop app.** orcad resolves its browser provider before it
-  publishes readiness. Where an installed Orca desktop app exists (macOS `/Applications`, Linux
-  `orca-ide`), it is started as a sidecar and waited on for up to 120 s; one that never answers
-  (seen on macOS under a fresh, empty `HOME`) delays readiness by that long and then reports
-  `browser_unavailable` (`electron_start_failed`). There is no switch to skip the sidecar.
 - **An `unverifiable` terminal status.** `terminal read` reports `running`, `exited` or
   `unknown`; the wire has no `unverifiable`. A session lost with its daemon whose shell PID still
   exists (an orphan that survived the hangup) or cannot be queried keeps its last status rather
@@ -674,8 +691,11 @@ Named here so nothing reads as implemented that is not:
 - **A census without the Orca CLI.** The self-managed installer reads live terminals through
   `terminal list --json` from an Orca CLI. A host with no CLI can prove a stop safe only
   through daemon scope isolation; an unscoped daemon there cannot be stopped by the installer.
-- **Published standalone release assets.** `pnpm pack:orcad-release` builds the tarball and
-  installer, but the release workflow does not publish them.
+- **Signed release assets.** Published orcad tarballs carry SHA-256 checksums from the same
+  release, which catch corruption but not a compromised release; there is no signature or
+  provenance attestation yet. Pin `--sha256` from a channel you trust if that matters.
+- **Windows sidecar reaping.** The browser-sidecar lifeline is POSIX-only; on Windows a
+  SIGKILLed orcad's Electron sidecar is not reaped.
 - **Terminal stream resumption.** A reconnect always re-subscribes and receives a full snapshot;
   there is no replay from the last acknowledged sequence.
 - **Relay pairing for orcad.** The cloud relay is wired only in the desktop app; orcad offers
