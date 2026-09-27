@@ -154,6 +154,11 @@ export const SESSION_TABS_RETIREMENT_PROOF_DELTA_RUNTIME_CAPABILITY =
 // second resume of an agent session that already has a live pane.
 export const TERMINAL_CLOSED_SURFACE_LEDGER_RUNTIME_CAPABILITY =
   'terminal.closed-surface-ledger.v1' as const
+// Why: a headless host (orcad, `orca serve`) refuses files.open/openDiff with renderer_unavailable
+// and released phones fall back to device screens on that code. A client advertising this accepts
+// a host-owned editor tab instead: it arrives over session.tabs and is read via markdown.readTab.
+export const SESSION_TABS_HOST_EDITOR_TABS_RUNTIME_CAPABILITY =
+  'session-tabs.host-editor-tabs.v1' as const
 export const AGENT_SESSION_BOUNDARY_RUNTIME_CAPABILITY =
   'agent-session.session-boundary.v1' as const
 export { REMOTE_SERVER_UPDATE_CAPABILITY } from './remote-server-update'
@@ -294,6 +299,7 @@ export const AGENT_LAUNCH_REPLAY_REQUIRED_RUNTIME_CAPABILITY =
 // placement support.
 export const NATIVE_REMOTE_RUNTIME_CLIENT_CAPABILITIES = [
   SESSION_TAB_CLOSE_INTENT_RUNTIME_CAPABILITY,
+  SESSION_TABS_HOST_EDITOR_TABS_RUNTIME_CAPABILITY,
   AGENT_SESSION_BOUNDARY_RUNTIME_CAPABILITY,
   WORKTREE_VISIBILITY_DEFAULTS_RUNTIME_CAPABILITY,
   WORKTREE_VISIBILITY_SOURCE_DEFAULTS_RUNTIME_CAPABILITY,
@@ -372,6 +378,7 @@ export const RUNTIME_CAPABILITIES = [
   SESSION_TABS_AUTHORITATIVE_INVENTORY_RUNTIME_CAPABILITY,
   SESSION_TABS_SPLIT_GROUP_PLACEMENT_RUNTIME_CAPABILITY,
   TERMINAL_CLOSED_SURFACE_LEDGER_RUNTIME_CAPABILITY,
+  SESSION_TABS_HOST_EDITOR_TABS_RUNTIME_CAPABILITY,
   AGENT_SESSION_BOUNDARY_RUNTIME_CAPABILITY,
   REMOTE_SERVER_UPDATE_CAPABILITY,
   AGENT_SESSION_HOST_AUTHORITY_RUNTIME_CAPABILITY,

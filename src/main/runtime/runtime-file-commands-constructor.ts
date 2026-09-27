@@ -26,6 +26,11 @@ import { resolveAuthorizedPath } from '../ipc/filesystem-auth'
 import { isENOENT } from '../ipc/filesystem-path-containment'
 import { runtimeFileRouteForTarget, type RuntimeFileRoute } from './runtime-file-command-target'
 
+// Rule 1 field: omitted when the renderer opened the tab, so desktop replies are unchanged.
+function hostTabIdField(opened: { tabId: string } | void): { tabId?: string } {
+  return opened ? { tabId: opened.tabId } : {}
+}
+
 export class RuntimeFileCommandsWithConstructor extends RuntimeFileCommandsWithActiveRuntimeTextSearches {
   constructor(private readonly host: RuntimeFileCommandHost) {
     super()
@@ -155,7 +160,8 @@ export class RuntimeFileCommandsWithConstructor extends RuntimeFileCommandsWithA
 
   async openMobileFile(
     worktreeSelector: string,
-    relativePath: string
+    relativePath: string,
+    options: { hostEditorTabs?: boolean } = {}
   ): Promise<RuntimeFileOpenResult> {
     const target = await this.host.resolveRuntimeFileTarget(worktreeSelector)
     const { worktree } = target
@@ -177,8 +183,12 @@ export class RuntimeFileCommandsWithConstructor extends RuntimeFileCommandsWithA
     // Why: CLI/agents treat opened:true as success; stat first so missing paths fail the RPC instead of opening a ghost tab.
     await this.assertMobileOpenTargetExists(filePath, runtimeFileRouteForTarget(target))
     // Why: the internal runtimeId isn't a valid env selector; pass undefined so openFile falls back to activeRuntimeEnvironmentId.
-    this.host.openFile(worktree.id, filePath, relativePath, undefined)
-    return { worktree: worktree.id, relativePath, kind, opened: true }
+    const hostTab = options.hostEditorTabs
+      ? this.host.openFile(worktree.id, filePath, relativePath, undefined, {
+          isMarkdown: kind === 'markdown'
+        })
+      : this.host.openFile(worktree.id, filePath, relativePath, undefined)
+    return { worktree: worktree.id, relativePath, kind, opened: true, ...hostTabIdField(hostTab) }
   }
 
   protected async assertMobileOpenTargetExists(
@@ -203,7 +213,8 @@ export class RuntimeFileCommandsWithConstructor extends RuntimeFileCommandsWithA
   async openMobileDiff(
     worktreeSelector: string,
     relativePath: string,
-    staged: boolean
+    staged: boolean,
+    options: { hostEditorTabs?: boolean } = {}
   ): Promise<RuntimeFileOpenResult> {
     const { worktree } = await this.host.resolveRuntimeFileTarget(worktreeSelector)
     if (!isSafeMobileRelativePath(relativePath)) {
@@ -216,7 +227,11 @@ export class RuntimeFileCommandsWithConstructor extends RuntimeFileCommandsWithA
         : 'text'
     const filePath = joinWorktreeRelativePath(worktree.path, relativePath)
     // Why: see openMobileFile; avoid stamping internal runtimeId as runtimeEnvironmentId.
-    this.host.openDiff(worktree.id, filePath, relativePath, staged, undefined)
-    return { worktree: worktree.id, relativePath, kind, opened: true }
+    const hostTab = options.hostEditorTabs
+      ? this.host.openDiff(worktree.id, filePath, relativePath, staged, undefined, {
+          isMarkdown: kind === 'markdown'
+        })
+      : this.host.openDiff(worktree.id, filePath, relativePath, staged, undefined)
+    return { worktree: worktree.id, relativePath, kind, opened: true, ...hostTabIdField(hostTab) }
   }
 }

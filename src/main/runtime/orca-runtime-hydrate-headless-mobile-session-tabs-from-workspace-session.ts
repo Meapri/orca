@@ -5,7 +5,6 @@ import { getRuntimeBrowserPageRegistry } from './runtime-browser-page-registry'
 import { splitWorktreeIdForFilesystem } from '../../shared/worktree/id'
 import { buildHeadlessMobileSessionTerminalTabs } from './mobile-session-terminal-projection'
 import type {
-  RuntimeMobileSessionBrowserTab,
   RuntimeMobileSessionSnapshotTab,
   RuntimeMobileSessionTabGroup,
   RuntimeMobileSessionTabsSnapshot,
@@ -26,6 +25,7 @@ import {
   collectBrowserGroupAssignment
 } from './mobile-session-browser-group-projection'
 import { headlessMobileSnapshotContentUnchanged } from './mobile-session-snapshot-equality'
+import { isEditorSessionTab } from './host-editor-tab-projection'
 
 export class OrcaRuntimeWithHydrateHeadlessMobileSessionTabsFromWorkspaceSession extends OrcaRuntimeWithWaitForSessionTabsInventoryPublication {
   protected hydrateHeadlessMobileSessionTabsFromWorkspaceSession(
@@ -61,6 +61,7 @@ export class OrcaRuntimeWithHydrateHeadlessMobileSessionTabsFromWorkspaceSession
       options.onlyRuntimeOwnedTerminals === true &&
       !this.offscreenBrowserBackend &&
       getRuntimeBrowserPageRegistry(this).listPages(worktreeId ?? '').length === 0 &&
+      !this.hostEditorTabs.hasTabs(worktreeId) &&
       options.runtimeOwnedTerminalCandidateKnown !== true &&
       !(worktreeId
         ? this.workspaceSessionWorktreeHasRuntimeOwnedPtyCandidate(
@@ -107,7 +108,7 @@ export class OrcaRuntimeWithHydrateHeadlessMobileSessionTabsFromWorkspaceSession
         // offscreen browser tabs are live and may have been created/closed since.
         // Reconcile just the browser tabs against the live bridge instead of
         // leaving a stale snapshot that omits a freshly-opened browser tab.
-        this.reconcileHeadlessMobileSessionBrowserTabs(entryWorktreeId, existing)
+        this.reconcileHeadlessMobileSessionLiveTabs(entryWorktreeId, existing)
         reconciledWorktreeIds.add(entryWorktreeId)
         continue
       }
@@ -125,14 +126,20 @@ export class OrcaRuntimeWithHydrateHeadlessMobileSessionTabsFromWorkspaceSession
       // so include them on every hydrate regardless of the onlyRuntimeOwnedTerminals
       // filter, which is about terminal PTY ownership and never applies to browsers.
       const browserTabs = this.buildHeadlessMobileSessionBrowserTabs(entryWorktreeId)
-      const tabs: RuntimeMobileSessionSnapshotTab[] = [...terminalTabs, ...browserTabs]
+      const editorTabs = this.hostEditorTabs.sessionTabs(entryWorktreeId)
+      const tabs: RuntimeMobileSessionSnapshotTab[] = [
+        ...terminalTabs,
+        ...browserTabs,
+        ...editorTabs
+      ]
       if (tabs.length === 0) {
         continue
       }
       const activeTab = pickHeadlessActiveTerminalTab(terminalTabs)
       const tabOrder = [
         ...collectHeadlessParentTabOrder(terminalTabs),
-        ...browserTabs.map((tab) => tab.id)
+        ...browserTabs.map((tab) => tab.id),
+        ...editorTabs.map((tab) => tab.id)
       ]
       const groupId = getHeadlessMobileSessionGroupId(entryWorktreeId)
       const mergedTabs =
@@ -147,8 +154,9 @@ export class OrcaRuntimeWithHydrateHeadlessMobileSessionTabsFromWorkspaceSession
       const mergedTerminalTabs = mergedTabs.filter(
         (tab): tab is RuntimeMobileSessionTerminalTab => tab.type === 'terminal'
       )
+      // Why: browser and editor rows have no parent tab; the terminal-only group builder drops them.
       const mergedBrowserOrder = mergedTabs
-        .filter((tab): tab is RuntimeMobileSessionBrowserTab => tab.type === 'browser')
+        .filter((tab) => tab.type === 'browser' || isEditorSessionTab(tab))
         .map((tab) => tab.id)
       // Why: a persisted multi-group split must be restored on cold rebuild, or
       // the headless serve coalesces the user's group layout back into one group

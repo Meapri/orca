@@ -137,8 +137,7 @@ async function startOrcadRuntime(
   systemdNotify: SystemdNotifyEnvironment | null
 ): Promise<Pick<OrcadHandle, 'readiness'>> {
   const { OrcaRuntimeService } = await import('../runtime/orca-runtime')
-  const { closedTerminalSurfaceLedgerPath, createClosedTerminalSurfaceLedgerFileStorage } =
-    await import('../runtime/closed-terminal-surface-ledger-file')
+  const { createRuntimeHostRecordStorages } = await import('../runtime/runtime-host-record-storage')
   const { OrcaRuntimeRpcServer } = await import('../runtime/runtime-rpc')
   const { registerHeadlessPtyRuntime, getLocalPtyProvider, getSshPtyProvider } =
     await import('../ipc/pty')
@@ -232,9 +231,7 @@ async function startOrcadRuntime(
   let sessionSearch: { apply(settings: AiVaultSearchSettings): void; dispose(): void } | null = null
 
   const runtime = new OrcaRuntimeService(profileStore, undefined, {
-    closedTerminalSurfaceLedgerStorage: createClosedTerminalSurfaceLedgerFileStorage(
-      closedTerminalSurfaceLedgerPath(runtimeUserDataPath)
-    ),
+    ...createRuntimeHostRecordStorages(runtimeUserDataPath),
     // Why lazy: a daemon swap replaces the provider after construction, so an eager
     // reference would freeze the pre-daemon one.
     getLocalProvider: () => getLocalPtyProvider(),

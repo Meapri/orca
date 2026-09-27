@@ -44,14 +44,27 @@ export class OrcaRuntimeWithFileCommands extends OrcaRuntimeWithPreservedBranchC
         absolutePath
       }),
     resolveRuntimeGitTarget: (selector) => this.resolveRuntimeGitTarget(selector),
-    openFile: (worktreeId, filePath, relativePath, runtimeEnvironmentId) => {
+    openFile: (worktreeId, filePath, relativePath, runtimeEnvironmentId, hostEditorTab) => {
       if (!this.notifier?.openFile) {
+        // Why: a renderer stays the tab owner; only a renderer-less host opens its own tab.
+        if (hostEditorTab && this.hostEditorTabs.ownsEditorTabs()) {
+          return this.hostEditorTabs.open({ worktreeId, filePath, relativePath, ...hostEditorTab })
+        }
         throw new Error('renderer_unavailable')
       }
       this.notifier.openFile(worktreeId, filePath, relativePath, runtimeEnvironmentId)
     },
-    openDiff: (worktreeId, filePath, relativePath, staged, runtimeEnvironmentId) => {
+    openDiff: (worktreeId, filePath, relativePath, staged, runtimeEnvironmentId, hostEditorTab) => {
       if (!this.notifier?.openDiff) {
+        if (hostEditorTab && this.hostEditorTabs.ownsEditorTabs()) {
+          return this.hostEditorTabs.open({
+            worktreeId,
+            filePath,
+            relativePath,
+            ...hostEditorTab,
+            diff: { staged }
+          })
+        }
         throw new Error('renderer_unavailable')
       }
       this.notifier.openDiff(worktreeId, filePath, relativePath, staged, runtimeEnvironmentId)

@@ -45,6 +45,7 @@ import {
   ClosedTerminalSurfaceLedger,
   type ClosedTerminalSurfaceLedgerStorage
 } from './closed-terminal-surface-ledger'
+import type { DurableTextFileStorage } from './durable-text-file-storage'
 
 export class OrcaRuntimeWithStateFields extends OrcaRuntimeWithLinearCommands {
   protected readonly prepareClaudeAuth?: PrepareClaudeAuth
@@ -121,6 +122,8 @@ export class OrcaRuntimeWithStateFields extends OrcaRuntimeWithLinearCommands {
       orchestrationEnvironmentTransport?: OrchestrationEnvironmentTransport
       /** Durable storage for closed-surface tombstones; absent keeps them in memory (tests). */
       closedTerminalSurfaceLedgerStorage?: ClosedTerminalSurfaceLedgerStorage
+      /** Durable host-owned editor tabs; absent keeps them in memory (tests). */
+      hostEditorTabStorage?: DurableTextFileStorage
     }
   ) {
     super()
@@ -128,6 +131,9 @@ export class OrcaRuntimeWithStateFields extends OrcaRuntimeWithLinearCommands {
       this.closedTerminalSurfaceLedger = new ClosedTerminalSurfaceLedger(
         deps.closedTerminalSurfaceLedgerStorage
       )
+    }
+    if (deps?.hostEditorTabStorage) {
+      this.hostEditorTabs = this.createHostEditorTabs(deps.hostEditorTabStorage)
     }
     this.store = store
     this.machineName.start()

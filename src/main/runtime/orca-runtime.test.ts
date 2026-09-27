@@ -68,6 +68,7 @@ await import('./orca-runtime-tests/terminal-handles-and-agent-status-part-06.spe
 await import('./orca-runtime-tests/mobile-session-tabs.spec')
 await import('./orca-runtime-tests/mobile-session-tabs-part-02.spec')
 await import('./orca-runtime-tests/mobile-session-tabs-part-03.spec')
+await import('./orca-runtime-tests/host-editor-tabs.spec')
 await import('./orca-runtime-tests/mobile-session-tabs-part-04.spec')
 await import('./orca-runtime-tests/mobile-session-tabs-part-05.spec')
 await import('./orca-runtime-tests/mobile-session-tabs-part-06.spec')

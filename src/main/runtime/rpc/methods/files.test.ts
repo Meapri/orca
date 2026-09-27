@@ -51,7 +51,10 @@ describe('file RPC methods', () => {
       makeRequest('files.open', { worktree: 'id:wt-1', relativePath: 'docs/readme.md' })
     )
 
-    expect(runtime.openMobileFile).toHaveBeenCalledWith('id:wt-1', 'docs/readme.md')
+    // The in-process caller is this build, so it may be answered with a host-owned tab.
+    expect(runtime.openMobileFile).toHaveBeenCalledWith('id:wt-1', 'docs/readme.md', {
+      hostEditorTabs: true
+    })
     expect(response).toMatchObject({
       ok: true,
       result: { kind: 'markdown', opened: true }
@@ -78,7 +81,9 @@ describe('file RPC methods', () => {
       })
     )
 
-    expect(runtime.openMobileDiff).toHaveBeenCalledWith('id:wt-1', 'docs/readme.md', true)
+    expect(runtime.openMobileDiff).toHaveBeenCalledWith('id:wt-1', 'docs/readme.md', true, {
+      hostEditorTabs: true
+    })
     expect(response).toMatchObject({
       ok: true,
       result: { kind: 'markdown', opened: true }

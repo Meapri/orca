@@ -12,10 +12,7 @@ import { agentHookServer } from '../agent-hooks/server'
 import { browserManager } from '../browser/browser-manager'
 import { loadAgentSessionClaimSigner } from '../runtime/agent-session-claim-identity'
 import { getProfileUserDataPath } from '../orca-profiles/profile-storage-paths'
-import {
-  closedTerminalSurfaceLedgerPath,
-  createClosedTerminalSurfaceLedgerFileStorage
-} from '../runtime/closed-terminal-surface-ledger-file'
+import { createRuntimeHostRecordStorages } from '../runtime/runtime-host-record-storage'
 import { prepareCodexAiVaultSessionResume } from '../codex/codex-ai-vault-session-resume'
 import { resolveHostCodexSessionSourceHome } from '../codex/codex-session-source-home'
 import { isAgentStatusHooksEnabled } from '../agent-hooks/managed-agent-hook-controls'
@@ -80,9 +77,7 @@ export function initializeMainProcessRuntime(): OrcaRuntimeService {
   // `orca serve`, which never opens one, and the fleet path runs there too.
   const observedPaneIdentities = new AgentStatusObservedPaneIdentities()
   const runtime = new OrcaRuntimeService(store, stats, {
-    closedTerminalSurfaceLedgerStorage: createClosedTerminalSurfaceLedgerFileStorage(
-      closedTerminalSurfaceLedgerPath(getProfileUserDataPath())
-    ),
+    ...createRuntimeHostRecordStorages(getProfileUserDataPath()),
     prepareClaudeAuth: (target) => state.claudeRuntimeAuth!.prepareForClaudeLaunch(target),
     agentSessionClaimSigner: loadAgentSessionClaimSigner(
       getProfileUserDataPath(),

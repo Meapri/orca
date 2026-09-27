@@ -8,6 +8,8 @@ import type {
 } from '../../shared/runtime-types'
 import { headlessBrowserTabsUnchanged } from './mobile-session-browser-equality'
 import { appendBrowserTabOrder } from './mobile-session-browser-group-projection'
+import { reconcileHostEditorTabsIntoSnapshot } from './host-editor-tab-projection'
+import { getHeadlessMobileSessionGroupId } from './mobile-session-layout-projection'
 import { parseAppSshPtyId, toComparableRelaySshPtyId } from '../../shared/ssh-pty-id'
 import { toSshExecutionHostId } from '../../shared/execution-host'
 import { parsePaneKey } from '../../shared/stable-pane-id'
@@ -77,6 +79,49 @@ export class OrcaRuntimeWithReconcileHeadlessMobileSessionBrowserTabs extends Or
       tabGroups,
       tabs: nextTabs
     })
+  }
+
+  // Why: browser pages and host editor tabs are the live-only rows of a headless snapshot.
+  protected reconcileHeadlessMobileSessionLiveTabs(
+    worktreeId: string,
+    existing: RuntimeMobileSessionTabsSnapshot
+  ): void {
+    this.reconcileHeadlessMobileSessionBrowserTabs(worktreeId, existing)
+    this.reconcileHeadlessMobileSessionEditorTabs(worktreeId)
+  }
+
+  protected reconcileHeadlessMobileSessionEditorTabs(worktreeId: string): void {
+    const existing = this.mobileSessionTabsByWorktree.get(worktreeId)
+    if (!existing || !this.hostEditorTabs.ownsEditorTabs()) {
+      return
+    }
+    const next = reconcileHostEditorTabsIntoSnapshot(
+      existing,
+      this.hostEditorTabs.sessionTabs(worktreeId),
+      (tabId) => this.closedTerminalSurfaceLedger.findRetiredSurface(tabId) !== null
+    )
+    if (next) {
+      this.storeMobileSessionSnapshot(worktreeId, next)
+    }
+  }
+
+  protected publishHostEditorTabs(worktreeId: string): void {
+    this.hydrateHeadlessMobileSessionTabsFromWorkspaceSession(worktreeId)
+    if (!this.mobileSessionTabsByWorktree.has(worktreeId)) {
+      // Why: a workspace with no terminal or browser row yet still needs a snapshot to carry it.
+      this.storeMobileSessionSnapshot(worktreeId, {
+        worktree: worktreeId,
+        publicationEpoch: `headless-hydrated:${Date.now().toString(36)}`,
+        snapshotVersion: 1,
+        activeGroupId: getHeadlessMobileSessionGroupId(worktreeId),
+        activeTabId: null,
+        activeTabType: null,
+        tabGroups: [],
+        tabs: []
+      })
+    }
+    this.reconcileHeadlessMobileSessionEditorTabs(worktreeId)
+    this.notifyMobileSessionTabsChanged(worktreeId)
   }
 
   protected isServeOwnedPtyId(ptyId: string | null | undefined): boolean {
