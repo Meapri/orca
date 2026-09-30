@@ -33,9 +33,18 @@ chmodSync(binaryPath, 0o755)
 createHelperApp()
 
 function buildUniversalBinary() {
+  const sliceDir = path.join(packagePath, '.build', 'universal-slices')
+  mkdirSync(sliceDir, { recursive: true })
   const builtBinaries = universalTriples.map((triple) => {
-    run('swift', ['build', '-c', 'release', '--package-path', packagePath, '--triple', triple])
-    return path.join(packagePath, '.build', triple, 'release', 'orca-computer-use-macos')
+    const buildArgs = ['build', '-c', 'release', '--package-path', packagePath, '--triple', triple]
+    run('swift', buildArgs)
+    // Why copy out: SwiftPM's Swift Build backend shares one bin dir across triples.
+    const binPath = spawnSync('swift', [...buildArgs, '--show-bin-path'], {
+      encoding: 'utf8'
+    }).stdout.trim()
+    const slicePath = path.join(sliceDir, `orca-computer-use-macos-${triple}`)
+    copyFileSync(path.join(binPath, 'orca-computer-use-macos'), slicePath)
+    return slicePath
   })
   mkdirSync(path.dirname(binaryPath), { recursive: true })
   run('lipo', ['-create', ...builtBinaries, '-output', binaryPath])

@@ -77,6 +77,13 @@ const devChannelRepo = isHourlyChannel
       ? 'orca-adhoc'
       : null
 const appId = appDistribution.appId
+// Why: a single-arch run (the ad-hoc distribution build) must not demand the other arch's natives.
+const macTargetArchs = (process.env.ORCA_MAC_ARCHS ?? 'x64,arm64').split(',').map((arch) => {
+  if (arch !== 'x64' && arch !== 'arm64') {
+    throw new Error(`Unsupported ORCA_MAC_ARCHS entry: ${arch}`)
+  }
+  return arch
+})
 const featureWallResources = {
   from: 'resources/onboarding/feature-wall',
   to: 'onboarding/feature-wall'
@@ -585,11 +592,11 @@ module.exports = {
     target: [
       {
         target: 'dmg',
-        arch: ['x64', 'arm64']
+        arch: macTargetArchs
       },
       {
         target: 'zip',
-        arch: ['x64', 'arm64']
+        arch: macTargetArchs
       }
     ]
   },
