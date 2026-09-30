@@ -45,13 +45,17 @@ vi.mock('lucide-react-native', () => ({
   X: 'X'
 }))
 vi.mock('../components/ActionSheetModal', () => ({
-  ActionSheetModal: (props: { title: string; actions: ActionSheetAction[] }) => {
+  ActionSheetContent: (props: { title: string; actions: ActionSheetAction[] }) => {
     sheets.actions.set(props.title, props.actions)
     return null
   }
 }))
-vi.mock('../components/BottomDrawer', () => ({ BottomDrawer: () => null }))
-vi.mock('../components/ConfirmModal', () => ({ ConfirmModal: () => null }))
+// Why: the real drawer mounts gesture and reanimated natives; the review content is what is under test.
+vi.mock('../components/keyed-bottom-drawer', () => ({
+  KeyedBottomDrawer: (props: { sheet: unknown; children: (sheet: unknown) => unknown }) =>
+    props.sheet ? props.children(props.sheet) : null
+}))
+vi.mock('../components/ConfirmModal', () => ({ ConfirmContent: () => null }))
 vi.mock('../components/mobile-diff-review-screen-styles', () => ({ mobileDiffReviewStyles: {} }))
 vi.mock('../platform/keyboard-occlusion', () => ({ useKeyboardAvoidingPadding: () => 0 }))
 vi.mock('expo-haptics', () => ({
@@ -99,6 +103,9 @@ describe('review screen Open in Session', () => {
       const current = useMobileDiffReviewController({
         client,
         connState: 'connected',
+        hostCapabilities: [],
+        hostStatusPending: false,
+        hostStatusReadable: true,
         hostId: 'host-1',
         worktreeId: 'wt-1',
         name: 'review',
@@ -117,6 +124,11 @@ describe('review screen Open in Session', () => {
     if (!controller?.currentItem) {
       throw new Error('review did not load a file')
     }
+    const loaded = controller
+    await act(async () => {
+      loaded.openSheet({ kind: 'actions' })
+      await Promise.resolve()
+    })
   }
 
   async function press(action: ActionSheetAction): Promise<void> {
