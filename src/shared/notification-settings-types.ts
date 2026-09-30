@@ -1,4 +1,5 @@
 import type { AgentStatusState, AgentType } from './agent-status-types'
+import type { AgentJournalTurnOutcome } from './agent-turn-outcome'
 
 export type NotificationSettings = {
   enabled: boolean
@@ -43,7 +44,8 @@ export type NotificationDispatchRequest = {
   agentToolName?: string
   agentToolInput?: string
   agentLastAssistantMessage?: string
-  agentInterrupted?: boolean
+  /** The verdict on the turn this notification reports, which picks its wording. */
+  agentTurnOutcome?: AgentJournalTurnOutcome
   /** Text a program asked for via OSC 9 / OSC 777 (terminal-bell source only); untrusted. */
   terminalNotification?: { title: string | null; body: string }
   /**

@@ -29,10 +29,7 @@ export type HeadlessSleepingAgentResumeRuntime = {
     paneKey: string
   ): Promise<SleepingAgentPaneLiveness>
   ensureAgentSession(request: RuntimeEnsureAgentSessionRequest): Promise<unknown>
-  sleepTerminalsForWorktree(
-    worktreeSelector: string,
-    options: { preserveSurfaces?: boolean }
-  ): Promise<unknown>
+  sleepTerminalsForWorktree(worktreeSelector: string): Promise<unknown>
 }
 
 type ResumeReason = 'restart' | 'lost-pty' | 'wake'
@@ -108,9 +105,7 @@ export class HeadlessSleepingAgentResume implements HeadlessAgentResumeHost {
       this.deps.readStatusRows()
     )
     try {
-      await this.deps.runtime.sleepTerminalsForWorktree(`id:${worktreeId}`, {
-        preserveSurfaces: true
-      })
+      await this.deps.runtime.sleepTerminalsForWorktree(`id:${worktreeId}`)
     } catch (error) {
       this.deps.capture.revertWorktreeSleepCapture(captured)
       throw error

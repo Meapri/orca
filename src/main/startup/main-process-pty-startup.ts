@@ -15,7 +15,10 @@ import {
 import { createCodexPaneSessionMigrationHooks } from '../codex/codex-pane-session-migration-hooks'
 import { reconcileRetainedCodexHookHomes } from '../codex/retained-codex-hook-state'
 import { codexHookService } from '../codex/hook-service'
-import { isAgentStatusHooksEnabled } from '../agent-hooks/managed-agent-hook-controls'
+import {
+  isAgentStatusHooksEnabled,
+  isAgentStatusHooksEnabledForAgent
+} from '../agent-hooks/managed-agent-hook-controls'
 import { agentHookServer } from '../agent-hooks/server'
 import {
   indexPersistedPaneKeyPtyIds,
@@ -113,9 +116,7 @@ export function startTerminalRuntimeStartupServices(): WindowsDesktopStartupServ
           if (hasRetainedManagedHostPane) {
             void reconcileRetainedCodexHookHomes({
               hookService: codexHookService,
-              hooksEnabled:
-                isAgentStatusHooksEnabled(settings) &&
-                settings?.disabledTuiAgents.includes('codex') !== true,
+              hooksEnabled: isAgentStatusHooksEnabledForAgent(settings, 'codex'),
               runtimeHomePaths: state.codexRuntimeHome.getRetainedHostCodexHookHomePaths(livePtyIds)
             }).catch((error) =>
               console.warn('[codex-hook-service] retained Codex home reconcile failed:', error)

@@ -177,12 +177,10 @@ describe('HeadlessSleepingAgentResume', () => {
     expect(records.get(PANE_KEY)?.origin).toBe('live')
   })
 
-  it('parks the workspace with preserved surfaces, and reverts the capture if the stop fails', async () => {
+  it('parks the workspace, and reverts the capture if the stop fails', async () => {
     const ok = harness()
     await ok.resume.sleepWorktree(WORKTREE_ID)
-    expect(ok.sleepTerminalsForWorktree).toHaveBeenCalledWith(`id:${WORKTREE_ID}`, {
-      preserveSurfaces: true
-    })
+    expect(ok.sleepTerminalsForWorktree).toHaveBeenCalledWith(`id:${WORKTREE_ID}`)
     expect(ok.records.get(PANE_KEY)?.origin).toBe('worktree-sleep')
 
     const failing = harness({

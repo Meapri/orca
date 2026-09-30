@@ -67,6 +67,10 @@ vi.mock('./TerminalTabProgressIndicator', () => ({
   TerminalTabProgressIndicator: () => null
 }))
 
+vi.mock('./use-tab-strip-slot-props', () => ({
+  useTabStripSlotProps: () => ({ className: '', 'data-tab-strip-slot': '' })
+}))
+
 vi.mock('@dnd-kit/sortable', () => ({
   useSortable: () => ({
     attributes: {},

@@ -1,5 +1,6 @@
 import type { AppState } from '../types'
 import type { AgentStatusEntry } from '../../../../shared/agent-status-types'
+import { agentTurnEndedUncleanly } from '../../../../shared/agent-main-agent-verdict'
 import type {
   SleepingAgentLaunchConfig,
   SleepingAgentSessionRecord
@@ -55,7 +56,7 @@ export function normalizeSleepingAgentSessionCollectOptions(
 }
 
 export function isValidCompletedAgentHibernationEntry(entry: AgentStatusEntry): boolean {
-  return entry.state === 'done' && entry.interrupted !== true
+  return entry.state === 'done' && !agentTurnEndedUncleanly(entry)
 }
 
 // Why: a finished pane is passive wake evidence, and a mobile wake background-mounts every passive
@@ -74,14 +75,18 @@ export function isDurableSleepingCapture(record: SleepingAgentSessionRecord): bo
 }
 
 // Why: manual sleep kills the pty either way, so the record carries resume identity, not the dead
-// turn's interrupt flag — and an explicitly slept workspace is never stale at wake, so a row the
+// turn's verdict — and an explicitly slept workspace is never stale at wake, so a row the
 // user is deliberately sleeping must not trip the wake-side staleness discard. `state` is preserved
 // so a done pane wakes lazily in place instead of spawning a new tab.
 export function manualSleepCaptureEntry(
   entry: AgentStatusEntry,
   capturedAt: number
 ): AgentStatusEntry {
-  return { ...entry, updatedAt: capturedAt, interrupted: false }
+  if (!entry.mainAgent) {
+    return { ...entry, updatedAt: capturedAt, interrupted: false }
+  }
+  const { outcome: _outcome, ...mainAgent } = entry.mainAgent
+  return { ...entry, updatedAt: capturedAt, interrupted: false, mainAgent }
 }
 
 export function removeSleepingRecordsReplacedByManualWorktreeSleep(

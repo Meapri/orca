@@ -288,8 +288,7 @@ describe('resolveHostCodexHomePathForLaunchReadOnly', () => {
       resolveStructuredCodexAccountHomePath({
         launchEnv: {},
         resolveLaunchHome: (input) =>
-          service.resolveHostCodexHomePathForLaunchReadOnly(input.launchEnv),
-        workspacePath: ''
+          service.resolveHostCodexHomePathForLaunchReadOnly(input.launchEnv)
       })
     ).resolves.toBe(getSystemCodexHomePath())
   })

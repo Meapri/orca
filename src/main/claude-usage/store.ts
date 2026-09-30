@@ -1,4 +1,5 @@
 import { getAppEnvironment } from '../../shared/app-environment'
+import { claudeTokenSessions } from '../usage/agent-token-usage'
 import { join } from 'node:path'
 import type {
   ClaudeUsageBreakdownKind,
@@ -79,6 +80,10 @@ export class ClaudeUsageStore extends UsageProviderStoreLifecycle<
 > {
   constructor(store: Pick<Store, 'getRepos' | 'getAllWorktreeMeta'>) {
     super(store, {
+      tokenUsage: {
+        provider: 'claude',
+        selectSessions: (state) => claudeTokenSessions(state.sessions)
+      },
       logTag: '[claude-usage]',
       resolveCacheFile: getClaudeUsageFile,
       createDefaultState: getDefaultState,

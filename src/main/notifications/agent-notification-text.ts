@@ -93,7 +93,10 @@ function formatAgentNotificationStatusText(
   if (args.agentState === 'working') {
     return translate('notifications.agentStatus.working', 'working')
   }
-  return args.agentState === 'done' && args.agentInterrupted
+  if (args.agentState === 'done' && args.agentTurnOutcome === 'failure') {
+    return translate('notifications.agentStatus.failed', 'failed')
+  }
+  return args.agentState === 'done' && args.agentTurnOutcome === 'cancellation'
     ? translate('notifications.agentStatus.stopped', 'stopped')
     : translate('notifications.agentStatus.finished', 'finished')
 }
@@ -139,7 +142,7 @@ function hasAgentNotificationSnapshot(args: NotificationDispatchRequest): boolea
     args.agentToolName ||
     args.agentToolInput ||
     args.agentLastAssistantMessage ||
-    args.agentInterrupted
+    args.agentTurnOutcome !== undefined
   )
 }
 

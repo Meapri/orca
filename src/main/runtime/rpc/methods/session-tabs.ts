@@ -1,4 +1,5 @@
 import { resolveRuntimeNavigationTarget } from '../../../../shared/runtime-navigation'
+import { getExplicitWorktreeIdSelector } from '../../runtime-worktree-selection'
 import { defineMethod, defineStreamingMethod } from '../core'
 import {
   createBackpressuredLatestStatePublisher,
@@ -109,99 +110,137 @@ export const SESSION_TAB_METHODS = [
         pairedDeviceId,
         clientKind,
         clientCapabilities,
+        signal,
         outboundBacklogBytes,
         awaitOutboundDelivery
       },
       emit
     ) => {
-      let subscribedWorktree: string | null = null
+      let subscriptionId: string | null = null
+      let released = false
+      let endOnRelease = true
+      let stopListening = (): void => {}
       let updatePublisher: BackpressuredLatestStatePublisher<RuntimeMobileSessionTabsResult> | null =
         null
-      let unsubscribe = (): void => {}
-      let closed = false
-      let initialized = false
-      await restoreStructuredTabsIfSupported({ runtime, clientKind, clientCapabilities })
-      const initial = await runtime.listMobileSessionTabs(params.worktree, pairedDeviceId)
-      if (closed) {
-        return
+      // Safe without a version check: any other release of this key runs our cleanup first, which latches `released`.
+      const release = (): void => {
+        if (!released && subscriptionId) {
+          runtime.cleanupSubscription(subscriptionId)
+        }
       }
-      subscribedWorktree = initial.worktree
-      const cleanupPrefix = `session.tabs:${connectionId ?? 'local'}:${subscribedWorktree}`
-      const subscriptionId = requestId ? `${cleanupPrefix}:${requestId}` : cleanupPrefix
-      // Why: shared-control can carry multiple subscribers for one worktree on
-      // one socket; include the RPC id so one subscriber cannot evict another.
-      runtime.registerSubscriptionCleanup(
-        subscriptionId,
-        () => {
-          closed = true
-          unsubscribe()
-          updatePublisher?.dispose()
-          if (initialized) {
-            emit({ type: 'end' })
-          }
-        },
-        connectionId
-      )
-      if (closed) {
-        return
-      }
-      const withProofDelta = createSessionTabsRetirementProofDelta(clientCapabilities)
-      emit({
-        type: 'snapshot',
-        ...withProofDelta(
-          projectSessionTabsForClient(
-            initial,
-            clientKind,
-            clientCapabilities,
-            isStructuredNativeChatEnabled(runtime)
-          )
+      const register = (worktreeId: string): void => {
+        const cleanupPrefix = `session.tabs:${connectionId ?? 'local'}:${worktreeId}`
+        // Why: shared-control can carry multiple subscribers for one worktree on
+        // one socket; include the RPC id so one subscriber cannot evict another.
+        subscriptionId = requestId ? `${cleanupPrefix}:${requestId}` : cleanupPrefix
+        runtime.registerSubscriptionCleanup(
+          subscriptionId,
+          () => {
+            if (released) {
+              return
+            }
+            released = true
+            signal?.removeEventListener('abort', release)
+            stopListening()
+            updatePublisher?.dispose()
+            if (endOnRelease) {
+              emit({ type: 'end' })
+            }
+          },
+          connectionId
         )
-      })
-      initialized = true
-      if (closed) {
-        return
+        if (signal?.aborted) {
+          release()
+        } else {
+          signal?.addEventListener('abort', release, { once: true })
+        }
       }
-
-      // Why: the proof delta is stateful, so it runs for sent frames only, never superseded ones.
-      const sendUpdated = (snapshot: RuntimeMobileSessionTabsResult): void =>
+      // Why: register before any await so an unsubscribe or socket close during setup
+      // finds the stream; only an `id:` selector (every phone and web client) names it up front.
+      const explicitWorktreeId = getExplicitWorktreeIdSelector(params.worktree)
+      if (explicitWorktreeId) {
+        register(explicitWorktreeId)
+      }
+      try {
+        await restoreStructuredTabsIfSupported({ runtime, clientKind, clientCapabilities })
+        if (released) {
+          return
+        }
+        const initial = await runtime.listMobileSessionTabs(params.worktree, pairedDeviceId)
+        if (released) {
+          return
+        }
+        if (!subscriptionId) {
+          register(initial.worktree)
+          if (released) {
+            return
+          }
+        }
+        const subscribedWorktree = initial.worktree
+        const withProofDelta = createSessionTabsRetirementProofDelta(clientCapabilities)
         emit({
-          type: 'updated',
+          type: 'snapshot',
           ...withProofDelta(
             projectSessionTabsForClient(
-              snapshot,
+              initial,
               clientKind,
               clientCapabilities,
               isStructuredNativeChatEnabled(runtime)
             )
           )
         })
-      const publisher = createBackpressuredLatestStatePublisher<RuntimeMobileSessionTabsResult>({
-        send: sendUpdated,
-        backlogBytes: outboundBacklogBytes,
-        awaitDelivery: awaitOutboundDelivery
-      })
-      updatePublisher = publisher
-      unsubscribe = runtime.onMobileSessionTabsChanged((snapshot) => {
-        if (snapshot.worktree !== subscribedWorktree) {
+        if (released) {
           return
         }
-        if (snapshot.navigationIntent !== undefined) {
-          // Why: a follow intent is one-shot, so it must never be superseded while parked.
-          publisher.discard(snapshot.worktree)
-          sendUpdated(snapshot)
+        // Why: the proof delta is stateful, so it runs for sent frames only, never superseded ones.
+        const sendUpdated = (snapshot: RuntimeMobileSessionTabsResult): void =>
+          emit({
+            type: 'updated',
+            ...withProofDelta(
+              projectSessionTabsForClient(
+                snapshot,
+                clientKind,
+                clientCapabilities,
+                isStructuredNativeChatEnabled(runtime)
+              )
+            )
+          })
+        const publisher = createBackpressuredLatestStatePublisher<RuntimeMobileSessionTabsResult>({
+          send: sendUpdated,
+          backlogBytes: outboundBacklogBytes,
+          awaitDelivery: awaitOutboundDelivery
+        })
+        updatePublisher = publisher
+        stopListening = runtime.onMobileSessionTabsChanged((snapshot) => {
+          if (snapshot.worktree !== subscribedWorktree) {
+            return
+          }
+          if (snapshot.navigationIntent !== undefined) {
+            // Why: a follow intent is one-shot, so it must never be superseded while parked.
+            publisher.discard(snapshot.worktree)
+            sendUpdated(snapshot)
+            return
+          }
+          publisher.offer(snapshot.worktree, snapshot)
+        }, pairedDeviceId)
+      } catch (error) {
+        // A stream already ended by its release must not also report an error.
+        if (released) {
           return
         }
-        publisher.offer(snapshot.worktree, snapshot)
-      }, pairedDeviceId)
-      if (closed) {
-        unsubscribe()
+        endOnRelease = false
+        release()
+        throw error
       }
     }
   }),
   defineMethod({
     name: 'session.tabs.unsubscribe',
     params: SessionTabsUnsubscribe,
-    handler: async (params, { runtime, connectionId, pairedDeviceId }) => {
+    handler: async (
+      params,
+      { runtime, connectionId, pairedDeviceId, subscriptionRegistrationVersion }
+    ) => {
       const snapshot = await runtime.listMobileSessionTabs(params.worktree, pairedDeviceId)
       const connection = connectionId ?? 'local'
       if (params.subscriptionId) {
@@ -212,17 +251,18 @@ export const SESSION_TAB_METHODS = [
       }
       runtime.cleanupSubscription(`session.tabs:${connection}:${params.worktree}`)
       runtime.cleanupSubscription(`session.tabs:${connection}:${snapshot.worktree}`)
-      runtime.cleanupSubscriptionsByPrefix(`session.tabs:${connection}:${snapshot.worktree}:`)
+      // Why: subscribes register on arrival, so spare any that arrived after this unsubscribe.
+      runtime.cleanupSubscriptionsByPrefix(
+        `session.tabs:${connection}:${snapshot.worktree}:`,
+        subscriptionRegistrationVersion
+      )
       return { unsubscribed: true }
     }
   }),
   defineStreamingMethod({
     name: 'session.tabs.subscribeAll',
     params: null,
-    handler: async (_params, context, emit) => {
-      await restoreStructuredTabsIfSupported(context)
-      return subscribeSessionTabsInventory(context, emit)
-    }
+    handler: (_params, context, emit) => subscribeSessionTabsInventory(context, emit)
   }),
   defineMethod({
     name: 'session.tabs.unsubscribeAll',

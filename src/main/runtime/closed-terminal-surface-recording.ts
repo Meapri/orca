@@ -2,6 +2,7 @@ import type { RuntimeMobileSessionTabsSnapshot } from '../../shared/runtime-type
 import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
 import { TERMINAL_SURFACE_RETIRED_ERROR } from '../../shared/terminal-surface-retirement-refusal'
 import type { ClosedTerminalSurfaceLedger } from './closed-terminal-surface-ledger'
+import type { TerminalSurfaceCloseTarget } from '../../shared/terminal-surface-close-target'
 
 /** Every terminal tab id the host knows for a workspace, so removing it retires them all. */
 export function collectWorkspaceTerminalTabIds(
@@ -32,5 +33,23 @@ export function assertTerminalSurfaceNotRetired(
   }
   if (ledger.findRetiredSurface(tabId, leafId)) {
     throw new Error(TERMINAL_SURFACE_RETIRED_ERROR)
+  }
+}
+
+/**
+ * Retires what a committed close removed, so a paired client restoring a stale copy cannot bring it
+ * back. A tab is retired even when the session never listed it; a pane only when it left the layout,
+ * because a no-op pane close can target a leaf its tab still shows.
+ */
+export function recordClosedTerminalSurface(
+  ledger: Pick<ClosedTerminalSurfaceLedger, 'recordClosedTabs' | 'recordClosedPane'>,
+  worktreeId: string,
+  target: TerminalSurfaceCloseTarget,
+  closedPtyIds: readonly string[] | null
+): void {
+  if (target.kind === 'tab') {
+    ledger.recordClosedTabs(worktreeId, [target.tabId])
+  } else if (closedPtyIds !== null) {
+    ledger.recordClosedPane(worktreeId, target.tabId, target.leafId)
   }
 }

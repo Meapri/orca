@@ -44,11 +44,8 @@ export function createAccountBackedRuntimeDeps(deps: {
         runtimeHome: deps.getCodexRuntimeHome(),
         systemCodexHomePath: resolveHostCodexSessionSourceHome(deps.getSettings())
       }),
-    prepareCodexStructuredLaunch: ({ workspacePath, launchEnv }) =>
-      deps.prepareCodexRuntimeHomeForLaunch(undefined, launchEnv, {
-        launchAgent: 'codex',
-        workspacePath
-      }),
+    prepareCodexStructuredLaunch: ({ launchEnv }) =>
+      deps.prepareCodexRuntimeHomeForLaunch(undefined, launchEnv),
     // Why throw like prepare does: a null from an uninitialized service would
     // map to the system home and key a catalog read to the wrong account.
     resolveCodexStructuredLaunchHome: ({ launchEnv }) => {

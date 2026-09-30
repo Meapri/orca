@@ -195,7 +195,7 @@ describe('headless sleeping-agent cold restore', () => {
     await expect(runtime.sleepManagedWorktree(`id:${TEST_WORKTREE_ID}`)).resolves.toEqual({
       worktreeId: TEST_WORKTREE_ID
     })
-    expect(sleep).toHaveBeenCalledWith(`id:${TEST_WORKTREE_ID}`, { preserveSurfaces: true })
+    expect(sleep).toHaveBeenCalledWith(`id:${TEST_WORKTREE_ID}`)
     expect(getSession().sleepingAgentSessionsByPaneKey?.[PANE_KEY]?.origin).toBe('worktree-sleep')
 
     const woken = await runtime.activateManagedWorktree(`id:${TEST_WORKTREE_ID}`, {

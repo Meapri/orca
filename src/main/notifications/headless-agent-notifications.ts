@@ -8,6 +8,7 @@
  * the same mobile fan-out, and does the same for terminal bells. It stands down whenever a
  * renderer is attached, so the desktop keeps a single producer.
  */
+import { agentMainAgentVerdict } from '../../shared/agent-main-agent-verdict'
 import { buildAgentNotificationId } from '../../shared/agent-notification-id'
 import { reserveNotificationCooldown } from '../../shared/notification-burst-cooldown'
 import type { NotificationSettings } from '../../shared/notification-settings-types'
@@ -125,6 +126,7 @@ export function installHeadlessAgentNotifications(deps: HeadlessAgentNotificatio
     }
     lastAgentDispatchAtByWorktree.set(worktreeId ?? 'global', emittedAt)
     const payload = event.payload
+    const agentTurnOutcome = agentMainAgentVerdict(payload)
     const text = buildNotificationText(
       {
         source: 'agent-task-complete',
@@ -137,7 +139,7 @@ export function installHeadlessAgentNotifications(deps: HeadlessAgentNotificatio
         agentToolName: payload.toolName,
         agentToolInput: payload.toolInput,
         agentLastAssistantMessage: payload.lastAssistantMessage,
-        agentInterrupted: payload.interrupted
+        ...(agentTurnOutcome ? { agentTurnOutcome } : {})
       },
       translate
     )

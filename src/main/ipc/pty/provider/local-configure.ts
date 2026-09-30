@@ -15,7 +15,6 @@ import { markClaudePtyExited } from '../../../claude-accounts/live-pty-gate'
 import { buildPtyHostEnv } from '../host-env/assembly'
 import {
   getCompatibleSelectedCodexHomePath,
-  isCodexStatusHooksEnabled,
   shouldStripInheritedOrcaCodexHome
 } from '../host-env/codex-home'
 import type { GetSelectedCodexHomePath } from '../host-env/types'
@@ -51,10 +50,7 @@ export function configureLocalPtyProvider(args: {
         codexSelectionTarget,
         ctx?.codexHomePathOverride
           ? ctx.codexHomePathOverride.value
-          : ((await getSelectedCodexHomePath?.(codexSelectionTarget, baseEnv, {
-              workspacePath: ctx?.cwd,
-              launchAgent: ctx?.launchAgent
-            })) ?? null)
+          : ((await getSelectedCodexHomePath?.(codexSelectionTarget, baseEnv)) ?? null)
       )
       const skipCodexHomeEnv = ctx?.isWsl === true && !selectedCodexHomePath
       const ptySettings = getSettings?.()
@@ -90,7 +86,6 @@ export function configureLocalPtyProvider(args: {
         wslDistro: ctx?.wslDistro ?? null,
         agentStatusHooksEnabled: isAgentStatusHooksEnabled(ptySettings),
         disabledTuiAgents: ptySettings?.disabledTuiAgents,
-        codexStatusHooksEnabled: isCodexStatusHooksEnabled(ptySettings),
         networkProxySettings: ptySettings,
         routeBrowserOpensToClient: runtime?.shouldRelayTerminalBrowserOpens?.()
       })

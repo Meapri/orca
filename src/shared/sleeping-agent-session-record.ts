@@ -6,6 +6,8 @@ import {
   type SleepingAgentSessionRecord
 } from './agent-session-resume'
 import type { AgentStatusState } from './agent-status-types'
+import { agentVerdictFields } from './agent-main-agent-verdict'
+import type { AgentMainAgentStatus } from './main-agent-status'
 
 export function copySleepingAgentLaunchConfig(
   config: SleepingAgentLaunchConfig
@@ -30,6 +32,7 @@ export type SleepingAgentRecordSource = {
   terminalTitle?: string
   lastAssistantMessage?: string
   interrupted?: boolean
+  mainAgent?: AgentMainAgentStatus
   terminalResumeEligible?: false
 }
 
@@ -86,7 +89,7 @@ export function buildSleepingAgentSessionRecord(args: {
     ...(args.launchConfig
       ? { launchConfig: copySleepingAgentLaunchConfig(args.launchConfig) }
       : {}),
-    ...(source.interrupted ? { interrupted: true } : {}),
+    ...agentVerdictFields(source),
     ...(args.origin ? { origin: args.origin } : {})
   }
 }

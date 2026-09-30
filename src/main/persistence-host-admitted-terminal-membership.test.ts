@@ -1,3 +1,9 @@
+import {
+  closeTestStores,
+  createStore,
+  makeTerminalTab,
+  testState
+} from './persistence-test-harness'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -6,7 +12,6 @@ import { getDefaultWorkspaceSession } from '../shared/constants'
 import type { WorkspaceSessionState } from '../shared/workspace-session-state-types'
 import { retireTerminalSurfaceFromPersistence } from './runtime/mobile-session-terminal-persistence-retirement'
 import { TEST_LEAF_1, TEST_LEAF_2 } from './persistence-session-fixtures'
-import { createStore, makeTerminalTab, testState } from './persistence-test-harness'
 
 vi.mock('electron', () => ({
   app: { getPath: () => testState.dir },
@@ -47,7 +52,8 @@ describe('host-admitted terminal membership survives a stale renderer replay', (
     testState.dir = mkdtempSync(join(tmpdir(), 'orca-host-membership-'))
   })
 
-  afterEach(() => {
+  afterEach(async () => {
+    await closeTestStores()
     rmSync(testState.dir, { recursive: true, force: true })
   })
 
@@ -130,7 +136,7 @@ describe('host-admitted terminal membership survives a stale renderer replay', (
   })
 
   // Closing must still work afterwards. Closes are host-driven: the retirement is
-  // computed from the store's own session (see persistTerminalSurfaceRetirements),
+  // computed from the store's own session (see stageTerminalSurfaceRetirements),
   // which is what outranks the fence this create just raised.
   it('still lets the authoritative retirement path close the host-admitted tab', async () => {
     const store = await createStore()

@@ -1,2 +1,6 @@
-// Why: the host-side editor-tab model on headless runtimes needs the same language ids.
-export { detectLanguage } from '../../../shared/editor-language-detect'
+import { detectLanguage as detectEditorLanguage } from '../../../shared/editor-language-detect'
+import { detectMonacoFilenameLanguage } from './monaco-filename-language'
+
+export function detectLanguage(filePath: string): string {
+  return detectEditorLanguage(filePath, detectMonacoFilenameLanguage)
+}

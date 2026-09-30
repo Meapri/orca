@@ -11,8 +11,7 @@ import { teardownRpcDeadline } from './worktree-teardown'
 
 export class OrcaRuntimeWithSleepResolvedWorktreeTerminals extends OrcaRuntimeWithStopTerminalsForWorktree {
   protected async sleepResolvedWorktreeTerminals(
-    worktree: ResolvedWorktree,
-    options: { preserveSurfaces?: boolean } = {}
+    worktree: ResolvedWorktree
   ): Promise<RuntimeWorktreeTerminalSleepResult> {
     const sleepDeadline = Date.now() + WORKTREE_TERMINAL_SLEEP_TIMEOUT_MS
     const releaseMutation = await this.acquireWorktreeTerminalMutation(
@@ -65,7 +64,7 @@ export class OrcaRuntimeWithSleepResolvedWorktreeTerminals extends OrcaRuntimeWi
     const pendingPtyIds = new Set<string>()
     let generation = 0
     let fullyCommitted = false
-    let releaseReversibleRendererStops = (): void => {}
+    const settleReversibleStops = new Map<string, (stopped: boolean) => void>()
     try {
       const resolvedWorktrees = includeTargetResolvedWorktree(
         [...(await this.getResolvedWorktreeMap()).values()],
@@ -149,31 +148,26 @@ export class OrcaRuntimeWithSleepResolvedWorktreeTerminals extends OrcaRuntimeWi
       const stopAndWait = ptyController.stopAndWait.bind(ptyController)
 
       const orderedLivePtyIds = [...livePtyIds].sort()
-      releaseReversibleRendererStops =
-        ptyController.markReversibleStops?.(orderedLivePtyIds) ?? (() => {})
-      if (options.preserveSurfaces) {
-        // Why: with no renderer holding the tab rows, the host keeps each pane as a parked
-        // surface for wake, exactly as an exact keep-history stop does for one hibernated pane.
-        for (const ptyId of orderedLivePtyIds) {
-          this.intentionalHandlelessPtyStops.set(
+      for (const ptyId of orderedLivePtyIds) {
+        settleReversibleStops.set(
+          ptyId,
+          this.intentionalPtyStops.mark(
             ptyId,
+            'reversible',
             this.ptysById.get(ptyId)?.incarnationId ?? null
           )
-        }
+        )
       }
       const stopResults = await Promise.allSettled(
-        orderedLivePtyIds.map(async (ptyId) => ({
-          ptyId,
-          stopped: await stopAndWait(ptyId, {
+        orderedLivePtyIds.map(async (ptyId) => {
+          const stopped = await stopAndWait(ptyId, {
             keepHistory: true,
             deadlineMs: teardownRpcDeadline(sleepDeadline)
           })
-        }))
-      ).finally(() => {
-        if (options.preserveSurfaces) {
-          orderedLivePtyIds.forEach((ptyId) => this.intentionalHandlelessPtyStops.delete(ptyId))
-        }
-      })
+          settleReversibleStops.get(ptyId)?.(stopped)
+          return { ptyId, stopped }
+        })
+      )
       const successfulStopPtyIds = orderedLivePtyIds.filter((_, index) => {
         const result = stopResults[index]
         return result?.status === 'fulfilled' && result.value.stopped
@@ -266,7 +260,9 @@ export class OrcaRuntimeWithSleepResolvedWorktreeTerminals extends OrcaRuntimeWi
         postStopVerified: true
       }
     } finally {
-      releaseReversibleRendererStops()
+      for (const settleStop of settleReversibleStops.values()) {
+        settleStop(false)
+      }
       if (!fullyCommitted && generation > 0) {
         const cancelledPtyIds = [...pendingPtyIds].sort()
         if (cancelledPtyIds.length > 0) {

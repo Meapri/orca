@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { getDefaultNotificationSettings, getDefaultWorkspaceSession } from '../../shared/constants'
+import { getDefaultWorkspaceSession } from '../../shared/constants'
+import { getDefaultNotificationSettings } from '../../shared/notification-settings-defaults'
 import { HEADLESS_RUNTIME_WINDOW_ID } from '../../shared/runtime-types'
 import { OrcaRuntimeService } from '../runtime/orca-runtime'
 import {

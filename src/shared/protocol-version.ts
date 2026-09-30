@@ -1,3 +1,4 @@
+import * as hostOwnedSurface from './host-owned-surface-capabilities'
 import { REMOTE_SERVER_UPDATE_CAPABILITY } from './remote-server-update'
 import {
   SKILL_BUNDLE_INSTALL_CAPABILITY,
@@ -148,17 +149,7 @@ export const SESSION_TABS_SPLIT_GROUP_PLACEMENT_RUNTIME_CAPABILITY =
 // repeating the host's whole bounded list on every title tick.
 export const SESSION_TABS_RETIREMENT_PROOF_DELTA_RUNTIME_CAPABILITY =
   'session-tabs.retirement-proof-delta.v1' as const
-// Why: names the host-authority contract in docs/reference/multi-client-state-authority.md — this
-// host durably refuses creates/adoptions at tab or leaf ids a committed close retired (answering
-// `TERMINAL_SURFACE_RETIRED_ERROR`, which older clients read as terminal-gone) and will not spawn a
-// second resume of an agent session that already has a live pane.
-export const TERMINAL_CLOSED_SURFACE_LEDGER_RUNTIME_CAPABILITY =
-  'terminal.closed-surface-ledger.v1' as const
-// Why: a headless host (orcad, `orca serve`) refuses files.open/openDiff with renderer_unavailable
-// and released phones fall back to device screens on that code. A client advertising this accepts
-// a host-owned editor tab instead: it arrives over session.tabs and is read via markdown.readTab.
-export const SESSION_TABS_HOST_EDITOR_TABS_RUNTIME_CAPABILITY =
-  'session-tabs.host-editor-tabs.v1' as const
+export * from './host-owned-surface-capabilities'
 export const AGENT_SESSION_BOUNDARY_RUNTIME_CAPABILITY =
   'agent-session.session-boundary.v1' as const
 export { REMOTE_SERVER_UPDATE_CAPABILITY } from './remote-server-update'
@@ -176,6 +167,28 @@ export const STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY = 'agent-session.struct
 // clients skip the host's bounded best-effort settlement observation.
 export const AGENT_SESSION_PENDING_SEND_RESULT_RUNTIME_CAPABILITY =
   'agent-session.pending-send-result.v1' as const
+// Why: a send is now answered once the host accepts it, before any agent has it. A client without
+// this cannot show a message rejected after that answer, so the host holds its reply until the
+// message is handed over or rejected. Transitional: drop the hold once no supported desktop or
+// mobile client lacks the capability; mobile must first show a rejected message in place.
+export const AGENT_SESSION_ACCEPTED_SEND_RUNTIME_CAPABILITY =
+  'agent-session.accepted-send.v1' as const
+// Why: `agentSession.cancel` params are strict and older hosts require `turnId`. A host advertising
+// this takes a cancel naming no turn as "stop what the conversation has in flight", which is the
+// only Stop a client can send before the provider has opened a turn.
+export const AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY =
+  'agent-session.conversation-stop.v1' as const
+// Why: `agentSession.send`'s params are strict, so an older host rejects `delivery`; and only a
+// capable client can render the `queued` result arm, the draft list, and returned cards. DARK ON
+// PURPOSE — not in RUNTIME_CAPABILITIES: advertising still requires the integrated Codex steer
+// matrix (#21062) in the shipped host, and the desktop and phone clients that render the queue.
+// v1 includes `submission.queuedMessageId` on every draft hand-off: a client reads that link and
+// never compares a draft id with a submission id. It also publishes the queue's pause once, as
+// `queuePause` beside the list, lifted by `agentSession.queuedMessagesResume` or the user's next
+// turn; cards carry a hold of their own only when their conversion failed. The host mechanism lands first; the constant
+// gates the rollout.
+export const AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY =
+  'agent-session.queued-messages.v1' as const
 // Why: paired clients advertise Claude-structured support so the host can gate its agent-specific
 // journal and lifecycle surfaces independently from Codex support.
 export const CLAUDE_STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY =
@@ -240,6 +253,11 @@ export const AGENT_SESSION_KIMI_RESUME_RUNTIME_CAPABILITY = 'agent-session.kimi-
 export const AGENT_SESSION_OPENCODE2_RESUME_RUNTIME_CAPABILITY =
   'agent-session.opencode2-resume.v1' as const
 export const AGENT_SESSION_MUSE_RESUME_RUNTIME_CAPABILITY = 'agent-session.muse-resume.v1' as const
+export const AGENT_SESSION_DSH_RESUME_RUNTIME_CAPABILITY = 'agent-session.dsh-resume.v1' as const
+export const AGENT_SESSION_CODEBUDDY_RESUME_RUNTIME_CAPABILITY =
+  'agent-session.codebuddy-resume.v1' as const
+export const AGENT_SESSION_QODER_RESUME_RUNTIME_CAPABILITY =
+  'agent-session.qoder-resume.v1' as const
 export const AGENT_SESSION_ZCODE_RESUME_RUNTIME_CAPABILITY =
   'agent-session.zcode-resume.v1' as const
 // Why: older runtimes strip mutation owner fields, so clients must fence writes before RPC.
@@ -299,7 +317,7 @@ export const AGENT_LAUNCH_REPLAY_REQUIRED_RUNTIME_CAPABILITY =
 // placement support.
 export const NATIVE_REMOTE_RUNTIME_CLIENT_CAPABILITIES = [
   SESSION_TAB_CLOSE_INTENT_RUNTIME_CAPABILITY,
-  SESSION_TABS_HOST_EDITOR_TABS_RUNTIME_CAPABILITY,
+  hostOwnedSurface.SESSION_TABS_HOST_EDITOR_TABS_RUNTIME_CAPABILITY,
   AGENT_SESSION_BOUNDARY_RUNTIME_CAPABILITY,
   WORKTREE_VISIBILITY_DEFAULTS_RUNTIME_CAPABILITY,
   WORKTREE_VISIBILITY_SOURCE_DEFAULTS_RUNTIME_CAPABILITY,
@@ -314,6 +332,7 @@ export const NATIVE_REMOTE_RUNTIME_CLIENT_CAPABILITIES = [
 export const ELECTRON_REMOTE_RUNTIME_CLIENT_CAPABILITIES = [
   ...NATIVE_REMOTE_RUNTIME_CLIENT_CAPABILITIES,
   AGENT_SESSION_PENDING_SEND_RESULT_RUNTIME_CAPABILITY,
+  AGENT_SESSION_ACCEPTED_SEND_RUNTIME_CAPABILITY,
   BROWSER_CLIENT_HOST_RUNTIME_CAPABILITY,
   BROWSER_CLIENT_PAGE_METADATA_RUNTIME_CAPABILITY,
   // Why: only the renderer runs the retirement-proof ledger; CLI and mobile must keep full lists.
@@ -377,8 +396,8 @@ export const RUNTIME_CAPABILITIES = [
   SESSION_TAB_CLOSE_INTENT_RUNTIME_CAPABILITY,
   SESSION_TABS_AUTHORITATIVE_INVENTORY_RUNTIME_CAPABILITY,
   SESSION_TABS_SPLIT_GROUP_PLACEMENT_RUNTIME_CAPABILITY,
-  TERMINAL_CLOSED_SURFACE_LEDGER_RUNTIME_CAPABILITY,
-  SESSION_TABS_HOST_EDITOR_TABS_RUNTIME_CAPABILITY,
+  hostOwnedSurface.TERMINAL_CLOSED_SURFACE_LEDGER_RUNTIME_CAPABILITY,
+  hostOwnedSurface.SESSION_TABS_HOST_EDITOR_TABS_RUNTIME_CAPABILITY,
   AGENT_SESSION_BOUNDARY_RUNTIME_CAPABILITY,
   REMOTE_SERVER_UPDATE_CAPABILITY,
   AGENT_SESSION_HOST_AUTHORITY_RUNTIME_CAPABILITY,
@@ -386,6 +405,10 @@ export const RUNTIME_CAPABILITIES = [
   AGENT_SESSION_KEYBOARD_RUNTIME_CAPABILITY,
   STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
   AGENT_SESSION_PENDING_SEND_RESULT_RUNTIME_CAPABILITY,
+  // The host side: it accepts a send before any agent has it, and a Stop with no writer before a
+  // turn starts, so a client may gate on either.
+  AGENT_SESSION_ACCEPTED_SEND_RUNTIME_CAPABILITY,
+  AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY,
   STRUCTURED_AGENT_SESSION_HOLD_RUNTIME_CAPABILITY,
   STRUCTURED_AGENT_SESSION_REVEAL_RUNTIME_CAPABILITY,
   STRUCTURED_AGENT_SESSION_RESUME_HISTORY_RUNTIME_CAPABILITY,
@@ -401,6 +424,9 @@ export const RUNTIME_CAPABILITIES = [
   AGENT_SESSION_KIMI_RESUME_RUNTIME_CAPABILITY,
   AGENT_SESSION_OPENCODE2_RESUME_RUNTIME_CAPABILITY,
   AGENT_SESSION_MUSE_RESUME_RUNTIME_CAPABILITY,
+  AGENT_SESSION_DSH_RESUME_RUNTIME_CAPABILITY,
+  AGENT_SESSION_QODER_RESUME_RUNTIME_CAPABILITY,
+  AGENT_SESSION_CODEBUDDY_RESUME_RUNTIME_CAPABILITY,
   AGENT_SESSION_ZCODE_RESUME_RUNTIME_CAPABILITY,
   FILE_MUTATION_OWNERSHIP_RUNTIME_CAPABILITY,
   GITHUB_MARK_PR_READY_RUNTIME_CAPABILITY,

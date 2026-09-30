@@ -1,4 +1,5 @@
 import { getAppEnvironment } from '../../shared/app-environment'
+import { codexOpenCodeTokenSessions } from '../usage/agent-token-usage'
 import { join } from 'node:path'
 import type {
   CodexUsageBreakdownKind,
@@ -84,6 +85,10 @@ export class CodexUsageStore extends UsageProviderStoreLifecycle<
 > {
   constructor(store: Pick<Store, 'getRepos' | 'getAllWorktreeMeta'>) {
     super(store, {
+      tokenUsage: {
+        provider: 'codex',
+        selectSessions: (state) => codexOpenCodeTokenSessions(state.sessions)
+      },
       logTag: '[codex-usage]',
       resolveCacheFile: getCodexUsageFile,
       createDefaultState: getDefaultState,

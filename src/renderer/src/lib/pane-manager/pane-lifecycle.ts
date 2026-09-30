@@ -213,6 +213,8 @@ export function disposePane(
   pane.terminalScrollIntentDisposable = null
   pane.terminalSmoothScrollDisposable?.dispose()
   pane.terminalSmoothScrollDisposable = null
+  pane.mouseEncodingTrackerDisposable?.dispose()
+  pane.mouseEncodingTrackerDisposable = null
   pane.linkifierHoverResetDisposable?.dispose()
   pane.linkifierHoverResetDisposable = null
   pane.linkifierMouseLeaveResetDisposable?.dispose()

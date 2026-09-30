@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import type { EnrichedAgentHookEventPayload } from '../agent-hooks/server/server-types'
 import type { MobileNotificationDispatchEvent } from '../runtime/runtime-mobile-notification-controller'
 import type { NotificationSettings } from '../../shared/notification-settings-types'
-import { getDefaultNotificationSettings } from '../../shared/constants'
+import { getDefaultNotificationSettings } from '../../shared/notification-settings-defaults'
 import {
   HEADLESS_AGENT_DONE_QUIET_MS,
   HEADLESS_TERMINAL_BELL_GRACE_MS,

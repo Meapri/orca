@@ -25,9 +25,9 @@ import { readMiniMaxApiKey } from '../minimax/minimax-api-key-store'
 import { createAccountRuntimeTargetSettingsSync } from '../rate-limits/account-runtime-target-sync'
 import { normalizeCodexRuntimeSelection } from '../codex-accounts/runtime-selection'
 import { normalizeClaudeRuntimeSelection } from '../claude-accounts/runtime-selection'
-import { isAgentStatusHooksEnabled } from '../agent-hooks/managed-agent-hook-controls'
 import { agentHookServer } from '../agent-hooks/server'
 import { setSystemCodexHomeHookSweepSuppressed } from '../codex/hook-service'
+import { shouldSuppressSystemCodexHomeHookSweep } from '../codex/codex-hook-legacy-cleanup'
 import { isRealHomeCodexHookLaneUsable } from '../codex/codex-real-home-hook-install'
 import { resolveHostCodexSessionSourceHome } from '../codex/codex-session-source-home'
 
@@ -53,12 +53,13 @@ export function createAccountServices(options: {
   codexRuntimeHome.setRealHomeLaneGate(() => isRealHomeCodexHookLaneUsable())
   // Why: while the real-home lane owns ~/.codex/hooks.json, the legacy
   // system-home sweep inside managed installs would delete the entry the
-  // real-home installer just appended. Flag OFF, hooks off, or an incapable
-  // trust lane re-arms the sweep so downgrade, opt-out, and rollback converge.
-  setSystemCodexHomeHookSweepSuppressed(
-    () =>
-      codexRuntimeHome.isHostSystemDefaultRealHome() &&
-      isAgentStatusHooksEnabled(store.getSettings())
+  // real-home installer just appended. Flag OFF, hooks off (all or Codex), or an
+  // incapable trust lane re-arms the sweep so downgrade, opt-out, and rollback converge.
+  setSystemCodexHomeHookSweepSuppressed(() =>
+    shouldSuppressSystemCodexHomeHookSweep({
+      isHostSystemDefaultRealHome: codexRuntimeHome.isHostSystemDefaultRealHome(),
+      settings: store.getSettings()
+    })
   )
   const codexSessionMigration = createCodexSessionMigrationScheduler({
     isEligible: () => codexRuntimeHome.isHostSystemDefaultSessionMigrationEligible(),
