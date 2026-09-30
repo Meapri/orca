@@ -6,7 +6,7 @@ Orca ships `@xterm/xterm` with source changes it needs and upstream has not
 taken: the IME composition hooks, the `xterm-composition-*` custom events they
 raise, the `ICompositionHelper` surface those hooks widen, the in-grid IME
 preedit, the adopted app caret, wide-glyph fitting, a guard that refuses mouse
-reports with non-finite coordinates (#20983), and a `SortedList` fix. pnpm
+reports with non-finite coordinates (#20983), pixel scrolling, and a `SortedList` fix. pnpm
 applies them through `config/patches/@xterm__xterm@<version>.patch`.
 
 That patch pairs hand-authored source with the build output those sources
@@ -33,6 +33,15 @@ nobody edits it by hand. The source files are:
 - `src/common/services/OptionsService.ts` and `src/common/services/Services.ts`:
   the `imePreeditInGrid` and `fitWideGlyphs` options.
 - `src/common/SortedList.ts`: the `SortedList` fix.
+- `src/browser/PixelScroll.ts`, `src/browser/Viewport.ts`,
+  `src/browser/services/RenderService.ts`, `src/browser/services/Services.ts` and
+  `src/browser/renderer/shared/Types.ts`: pixel scrolling (`pixelScroll` option). The viewport
+  keeps ydisp on whole rows (floored, not rounded), hands the sub-row remainder to a renderer that
+  implements `setPixelScrollOffset`, and settles on a row once scroll events stop. Only the normal
+  buffer, with no mouse reporting and no reduced motion, scrolls by pixels.
+- `src/browser/services/MouseCoordsService.ts` and
+  `src/browser/decorations/BufferDecorationRenderer.ts`: selection/link hit-testing and
+  decorations follow the pixel-scroll offset.
 
 Update this list whenever the source patch gains or drops a file.
 
@@ -42,6 +51,9 @@ WebGL addon reads that surface too, but each package is built from a checkout
 with only its own source patch applied, so the addon declares the shape it reads
 locally instead of importing the core type; importing it fails the addon build.
 New files are not picked up either: the checkout diff only sees tracked files.
+The WebGL half of pixel scrolling lives in the addon's new `src/PixelScroll.ts`: the renderers keep
+one extra model row below the viewport, shift the projection by the offset, and move the link
+layer with it (`renderLayer/`); the DOM renderer does not implement it and keeps row stepping.
 The adopted app caret (`setAdoptedCaretSource`, `IAdoptedCaret`, `src/browser/AdoptedCaret.ts`)
 follows the same pattern: Orca's `terminal-app-caret-adoption.ts` names the cell, both renderers
 draw the cursor there and clear the app's inverse at it, and the addon declares the shape locally.

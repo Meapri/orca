@@ -180,6 +180,129 @@ index 67893b7966eb095db4459b8837de9766921f36c5..c520337a9d869af93cbedfdd3d44d4de
      // Only support emoji IMEs when screen reader mode is disabled as the event must bubble up to
      // support reading out character input which can doubling up input characters
      // Based on these event traces: https://github.com/xtermjs/xterm.js/issues/3679
+diff --git a/src/browser/PixelScroll.ts b/src/browser/PixelScroll.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..b86003bc6c7e44b1fae7a6f882ff5a0f537c6a6e
+--- /dev/null
++++ b/src/browser/PixelScroll.ts
+@@ -0,0 +1,117 @@
++/**
++ * Copyright (c) 2026 The xterm.js authors. All rights reserved.
++ * @license MIT
++ */
++
++// Orca: pixel-precise viewport scrolling. The buffer still scrolls by whole rows (ydisp); a
++// renderer that supports it draws the remaining sub-row distance as an offset. Import-free and
++// limited to erasable TypeScript so Orca can unit test it straight from the installed package.
++
++/** Quiet time after the last scroll event before settling; outlasts trackpad momentum gaps. */
++export const PIXEL_SCROLL_SETTLE_DELAY_MS = 120;
++/** Length of the glide onto a whole row. */
++export const PIXEL_SCROLL_SETTLE_DURATION_MS = 90;
++/** A settle keeps going in the direction of travel once this much of the next row is showing. */
++export const PIXEL_SCROLL_SETTLE_FORWARD_FRACTION = 0.25;
++/** Offsets this close to a row edge snap to it, absorbing the canvas height's rounding. */
++const SNAP_DEVICE_PIXELS = 1.5;
++
++export interface IPixelScrollGate {
++  /** The `pixelScroll` option. */
++  enabled: boolean;
++  /** The active renderer draws a sub-row offset; the DOM renderer does not. */
++  rendererDrawsOffset: boolean;
++  isNormalBuffer: boolean;
++  /** An app requesting mouse reports owns the wheel. */
++  areMouseEventsActive: boolean;
++  prefersReducedMotion: boolean;
++}
++
++/** Pixel scrolling covers only viewport scrolling of the normal buffer; the rest steps rows. */
++export function isPixelScrollActive(gate: IPixelScrollGate): boolean {
++  return gate.enabled && gate.rendererDrawsOffset && gate.isNormalBuffer && !gate.areMouseEventsActive && !gate.prefersReducedMotion;
++}
++
++export interface IPixelScrollPosition {
++  /** The top buffer row drawn, i.e. ydisp. */
++  row: number;
++  /** Whole device pixels the viewport sits below that row's top edge; 0 draws whole rows. */
++  offset: number;
++}
++
++/** Maps a pixel scroll position to the top row and the sub-row offset drawn below its top edge. */
++export function resolvePixelScrollPosition(scrollTop: number, cssCellHeight: number, deviceCellHeight: number, maxRow: number): IPixelScrollPosition {
++  if (!(cssCellHeight > 0) || !(deviceCellHeight > 0)) {
++    return { row: 0, offset: 0 };
++  }
++  const rows = Math.max(scrollTop, 0) / cssCellHeight;
++  const row = Math.floor(rows + SNAP_DEVICE_PIXELS / deviceCellHeight);
++  // The last page has no row below it to reveal.
++  if (row >= maxRow) {
++    return { row: Math.max(maxRow, 0), offset: 0 };
++  }
++  return { row, offset: Math.max(Math.round((rows - row) * deviceCellHeight), 0) };
++}
++
++/** The whole row a settle lands on: the nearest one, biased toward the direction of travel. */
++export function resolvePixelScrollSettleRow(scrollTop: number, cssCellHeight: number, direction: number, maxRow: number): number {
++  if (!(cssCellHeight > 0)) {
++    return 0;
++  }
++  const rows = Math.max(scrollTop, 0) / cssCellHeight;
++  const floor = Math.floor(rows);
++  const fraction = rows - floor;
++  let row = Math.round(rows);
++  if (direction > 0) {
++    row = fraction >= PIXEL_SCROLL_SETTLE_FORWARD_FRACTION ? floor + 1 : floor;
++  } else if (direction < 0) {
++    row = fraction <= 1 - PIXEL_SCROLL_SETTLE_FORWARD_FRACTION ? floor : floor + 1;
++  }
++  return Math.min(Math.max(row, 0), Math.max(maxRow, 0));
++}
++
++/** Calls `onSettle` once scroll events stop arriving, with the direction they were travelling. */
++export class PixelScrollSettler {
++  private _timer: ReturnType<typeof setTimeout> | undefined;
++  private _lastScrollTop: number | undefined;
++  private _direction = 0;
++  private readonly _onSettle: (direction: number) => void;
++
++  constructor(onSettle: (direction: number) => void) {
++    this._onSettle = onSettle;
++  }
++
++  public get isPending(): boolean {
++    return this._timer !== undefined;
++  }
++
++  public noteScroll(scrollTop: number): void {
++    if (this._lastScrollTop !== undefined && scrollTop !== this._lastScrollTop) {
++      this._direction = Math.sign(scrollTop - this._lastScrollTop);
++    }
++    this._lastScrollTop = scrollTop;
++    if (this._timer !== undefined) {
++      clearTimeout(this._timer);
++    }
++    this._timer = setTimeout(() => {
++      this._timer = undefined;
++      const direction = this._direction;
++      this._lastScrollTop = undefined;
++      this._direction = 0;
++      this._onSettle(direction);
++    }, PIXEL_SCROLL_SETTLE_DELAY_MS);
++  }
++
++  public cancel(): void {
++    if (this._timer !== undefined) {
++      clearTimeout(this._timer);
++      this._timer = undefined;
++    }
++    this._lastScrollTop = undefined;
++    this._direction = 0;
++  }
++
++  public dispose(): void {
++    this.cancel();
++  }
++}
 diff --git a/src/browser/Types.ts b/src/browser/Types.ts
 index 497afcf535f3eaca00889525a77e15eb633ccd96..7cee04996e9bff6603aec38beb6f93aa8bf78e95 100644
 --- a/src/browser/Types.ts
@@ -242,6 +365,190 @@ index 497afcf535f3eaca00889525a77e15eb633ccd96..7cee04996e9bff6603aec38beb6f93aa
  }
  
  export interface IBrowser {
+diff --git a/src/browser/Viewport.ts b/src/browser/Viewport.ts
+index 18c275ccbe583f48ccb5c5f66cd26d0bd8621e39..e01fdb233c4333e9a2f7cb2ab78169df73a631f1 100644
+--- a/src/browser/Viewport.ts
++++ b/src/browser/Viewport.ts
+@@ -13,6 +13,7 @@ import { SmoothScrollableElement } from './scrollable/scrollableElement';
+ import type { IScrollableElementChangeOptions } from './scrollable/scrollableElementOptions';
+ import { Emitter, EventUtils } from '../common/Event';
+ import { Scrollable, ScrollbarVisibility, type IScrollEvent } from './scrollable/scrollable';
++import { isPixelScrollActive, PIXEL_SCROLL_SETTLE_DURATION_MS, PixelScrollSettler, resolvePixelScrollPosition, resolvePixelScrollSettleRow, type IPixelScrollPosition } from './PixelScroll';
+ 
+ export class Viewport extends Disposable {
+ 
+@@ -29,20 +30,24 @@ export class Viewport extends Disposable {
+   private _suppressOnScrollHandler: boolean = false;
+   private _needsSyncOnRender: boolean = false;
+ 
++  private readonly _scrollable: Scrollable;
++  private readonly _pixelScrollSettler = this._register(new PixelScrollSettler(direction => this._settlePixelScroll(direction)));
++  private readonly _reducedMotionQuery: MediaQueryList | undefined;
++
+   constructor(
+     element: HTMLElement,
+     screenElement: HTMLElement,
+     @IBufferService private readonly _bufferService: IBufferService,
+     @ICoreBrowserService coreBrowserService: ICoreBrowserService,
+     @ICoreService private readonly _coreService: ICoreService,
+-    @IMouseStateService mouseStateService: IMouseStateService,
++    @IMouseStateService private readonly _mouseStateService: IMouseStateService,
+     @IThemeService themeService: IThemeService,
+     @IOptionsService private readonly _optionsService: IOptionsService,
+     @IRenderService private readonly _renderService: IRenderService
+   ) {
+     super();
+ 
+-    const scrollable = this._register(new Scrollable({
++    const scrollable = this._scrollable = this._register(new Scrollable({
+       forceIntegerValues: false,
+       smoothScrollDuration: this._optionsService.rawOptions.smoothScrollDuration,
+       // This is used over `IRenderService.addRefreshCallback` since it can be canceled
+@@ -66,11 +71,21 @@ export class Viewport extends Disposable {
+       'scrollbar'
+     ], () => this._scrollableElement.updateOptions(this._getChangeOptions())));
+     // Don't handle mouse wheel if wheel events are supported by the current mouse prototcol
+-    this._register(mouseStateService.onProtocolChange(type => {
++    this._register(_mouseStateService.onProtocolChange(type => {
+       this._scrollableElement.updateOptions({
+         handleMouseWheel: !(type & CoreMouseEventType.WHEEL)
+       });
++      this._refreshPixelScroll();
+     }));
++    this._register(this._optionsService.onSpecificOptionChange('pixelScroll', () => this._refreshPixelScroll()));
++    const win = coreBrowserService.window;
++    this._reducedMotionQuery = typeof win.matchMedia === 'function' ? win.matchMedia('(prefers-reduced-motion: reduce)') : undefined;
++    const reducedMotionQuery = this._reducedMotionQuery;
++    if (reducedMotionQuery) {
++      const handleReducedMotionChange = (): void => this._refreshPixelScroll();
++      reducedMotionQuery.addEventListener('change', handleReducedMotionChange);
++      this._register(toDisposable(() => reducedMotionQuery.removeEventListener('change', handleReducedMotionChange)));
++    }
+ 
+     this._scrollableElement.setScrollDimensions({ height: 0, scrollHeight: 0 });
+     this._register(EventUtils.runAndSubscribe(themeService.onChangeColors, () => {
+@@ -197,6 +212,7 @@ export class Viewport extends Disposable {
+         scrollTop: ydisp * this._renderService.dimensions.css.cell.height
+       });
+     }
++    this._refreshPixelScroll();
+ 
+     this._isSyncing = false;
+   }
+@@ -209,7 +225,9 @@ export class Viewport extends Disposable {
+       return;
+     }
+     this._isHandlingScroll = true;
+-    const newRow = Math.round(e.scrollTop / this._renderService.dimensions.css.cell.height);
++    const newRow = this._isPixelScrollActive()
++      ? this._handlePixelScroll(e.scrollTop)
++      : Math.round(e.scrollTop / this._renderService.dimensions.css.cell.height);
+     const diff = newRow - this._bufferService.buffer.ydisp;
+     if (diff !== 0) {
+       this._latestYDisp = newRow;
+@@ -218,6 +236,79 @@ export class Viewport extends Disposable {
+     this._isHandlingScroll = false;
+   }
+ 
++  private _isPixelScrollActive(): boolean {
++    return isPixelScrollActive({
++      enabled: this._optionsService.rawOptions.pixelScroll === true,
++      rendererDrawsOffset: this._renderService.supportsPixelScroll === true,
++      isNormalBuffer: this._bufferService.buffer === this._bufferService.buffers.normal,
++      areMouseEventsActive: this._mouseStateService.areMouseEventsActive,
++      prefersReducedMotion: this._reducedMotionQuery?.matches === true
++    });
++  }
++
++  private _resolvePixelScrollPosition(scrollTop: number): IPixelScrollPosition {
++    const dimensions = this._renderService.dimensions;
++    const maxRow = this._bufferService.buffer.lines.length - this._bufferService.rows;
++    return resolvePixelScrollPosition(scrollTop, dimensions.css.cell.height, dimensions.device.cell.height, maxRow);
++  }
++
++  /** Returns the whole row to scroll the buffer to and hands the renderer the rest as an offset. */
++  private _handlePixelScroll(scrollTop: number): number {
++    const position = this._resolvePixelScrollPosition(scrollTop);
++    this._renderService.setPixelScrollOffset?.(position.offset);
++    this._pixelScrollSettler.noteScroll(scrollTop);
++    // Land an in-flight wheel or jump animation on a whole row rather than settling after it.
++    const target = this._scrollable.getFutureScrollPosition().scrollTop;
++    if (target !== scrollTop && this._resolvePixelScrollPosition(target).offset !== 0) {
++      this._smoothScrollToRow(this._resolvePixelScrollSettleRow(target, Math.sign(target - scrollTop)));
++    }
++    return position.row;
++  }
++
++  private _resolvePixelScrollSettleRow(scrollTop: number, direction: number): number {
++    const maxRow = this._bufferService.buffer.lines.length - this._bufferService.rows;
++    return resolvePixelScrollSettleRow(scrollTop, this._renderService.dimensions.css.cell.height, direction, maxRow);
++  }
++
++  private _settlePixelScroll(direction: number): void {
++    if (!this._isPixelScrollActive() || !this._renderService.pixelScrollOffset) {
++      return;
++    }
++    const scrollTop = this._scrollable.getFutureScrollPosition().scrollTop;
++    this._smoothScrollToRow(this._resolvePixelScrollSettleRow(scrollTop, direction));
++  }
++
++  private _smoothScrollToRow(row: number): void {
++    // The embedder may keep smoothScrollDuration at 0, which would make this a jump.
++    this._scrollable.setSmoothScrollDuration(PIXEL_SCROLL_SETTLE_DURATION_MS);
++    this._scrollableElement.setScrollPosition({
++      reuseAnimation: true,
++      scrollTop: row * this._renderService.dimensions.css.cell.height
++    });
++    this._scrollable.setSmoothScrollDuration(this._optionsService.rawOptions.smoothScrollDuration);
++  }
++
++  /** Re-derives the offset after something other than a scroll event moved the viewport. */
++  private _refreshPixelScroll(): void {
++    if (!this._renderService.hasRenderer()) {
++      return;
++    }
++    if (!this._isPixelScrollActive()) {
++      this._pixelScrollSettler.cancel();
++      if (this._renderService.pixelScrollOffset) {
++        this._renderService.setPixelScrollOffset?.(0);
++        // Snap to the drawn row so whole-row stepping resumes from what is on screen.
++        this._scrollableElement.setScrollPosition({
++          scrollTop: this._bufferService.buffer.ydisp * this._renderService.dimensions.css.cell.height
++        });
++      }
++      return;
++    }
++    const position = this._resolvePixelScrollPosition(this._scrollableElement.getScrollPosition().scrollTop);
++    // A buffer moved without a scroll event (trim, resize) draws whole rows until the next one.
++    this._renderService.setPixelScrollOffset?.(position.row === this._bufferService.buffer.ydisp ? position.offset : 0);
++  }
++
+   public handleTouchScroll(translationY: number): void {
+     const pos = this._scrollableElement.getScrollPosition();
+     this._scrollableElement.setScrollPosition({
+diff --git a/src/browser/decorations/BufferDecorationRenderer.ts b/src/browser/decorations/BufferDecorationRenderer.ts
+index fd356808ea611fc87b28d92b2758cf9584472516..411276dd5b2bd45bdc7186ceb242e0ca598d2b2b 100644
+--- a/src/browser/decorations/BufferDecorationRenderer.ts
++++ b/src/browser/decorations/BufferDecorationRenderer.ts
+@@ -75,7 +75,7 @@ export class BufferDecorationRenderer extends Disposable {
+     element.classList.toggle('xterm-decoration-top-layer', decoration?.options?.layer === 'top');
+     element.style.width = `${Math.round((decoration.options.width || 1) * this._renderService.dimensions.css.cell.width)}px`;
+     element.style.height = `${(decoration.options.height || 1) * this._renderService.dimensions.css.cell.height}px`;
+-    element.style.top = `${(decoration.marker.line - this._bufferService.buffers.active.ydisp) * this._renderService.dimensions.css.cell.height}px`;
++    element.style.top = `${(decoration.marker.line - this._bufferService.buffers.active.ydisp) * this._renderService.dimensions.css.cell.height - (this._renderService.pixelScrollOffset ?? 0)}px`;
+     element.style.lineHeight = `${this._renderService.dimensions.css.cell.height}px`;
+ 
+     const x = decoration.options.x ?? 0;
+@@ -112,7 +112,8 @@ export class BufferDecorationRenderer extends Disposable {
+       if (!this._altBufferIsActive) {
+         element.style.width = `${Math.round((decoration.options.width || 1) * this._renderService.dimensions.css.cell.width)}px`;
+         element.style.height = `${(decoration.options.height || 1) * this._renderService.dimensions.css.cell.height}px`;
+-        element.style.top = `${line * this._renderService.dimensions.css.cell.height}px`;
++        // Orca: follow the rows a pixel-scroll offset draws higher.
++        element.style.top = `${line * this._renderService.dimensions.css.cell.height - (this._renderService.pixelScrollOffset ?? 0)}px`;
+         element.style.lineHeight = `${this._renderService.dimensions.css.cell.height}px`;
+       }
+       decoration.onRenderEmitter.fire(element);
 diff --git a/src/browser/input/CompositionHelper.ts b/src/browser/input/CompositionHelper.ts
 index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..efb5006ad88e62e96a785f34634f0ac133af03c5 100644
 --- a/src/browser/input/CompositionHelper.ts
@@ -2359,6 +2666,19 @@ index d45938515e7a9903de0da0d61716fd42e4deea0c..2c27821c0dd07c03de24798547631d3c
 +    return this._ctx.measureText(c);
 +  }
  }
+diff --git a/src/browser/renderer/shared/Types.ts b/src/browser/renderer/shared/Types.ts
+index d664d1611b44e605c02c1bc22a5da271861d83fa..ece6cb977365dac176b2ea757fb92299610007f2 100644
+--- a/src/browser/renderer/shared/Types.ts
++++ b/src/browser/renderer/shared/Types.ts
+@@ -71,6 +71,8 @@ export interface IRenderer extends IDisposable {
+   clear(): void;
+   renderRows(start: number, end: number): void;
+   clearTextureAtlas?(): void;
++  /** Orca: draws every row this many device pixels higher; implementing it opts into pixel scrolling. */
++  setPixelScrollOffset?(deviceOffset: number): void;
+ }
+ 
+ export interface ISelectionRenderModel {
 diff --git a/src/browser/renderer/shared/WideGlyphFit.ts b/src/browser/renderer/shared/WideGlyphFit.ts
 new file mode 100644
 index 0000000000000000000000000000000000000000..fbd9855c62cbfbdab1fa867269f2860d46c89fbd
@@ -2497,10 +2817,23 @@ index 0000000000000000000000000000000000000000..fbd9855c62cbfbdab1fa867269f2860d
 +  }
 +}
 diff --git a/src/browser/services/MouseCoordsService.ts b/src/browser/services/MouseCoordsService.ts
-index 7e110ea988bd320e99e24f5b87628ad7f3adff72..c2c51e2b20c024ec79d3731edb94fb61bfb35336 100644
+index 7e110ea988bd320e99e24f5b87628ad7f3adff72..bff67033b5e0a1ea07ec0251d6d0bed2db8b1892 100644
 --- a/src/browser/services/MouseCoordsService.ts
 +++ b/src/browser/services/MouseCoordsService.ts
-@@ -35,6 +35,10 @@ export class MouseCoordsService implements IMouseCoordsService {
+@@ -17,9 +17,11 @@ export class MouseCoordsService implements IMouseCoordsService {
+   }
+ 
+   public getCoords(event: {clientX: number, clientY: number}, element: HTMLElement, colCount: number, rowCount: number, isSelection?: boolean): [number, number] | undefined {
++    // Orca: a pixel-scroll offset draws each row above its cell.
++    const pixelScrollOffset = this._renderService.pixelScrollOffset ?? 0;
+     return getCoords(
+       getWindow(element),
+-      event,
++      pixelScrollOffset ? { clientX: event.clientX, clientY: event.clientY + pixelScrollOffset } : event,
+       element,
+       colCount,
+       rowCount,
+@@ -35,6 +37,10 @@ export class MouseCoordsService implements IMouseCoordsService {
      if (!this._charSizeService.hasValidSize) {
        return undefined;
      }
@@ -2529,10 +2862,23 @@ index 353e0581da7a95c9473d6169cd9ec548bc3bfe30..d587c02426b284b9567208c02b0d59d1
      }
  
 diff --git a/src/browser/services/RenderService.ts b/src/browser/services/RenderService.ts
-index 75cd55418b0eac94c3f28273c73a26086e437a90..1feb073984b82234e4108165e0036205da928560 100644
+index 75cd55418b0eac94c3f28273c73a26086e437a90..ff31f2740e48010fdbf03f4d4412827f41c49366 100644
 --- a/src/browser/services/RenderService.ts
 +++ b/src/browser/services/RenderService.ts
-@@ -104,7 +104,8 @@ export class RenderService extends Disposable implements IRenderService {
+@@ -55,6 +55,12 @@ export class RenderService extends Disposable implements IRenderService {
+ 
+   public get dimensions(): IRenderDimensions { return this._renderer.value!.dimensions; }
+ 
++  private _pixelScrollOffset: number = 0;
++  public get pixelScrollOffset(): number {
++    return this._pixelScrollOffset && this._pixelScrollOffset * this.dimensions.css.cell.height / this.dimensions.device.cell.height;
++  }
++  public get supportsPixelScroll(): boolean { return typeof this._renderer.value?.setPixelScrollOffset === 'function'; }
++
+   constructor(
+     private _rowCount: number,
+     screenElement: HTMLElement,
+@@ -104,7 +110,8 @@ export class RenderService extends Disposable implements IRenderService {
        'fontWeight',
        'fontWeightBold',
        'minimumContrastRatio',
@@ -2542,6 +2888,46 @@ index 75cd55418b0eac94c3f28273c73a26086e437a90..1feb073984b82234e4108165e0036205
      ], () => {
        this.clear();
        this.handleResize(bufferService.cols, bufferService.rows);
+@@ -244,8 +251,20 @@ export class RenderService extends Disposable implements IRenderService {
+     return !!this._renderer.value;
+   }
+ 
++  public setPixelScrollOffset(deviceOffset: number): void {
++    const offset = this.supportsPixelScroll ? deviceOffset : 0;
++    if (offset === this._pixelScrollOffset) {
++      return;
++    }
++    this._pixelScrollOffset = offset;
++    this._renderer.value?.setPixelScrollOffset?.(offset);
++    // Not redraw-only: decorations and links follow rendered viewport changes.
++    this.refreshRows(this._rowCount - 1, this._rowCount - 1);
++  }
++
+   public setRenderer(renderer: IRenderer): void {
+     this._renderer.value = renderer;
++    this._pixelScrollOffset = 0;
+     // If the value was not set, the terminal is being disposed so ignore it
+     if (this._renderer.value) {
+       this._renderer.value.onRequestRedraw(e => this.refreshRows(e.start, e.end, e.sync, true));
+diff --git a/src/browser/services/Services.ts b/src/browser/services/Services.ts
+index 2b8e06b7d7c81fa4292dff4770476473cd29c277..b89a7122563c24d3d46a119ac7741c3aa0aef2b6 100644
+--- a/src/browser/services/Services.ts
++++ b/src/browser/services/Services.ts
+@@ -104,6 +104,14 @@ export interface IRenderService extends IDisposable {
+   handleSelectionChanged(start: [number, number] | undefined, end: [number, number] | undefined, columnSelectMode: boolean): void;
+   handleCursorMove(): void;
+   clear(): void;
++
++  // Orca: pixel scrolling. Optional so implementations without it (test mocks) still conform.
++  /** CSS pixels the rows are drawn above their cells; 0 unless the renderer draws the offset. */
++  readonly pixelScrollOffset?: number;
++  /** Whether the renderer can draw a sub-row offset. */
++  readonly supportsPixelScroll?: boolean;
++  /** Sets the sub-row offset in whole device pixels. */
++  setPixelScrollOffset?(deviceOffset: number): void;
+ }
+ 
+ export const ISelectionService = createDecorator<ISelectionService>('SelectionService');
 diff --git a/src/common/SortedList.ts b/src/common/SortedList.ts
 index 8a10076e3963e33b4a7d1e4602333eb3f4772dc9..c6dcf18b762e3c56fe22e9c2d49b8e550d96f915 100644
 --- a/src/common/SortedList.ts
@@ -2665,20 +3051,22 @@ index 8a10076e3963e33b4a7d1e4602333eb3f4772dc9..c6dcf18b762e3c56fe22e9c2d49b8e55
      }
    }
 diff --git a/src/common/services/OptionsService.ts b/src/common/services/OptionsService.ts
-index d14982e3ff8907fd3182c8c970d81afa74eba84b..4dd5a42852c02286304623a55d0d24536cf5c101 100644
+index d14982e3ff8907fd3182c8c970d81afa74eba84b..519469b8cb3d1388d4ceb232505f115347a8fafd 100644
 --- a/src/common/services/OptionsService.ts
 +++ b/src/common/services/OptionsService.ts
-@@ -37,6 +37,8 @@ export const DEFAULT_OPTIONS: Readonly<Required<ITerminalOptions>> = {
+@@ -37,7 +37,10 @@ export const DEFAULT_OPTIONS: Readonly<Required<ITerminalOptions>> = {
    scrollOnUserInput: true,
    scrollSensitivity: 1,
    screenReaderMode: false,
 +  imePreeditInGrid: false,
 +  fitWideGlyphs: false,
    smoothScrollDuration: 0,
++  pixelScroll: false,
    macOptionIsMeta: false,
    macOptionClickForcesSelection: false,
+   minimumContrastRatio: 1,
 diff --git a/src/common/services/Services.ts b/src/common/services/Services.ts
-index 8f0aeeed15d38aa8ab341577520db15d13788a52..f33eb8582c66cbcc8feab04d79883b6a0e018212 100644
+index 8f0aeeed15d38aa8ab341577520db15d13788a52..255595b8be38819ee079075c5788e499e8b029f1 100644
 --- a/src/common/services/Services.ts
 +++ b/src/common/services/Services.ts
 @@ -218,6 +218,10 @@ export interface ITerminalOptions {
@@ -2692,3 +3080,12 @@ index 8f0aeeed15d38aa8ab341577520db15d13788a52..f33eb8582c66cbcc8feab04d79883b6a
    fontWeightBold?: FontWeight;
    ignoreBracketedPasteMode?: boolean;
    letterSpacing?: number;
+@@ -239,6 +243,8 @@ export interface ITerminalOptions {
+   scrollOnUserInput?: boolean;
+   scrollSensitivity?: number;
+   smoothScrollDuration?: number;
++  /** Orca: scrolls the normal buffer's viewport by pixels when the renderer supports a sub-row offset. */
++  pixelScroll?: boolean;
+   tabStopWidth?: number;
+   theme?: ITheme;
+   windowsPty?: IWindowsPty;
