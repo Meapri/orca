@@ -293,6 +293,8 @@ module.exports = {
     'out/main/grok/**',
     'out/main/hermes/**',
     'out/main/orca-profiles/profile-index-store.js',
+    // Why: `orca serve status/doctor` import these from the unpacked CLI.
+    'out/main/orcad/**',
     'out/main/persistence/profile-state/**',
     'out/main/startup/http1-compatibility-marker.js',
     'out/main/daemon-entry.js',

@@ -24,6 +24,8 @@ export const CLI_MAIN_ENTRY_NAMES = [
   'claude-accounts/keychain',
   'orcad/orcad-bind-address',
   'orcad/orcad-doctor-report',
+  // Why: `orca serve doctor` dynamic-imports this; without an entry electron-vite deletes it.
+  'orcad/orcad-doctor',
   ...[
     'access',
     'active-location',
