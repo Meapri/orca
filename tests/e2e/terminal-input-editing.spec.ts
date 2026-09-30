@@ -43,11 +43,12 @@ async function cursorRowCellPoint(page: Page, needle: string): Promise<CellPoint
     if (!line) {
       return null
     }
-    let cells = ''
+    // Per cell, not one string: a non-BMP prompt glyph is two UTF-16 units in one cell.
+    const cells: string[] = []
     for (let x = 0; x < pane.terminal.cols; x++) {
-      cells += line.getCell(x)?.getChars() || ' '
+      cells.push(line.getCell(x)?.getChars() || ' ')
     }
-    const column = cells.indexOf(text)
+    const column = cells.findIndex((_, x) => cells.slice(x).join('').startsWith(text))
     const screen = pane.container.querySelector('.xterm-screen')
     if (column === -1 || !screen) {
       return null
@@ -60,6 +61,14 @@ async function cursorRowCellPoint(page: Page, needle: string): Promise<CellPoint
       y: rect.top + (row - buffer.viewportY + 0.5) * cellHeight
     }
   }, needle)
+}
+
+async function activeTerminalSelection(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const state = window.__store?.getState()
+    const pane = window.__paneManagers?.get(state?.activeTabId ?? '')?.getActivePane?.()
+    return pane?.terminal.getSelection() ?? ''
+  })
 }
 
 async function cursorRowSnapshot(page: Page): Promise<string> {
@@ -176,6 +185,80 @@ test.describe('Terminal input editing', () => {
     await expect
       .poll(async () => getTerminalContent(orcaPage, 4000), { timeout: 5_000 })
       .toContain(`echo X한글Z${runId}`)
+    await orcaPage.keyboard.press(`Control+U`)
+  })
+
+  test('dragging over a word on the prompt and pressing Backspace deletes it, and undo restores it', async ({
+    orcaPage,
+    electronApp
+  }) => {
+    await installTerminalPtyWriteSpy(electronApp)
+    const runId = Date.now().toString(36).toUpperCase()
+    await focusActiveTerminalInput(orcaPage)
+    await waitForSettledPrompt(orcaPage)
+    const tail = ` gamma${runId}`
+    await orcaPage.keyboard.type(`echo alpha beta${tail}`)
+    await waitForTerminalOutput(orcaPage, `echo alpha beta${tail}`, 10_000)
+    const start = await cursorRowCellPoint(orcaPage, 'beta')
+    const after = await cursorRowCellPoint(orcaPage, tail)
+    if (!start || !after) {
+      throw new Error('typed input not found on the cursor row')
+    }
+
+    // From the left edge of "b" to the left edge of the space after "beta".
+    const halfCell = (after.x - start.x) / 'beta'.length / 2
+    await orcaPage.mouse.move(start.x - halfCell + 1, start.y)
+    await orcaPage.mouse.down()
+    await orcaPage.mouse.move(after.x - halfCell + 1, after.y, { steps: 6 })
+    await orcaPage.mouse.up()
+    await expect.poll(() => activeTerminalSelection(orcaPage)).toBe('beta')
+
+    await clearTerminalPtyWriteLog(electronApp)
+    await orcaPage.keyboard.press('Backspace')
+    await expect
+      .poll(async () => (await readTerminalPtyWrites(electronApp)).join(''), { timeout: 5_000 })
+      .toBe(`${'\x1b[D'.repeat(tail.length)}${'\x7f'.repeat(4)}`)
+    await expect
+      .poll(async () => getTerminalContent(orcaPage, 4000), { timeout: 5_000 })
+      .toContain(`echo alpha ${tail}`)
+
+    await clearTerminalPtyWriteLog(electronApp)
+    await orcaPage.keyboard.press(`${mod}+z`)
+    await expect
+      .poll(async () => (await readTerminalPtyWrites(electronApp)).join(''), { timeout: 5_000 })
+      .toBe('beta')
+    await expect
+      .poll(async () => getTerminalContent(orcaPage, 4000), { timeout: 5_000 })
+      .toContain(`echo alpha beta${tail}`)
+    await orcaPage.keyboard.press(`Control+U`)
+  })
+
+  test('Shift+Arrow selects typed text and typing replaces it', async ({
+    orcaPage,
+    electronApp
+  }) => {
+    await installTerminalPtyWriteSpy(electronApp)
+    const runId = Date.now().toString(36).toUpperCase()
+    await focusActiveTerminalInput(orcaPage)
+    await waitForSettledPrompt(orcaPage)
+    await orcaPage.keyboard.type(`echo ${runId}abc`)
+    await waitForTerminalOutput(orcaPage, `echo ${runId}abc`, 10_000)
+
+    await clearTerminalPtyWriteLog(electronApp)
+    for (let i = 0; i < 3; i++) {
+      await orcaPage.keyboard.press('Shift+ArrowLeft')
+    }
+    await expect.poll(() => activeTerminalSelection(orcaPage)).toBe('abc')
+    // The selection is Orca's; the shell never saw the Shift+Arrow presses.
+    expect(await readTerminalPtyWrites(electronApp)).toEqual([])
+
+    await orcaPage.keyboard.type('Z')
+    await expect
+      .poll(async () => (await readTerminalPtyWrites(electronApp)).join(''), { timeout: 5_000 })
+      .toBe(`${'\x7f'.repeat(3)}Z`)
+    await expect
+      .poll(async () => getTerminalContent(orcaPage, 4000), { timeout: 5_000 })
+      .toContain(`echo ${runId}Z`)
     await orcaPage.keyboard.press(`Control+U`)
   })
 })

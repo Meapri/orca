@@ -52,9 +52,20 @@ preedit after it. Each hold ends when the input position advances past it, and
 all end when it moves anywhere else, on a key the app handles itself
 (Backspace, arrows, Enter), on blur, or after 250 ms (an app that never echoes,
 such as a password prompt). The held text is exactly what was sent; nothing
-extra reaches the pty. `terminal-ime-xterm-grid-preedit-echo.test.ts` and the
+extra reaches the pty. Printable text typed while a commit is held (macOS
+inserts Space and punctuation after the syllable they commit, or they arrive as
+an ordinary keydown once the composition has ended) joins the hold, so the next preedit is laid after it rather
+than jumping a cell right when the echo lands; a printable keydown no longer ends
+the hold. `terminal-ime-xterm-grid-preedit-echo.test.ts` and the
 cursor-agent replay in `terminal-ime-candidate-anchor-grid-preedit.test.ts`
 cover it.
+
+### Split panes and focus changes
+
+The candidate window follows the focused pane's helper textarea, which sits on
+that pane's cursor cell (`terminal-ime-split-pane.spec.ts` measures it in a
+split). A composition open when focus moves is committed to the pane it was
+typed in, and Focus Follows Mouse does not move focus while one is open.
 
 ## Preedit cell advances (#19315)
 
