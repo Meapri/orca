@@ -1,0 +1,201 @@
+{
+  "capturedAt": "2026-09-30T11:14:36.877Z",
+  "platform": "darwin",
+  "command": ["claude"],
+  "cols": 100,
+  "rows": 30,
+  "note": "Claude Code 2.1.283 default (alternate screen, SGR mouse reporting), macOS; isolated CLAUDE_CONFIG_DIR, placeholder API key; typed Latin, SGR mouse click, drag, double-click on the prompt, Backspace, Ctrl+_, backslash+Return second line and a click on the first row; stopped before any submit",
+  "exitCode": 129,
+  "sends": [
+    {
+      "atMs": 6000,
+      "text": "a",
+      "transcriptByteOffset": 1379
+    },
+    {
+      "atMs": 6050,
+      "text": "l",
+      "transcriptByteOffset": 1474
+    },
+    {
+      "atMs": 6100,
+      "text": "p",
+      "transcriptByteOffset": 1512
+    },
+    {
+      "atMs": 6150,
+      "text": "h",
+      "transcriptByteOffset": 1550
+    },
+    {
+      "atMs": 6200,
+      "text": "a",
+      "transcriptByteOffset": 1588
+    },
+    {
+      "atMs": 6250,
+      "text": " ",
+      "transcriptByteOffset": 1626
+    },
+    {
+      "atMs": 6300,
+      "text": "b",
+      "transcriptByteOffset": 1664
+    },
+    {
+      "atMs": 6350,
+      "text": "e",
+      "transcriptByteOffset": 1703
+    },
+    {
+      "atMs": 6400,
+      "text": "t",
+      "transcriptByteOffset": 1742
+    },
+    {
+      "atMs": 6450,
+      "text": "a",
+      "transcriptByteOffset": 1782
+    },
+    {
+      "atMs": 6500,
+      "text": " ",
+      "transcriptByteOffset": 1822
+    },
+    {
+      "atMs": 6550,
+      "text": "g",
+      "transcriptByteOffset": 1862
+    },
+    {
+      "atMs": 6600,
+      "text": "a",
+      "transcriptByteOffset": 1902
+    },
+    {
+      "atMs": 6650,
+      "text": "m",
+      "transcriptByteOffset": 1942
+    },
+    {
+      "atMs": 6700,
+      "text": "m",
+      "transcriptByteOffset": 1982
+    },
+    {
+      "atMs": 6750,
+      "text": "a",
+      "transcriptByteOffset": 2022
+    },
+    {
+      "atMs": 7500,
+      "text": "\u001b[<0;9;28M\u001b[<0;9;28m",
+      "transcriptByteOffset": 2062
+    },
+    {
+      "atMs": 8300,
+      "text": "Z",
+      "transcriptByteOffset": 2107
+    },
+    {
+      "atMs": 9100,
+      "text": "",
+      "transcriptByteOffset": 2159
+    },
+    {
+      "atMs": 9900,
+      "text": "\u001b[<0;9;28M",
+      "transcriptByteOffset": 2212
+    },
+    {
+      "atMs": 10000,
+      "text": "\u001b[<32;11;28M",
+      "transcriptByteOffset": 2212
+    },
+    {
+      "atMs": 10100,
+      "text": "\u001b[<32;13;28M",
+      "transcriptByteOffset": 2257
+    },
+    {
+      "atMs": 10200,
+      "text": "\u001b[<0;13;28m",
+      "transcriptByteOffset": 2302
+    },
+    {
+      "atMs": 11000,
+      "text": "",
+      "transcriptByteOffset": 2389
+    },
+    {
+      "atMs": 11800,
+      "text": "\u001b[<0;16;28M\u001b[<0;16;28m",
+      "transcriptByteOffset": 2474
+    },
+    {
+      "atMs": 11900,
+      "text": "\u001b[<0;16;28M\u001b[<0;16;28m",
+      "transcriptByteOffset": 2518
+    },
+    {
+      "atMs": 12700,
+      "text": "",
+      "transcriptByteOffset": 2724
+    },
+    {
+      "atMs": 13500,
+      "text": "\u001f",
+      "transcriptByteOffset": 2808
+    },
+    {
+      "atMs": 14300,
+      "text": "\u001b[F",
+      "transcriptByteOffset": 2848
+    },
+    {
+      "atMs": 14700,
+      "text": "\\\r",
+      "transcriptByteOffset": 2848
+    },
+    {
+      "atMs": 15100,
+      "text": "d",
+      "transcriptByteOffset": 3273
+    },
+    {
+      "atMs": 15150,
+      "text": "e",
+      "transcriptByteOffset": 3311
+    },
+    {
+      "atMs": 15200,
+      "text": "l",
+      "transcriptByteOffset": 3349
+    },
+    {
+      "atMs": 15250,
+      "text": "t",
+      "transcriptByteOffset": 3387
+    },
+    {
+      "atMs": 15300,
+      "text": "a",
+      "transcriptByteOffset": 3425
+    },
+    {
+      "atMs": 16000,
+      "text": "\u001b[<0;5;27M\u001b[<0;5;27m",
+      "transcriptByteOffset": 3463
+    },
+    {
+      "atMs": 16800,
+      "text": "Q",
+      "transcriptByteOffset": 3512
+    },
+    {
+      "atMs": 17600,
+      "text": "",
+      "transcriptByteOffset": 3562
+    }
+  ]
+}

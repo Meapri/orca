@@ -34,8 +34,9 @@ lines, or normalise anything — the file is what the terminal received.
 - `--out <path>` writes outside the fixture directory (use it for a first dry run).
 
 Each capture also writes `<fixture-name>.meta.json` with the timestamp, platform, command,
-PTY size, note and exit code. Commit it with the transcript; the version and account type behind
-a screen are not recoverable from the bytes.
+PTY size, note and exit code, plus every `--send` key with `transcriptByteOffset`, the number of
+transcript bytes recorded when it was written. Commit it with the transcript; the version and
+account type behind a screen are not recoverable from the bytes.
 
 **Prerequisite:** `node-pty` must be built for plain Node:
 
@@ -109,6 +110,14 @@ The `*-ime-*.txt` captures (cursor-agent, Claude Code, Codex, Grok) are replayed
 itself by the terminal IME anchor tests, because that rule reads cell attributes and the cursor,
 not text. They were driven with `--send` (committed Hangul syllables, Latin, Backspace,
 Left/Right) and stopped with `--duration` before anything was submitted.
+
+The `*-input-edit-*.txt` captures (zsh, bash, Codex inline and full-screen, Claude Code) back
+the terminal's GUI selection editing: `terminal-input-editing-transcripts.test.ts` replays each
+one up to a key's `transcriptByteOffset`, checks Orca would send exactly that key, then feeds the
+app's reply. They ran with an isolated config (a scratch `HOME`, `CODEX_HOME`, `CLAUDE_CONFIG_DIR`
+and a placeholder API key; an allowlisted environment with no host credentials) from a scratch
+directory, and stopped before any submit. Grok and cursor-agent could not reach their composer
+without a real sign-in, so their older IME captures stand in.
 
 ## Worked example: the Antigravity captures
 

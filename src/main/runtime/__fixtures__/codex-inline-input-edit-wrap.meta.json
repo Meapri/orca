@@ -1,0 +1,653 @@
+{
+  "capturedAt": "2026-09-30T11:12:53.045Z",
+  "platform": "darwin",
+  "command": [
+    "codex",
+    "--no-alt-screen",
+    "-c",
+    "check_for_update_on_startup=false",
+    "-c",
+    "projects={\"/private/tmp/claude-501/ge/w\"={trust_level=\"trusted\"}}"
+  ],
+  "cols": 100,
+  "rows": 30,
+  "note": "codex-cli 0.157.1 --no-alt-screen, macOS; isolated CODEX_HOME, placeholder API key; one 120-character line the composer soft-wraps, then Up, Left x2, Down, End, Left x25 across the wrap, Right x3, Backspace; stopped before any submit",
+  "exitCode": 0,
+  "sends": [
+    {
+      "atMs": 6000,
+      "text": "w",
+      "transcriptByteOffset": 4059
+    },
+    {
+      "atMs": 6025,
+      "text": "0",
+      "transcriptByteOffset": 4059
+    },
+    {
+      "atMs": 6050,
+      "text": "1",
+      "transcriptByteOffset": 4059
+    },
+    {
+      "atMs": 6075,
+      "text": " ",
+      "transcriptByteOffset": 4059
+    },
+    {
+      "atMs": 6100,
+      "text": "w",
+      "transcriptByteOffset": 4059
+    },
+    {
+      "atMs": 6125,
+      "text": "0",
+      "transcriptByteOffset": 4059
+    },
+    {
+      "atMs": 6150,
+      "text": "2",
+      "transcriptByteOffset": 4059
+    },
+    {
+      "atMs": 6175,
+      "text": " ",
+      "transcriptByteOffset": 4143
+    },
+    {
+      "atMs": 6200,
+      "text": "w",
+      "transcriptByteOffset": 4143
+    },
+    {
+      "atMs": 6225,
+      "text": "0",
+      "transcriptByteOffset": 4187
+    },
+    {
+      "atMs": 6250,
+      "text": "3",
+      "transcriptByteOffset": 4187
+    },
+    {
+      "atMs": 6275,
+      "text": " ",
+      "transcriptByteOffset": 4247
+    },
+    {
+      "atMs": 6300,
+      "text": "w",
+      "transcriptByteOffset": 4247
+    },
+    {
+      "atMs": 6325,
+      "text": "0",
+      "transcriptByteOffset": 4306
+    },
+    {
+      "atMs": 6350,
+      "text": "4",
+      "transcriptByteOffset": 4306
+    },
+    {
+      "atMs": 6375,
+      "text": " ",
+      "transcriptByteOffset": 4306
+    },
+    {
+      "atMs": 6400,
+      "text": "w",
+      "transcriptByteOffset": 4306
+    },
+    {
+      "atMs": 6425,
+      "text": "0",
+      "transcriptByteOffset": 4426
+    },
+    {
+      "atMs": 6450,
+      "text": "5",
+      "transcriptByteOffset": 4485
+    },
+    {
+      "atMs": 6475,
+      "text": " ",
+      "transcriptByteOffset": 4485
+    },
+    {
+      "atMs": 6500,
+      "text": "w",
+      "transcriptByteOffset": 4544
+    },
+    {
+      "atMs": 6525,
+      "text": "0",
+      "transcriptByteOffset": 4544
+    },
+    {
+      "atMs": 6550,
+      "text": "6",
+      "transcriptByteOffset": 4544
+    },
+    {
+      "atMs": 6575,
+      "text": " ",
+      "transcriptByteOffset": 4544
+    },
+    {
+      "atMs": 6600,
+      "text": "w",
+      "transcriptByteOffset": 4544
+    },
+    {
+      "atMs": 6625,
+      "text": "0",
+      "transcriptByteOffset": 4544
+    },
+    {
+      "atMs": 6650,
+      "text": "7",
+      "transcriptByteOffset": 4544
+    },
+    {
+      "atMs": 6675,
+      "text": " ",
+      "transcriptByteOffset": 4544
+    },
+    {
+      "atMs": 6700,
+      "text": "w",
+      "transcriptByteOffset": 4544
+    },
+    {
+      "atMs": 6725,
+      "text": "0",
+      "transcriptByteOffset": 4616
+    },
+    {
+      "atMs": 6750,
+      "text": "8",
+      "transcriptByteOffset": 4676
+    },
+    {
+      "atMs": 6775,
+      "text": " ",
+      "transcriptByteOffset": 4735
+    },
+    {
+      "atMs": 6800,
+      "text": "w",
+      "transcriptByteOffset": 4735
+    },
+    {
+      "atMs": 6825,
+      "text": "0",
+      "transcriptByteOffset": 4735
+    },
+    {
+      "atMs": 6850,
+      "text": "9",
+      "transcriptByteOffset": 4735
+    },
+    {
+      "atMs": 6875,
+      "text": " ",
+      "transcriptByteOffset": 4795
+    },
+    {
+      "atMs": 6900,
+      "text": "w",
+      "transcriptByteOffset": 4854
+    },
+    {
+      "atMs": 6925,
+      "text": "1",
+      "transcriptByteOffset": 4854
+    },
+    {
+      "atMs": 6950,
+      "text": "0",
+      "transcriptByteOffset": 4914
+    },
+    {
+      "atMs": 6975,
+      "text": " ",
+      "transcriptByteOffset": 4914
+    },
+    {
+      "atMs": 7000,
+      "text": "w",
+      "transcriptByteOffset": 4973
+    },
+    {
+      "atMs": 7025,
+      "text": "1",
+      "transcriptByteOffset": 4973
+    },
+    {
+      "atMs": 7050,
+      "text": "1",
+      "transcriptByteOffset": 4973
+    },
+    {
+      "atMs": 7075,
+      "text": " ",
+      "transcriptByteOffset": 4973
+    },
+    {
+      "atMs": 7100,
+      "text": "w",
+      "transcriptByteOffset": 4973
+    },
+    {
+      "atMs": 7125,
+      "text": "1",
+      "transcriptByteOffset": 5043
+    },
+    {
+      "atMs": 7150,
+      "text": "2",
+      "transcriptByteOffset": 5102
+    },
+    {
+      "atMs": 7175,
+      "text": " ",
+      "transcriptByteOffset": 5102
+    },
+    {
+      "atMs": 7200,
+      "text": "w",
+      "transcriptByteOffset": 5161
+    },
+    {
+      "atMs": 7225,
+      "text": "1",
+      "transcriptByteOffset": 5161
+    },
+    {
+      "atMs": 7250,
+      "text": "3",
+      "transcriptByteOffset": 5161
+    },
+    {
+      "atMs": 7275,
+      "text": " ",
+      "transcriptByteOffset": 5280
+    },
+    {
+      "atMs": 7300,
+      "text": "w",
+      "transcriptByteOffset": 5280
+    },
+    {
+      "atMs": 7325,
+      "text": "1",
+      "transcriptByteOffset": 5280
+    },
+    {
+      "atMs": 7350,
+      "text": "4",
+      "transcriptByteOffset": 5280
+    },
+    {
+      "atMs": 7375,
+      "text": " ",
+      "transcriptByteOffset": 5280
+    },
+    {
+      "atMs": 7400,
+      "text": "w",
+      "transcriptByteOffset": 5280
+    },
+    {
+      "atMs": 7425,
+      "text": "1",
+      "transcriptByteOffset": 5280
+    },
+    {
+      "atMs": 7450,
+      "text": "5",
+      "transcriptByteOffset": 5351
+    },
+    {
+      "atMs": 7475,
+      "text": " ",
+      "transcriptByteOffset": 5351
+    },
+    {
+      "atMs": 7500,
+      "text": "w",
+      "transcriptByteOffset": 5410
+    },
+    {
+      "atMs": 7525,
+      "text": "1",
+      "transcriptByteOffset": 5410
+    },
+    {
+      "atMs": 7550,
+      "text": "6",
+      "transcriptByteOffset": 5410
+    },
+    {
+      "atMs": 7575,
+      "text": " ",
+      "transcriptByteOffset": 5471
+    },
+    {
+      "atMs": 7600,
+      "text": "w",
+      "transcriptByteOffset": 5515
+    },
+    {
+      "atMs": 7625,
+      "text": "1",
+      "transcriptByteOffset": 5574
+    },
+    {
+      "atMs": 7650,
+      "text": "7",
+      "transcriptByteOffset": 5574
+    },
+    {
+      "atMs": 7675,
+      "text": " ",
+      "transcriptByteOffset": 5574
+    },
+    {
+      "atMs": 7700,
+      "text": "w",
+      "transcriptByteOffset": 5574
+    },
+    {
+      "atMs": 7725,
+      "text": "1",
+      "transcriptByteOffset": 5574
+    },
+    {
+      "atMs": 7750,
+      "text": "8",
+      "transcriptByteOffset": 5644
+    },
+    {
+      "atMs": 7775,
+      "text": " ",
+      "transcriptByteOffset": 5703
+    },
+    {
+      "atMs": 7800,
+      "text": "w",
+      "transcriptByteOffset": 5703
+    },
+    {
+      "atMs": 7825,
+      "text": "1",
+      "transcriptByteOffset": 5703
+    },
+    {
+      "atMs": 7850,
+      "text": "9",
+      "transcriptByteOffset": 5762
+    },
+    {
+      "atMs": 7875,
+      "text": " ",
+      "transcriptByteOffset": 5762
+    },
+    {
+      "atMs": 7900,
+      "text": "w",
+      "transcriptByteOffset": 5822
+    },
+    {
+      "atMs": 7925,
+      "text": "2",
+      "transcriptByteOffset": 5881
+    },
+    {
+      "atMs": 7950,
+      "text": "0",
+      "transcriptByteOffset": 5881
+    },
+    {
+      "atMs": 7975,
+      "text": " ",
+      "transcriptByteOffset": 5941
+    },
+    {
+      "atMs": 8000,
+      "text": "w",
+      "transcriptByteOffset": 5985
+    },
+    {
+      "atMs": 8025,
+      "text": "2",
+      "transcriptByteOffset": 5985
+    },
+    {
+      "atMs": 8050,
+      "text": "1",
+      "transcriptByteOffset": 6044
+    },
+    {
+      "atMs": 8075,
+      "text": " ",
+      "transcriptByteOffset": 6044
+    },
+    {
+      "atMs": 8100,
+      "text": "w",
+      "transcriptByteOffset": 6044
+    },
+    {
+      "atMs": 8125,
+      "text": "2",
+      "transcriptByteOffset": 6044
+    },
+    {
+      "atMs": 8150,
+      "text": "2",
+      "transcriptByteOffset": 6114
+    },
+    {
+      "atMs": 8175,
+      "text": " ",
+      "transcriptByteOffset": 6114
+    },
+    {
+      "atMs": 8200,
+      "text": "w",
+      "transcriptByteOffset": 6114
+    },
+    {
+      "atMs": 8225,
+      "text": "2",
+      "transcriptByteOffset": 6114
+    },
+    {
+      "atMs": 8250,
+      "text": "3",
+      "transcriptByteOffset": 6182
+    },
+    {
+      "atMs": 8275,
+      "text": " ",
+      "transcriptByteOffset": 6300
+    },
+    {
+      "atMs": 8300,
+      "text": "w",
+      "transcriptByteOffset": 6300
+    },
+    {
+      "atMs": 8325,
+      "text": "2",
+      "transcriptByteOffset": 6359
+    },
+    {
+      "atMs": 8350,
+      "text": "4",
+      "transcriptByteOffset": 6359
+    },
+    {
+      "atMs": 8375,
+      "text": " ",
+      "transcriptByteOffset": 6359
+    },
+    {
+      "atMs": 8400,
+      "text": "w",
+      "transcriptByteOffset": 6359
+    },
+    {
+      "atMs": 8425,
+      "text": "2",
+      "transcriptByteOffset": 6359
+    },
+    {
+      "atMs": 8450,
+      "text": "5",
+      "transcriptByteOffset": 6359
+    },
+    {
+      "atMs": 8475,
+      "text": " ",
+      "transcriptByteOffset": 6359
+    },
+    {
+      "atMs": 8500,
+      "text": "w",
+      "transcriptByteOffset": 6359
+    },
+    {
+      "atMs": 8525,
+      "text": "2",
+      "transcriptByteOffset": 6359
+    },
+    {
+      "atMs": 8550,
+      "text": "6",
+      "transcriptByteOffset": 6359
+    },
+    {
+      "atMs": 8575,
+      "text": " ",
+      "transcriptByteOffset": 6359
+    },
+    {
+      "atMs": 8600,
+      "text": "w",
+      "transcriptByteOffset": 6359
+    },
+    {
+      "atMs": 8625,
+      "text": "2",
+      "transcriptByteOffset": 6359
+    },
+    {
+      "atMs": 8650,
+      "text": "7",
+      "transcriptByteOffset": 6359
+    },
+    {
+      "atMs": 8675,
+      "text": " ",
+      "transcriptByteOffset": 6359
+    },
+    {
+      "atMs": 8700,
+      "text": "w",
+      "transcriptByteOffset": 6359
+    },
+    {
+      "atMs": 8725,
+      "text": "2",
+      "transcriptByteOffset": 6359
+    },
+    {
+      "atMs": 8750,
+      "text": "8",
+      "transcriptByteOffset": 6359
+    },
+    {
+      "atMs": 8775,
+      "text": " ",
+      "transcriptByteOffset": 6359
+    },
+    {
+      "atMs": 8800,
+      "text": "w",
+      "transcriptByteOffset": 6359
+    },
+    {
+      "atMs": 8825,
+      "text": "2",
+      "transcriptByteOffset": 6377
+    },
+    {
+      "atMs": 8850,
+      "text": "9",
+      "transcriptByteOffset": 6980
+    },
+    {
+      "atMs": 8875,
+      "text": " ",
+      "transcriptByteOffset": 6980
+    },
+    {
+      "atMs": 8900,
+      "text": "w",
+      "transcriptByteOffset": 7039
+    },
+    {
+      "atMs": 8925,
+      "text": "3",
+      "transcriptByteOffset": 7039
+    },
+    {
+      "atMs": 8950,
+      "text": "0",
+      "transcriptByteOffset": 7039
+    },
+    {
+      "atMs": 8975,
+      "text": " ",
+      "transcriptByteOffset": 7039
+    },
+    {
+      "atMs": 10500,
+      "text": "\u001b[A",
+      "transcriptByteOffset": 7100
+    },
+    {
+      "atMs": 11300,
+      "text": "\u001b[D\u001b[D",
+      "transcriptByteOffset": 7144
+    },
+    {
+      "atMs": 12100,
+      "text": "\u001b[B",
+      "transcriptByteOffset": 7188
+    },
+    {
+      "atMs": 12900,
+      "text": "\u001b[F",
+      "transcriptByteOffset": 7232
+    },
+    {
+      "atMs": 13700,
+      "text": "\u001b[D\u001b[D\u001b[D\u001b[D\u001b[D\u001b[D\u001b[D\u001b[D\u001b[D\u001b[D\u001b[D\u001b[D\u001b[D\u001b[D\u001b[D\u001b[D\u001b[D\u001b[D\u001b[D\u001b[D\u001b[D\u001b[D\u001b[D\u001b[D\u001b[D",
+      "transcriptByteOffset": 7276
+    },
+    {
+      "atMs": 14500,
+      "text": "\u001b[C\u001b[C\u001b[C",
+      "transcriptByteOffset": 7320
+    },
+    {
+      "atMs": 15300,
+      "text": "",
+      "transcriptByteOffset": 7363
+    }
+  ]
+}
