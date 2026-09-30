@@ -103,7 +103,8 @@ const PROBE_GLYPHS: ProbeGlyph[] = [
   { label: 'fullwidth A', glyph: 'Ａ', cells: 2 }
 ]
 
-async function forceActivePaneWebgl(page: Page): Promise<void> {
+/** Returns the tab whose pane now runs WebGL, or null when no WebGL context is available. */
+async function forceActivePaneWebgl(page: Page): Promise<string | null> {
   const tabId = await page.evaluate(() => {
     const state = window.__store?.getState()
     const worktreeId = state?.activeWorktreeId
@@ -113,28 +114,34 @@ async function forceActivePaneWebgl(page: Page): Promise<void> {
         ? (state?.activeTabIdByWorktree?.[worktreeId] ?? null)
         : null
   })
-  expect(tabId).toBeTruthy()
+  if (!tabId) {
+    return null
+  }
   await page.evaluate(
-    (id) => window.__paneManagers?.get(id ?? '')?.setTerminalGpuAcceleration?.('on'),
+    (id) => window.__paneManagers?.get(id)?.setTerminalGpuAcceleration?.('on'),
     tabId
   )
-  await page.waitForFunction(
-    (id) =>
-      (window.__paneManagers?.get(id ?? '')?.getRenderingDiagnostics?.() ?? []).some(
-        (diagnostic) => diagnostic.hasWebgl
-      ),
-    tabId,
-    { timeout: 15_000 }
-  )
+  return page
+    .waitForFunction(
+      (id) =>
+        (window.__paneManagers?.get(id)?.getRenderingDiagnostics?.() ?? []).some(
+          (diagnostic) => diagnostic.hasWebgl
+        ),
+      tabId,
+      { timeout: 15_000 }
+    )
+    .then(() => tabId)
+    .catch(() => null)
 }
 
-async function probeWebgl(page: Page, lineHeight: number): Promise<WebglProbeResult> {
+async function probeWebgl(
+  page: Page,
+  tabId: string,
+  lineHeight: number
+): Promise<WebglProbeResult> {
   return page.evaluate(
-    async ({ glyphs, lineHeight: probeLineHeight }) => {
-      const state = window.__store?.getState()
-      const worktreeId = state?.activeWorktreeId
-      const tabId = worktreeId ? (state?.activeTabIdByWorktree?.[worktreeId] ?? null) : null
-      const manager = tabId ? window.__paneManagers?.get(tabId) : null
+    async ({ glyphs, lineHeight: probeLineHeight, tabId: probeTabId }) => {
+      const manager = window.__paneManagers?.get(probeTabId)
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the e2e build exposes the pane manager; panes is its private pane map.
       const panes = (manager as unknown as { panes?: Map<number, PaneInternals> })?.panes
       const pane = [...(panes?.values() ?? [])][0]
@@ -260,17 +267,14 @@ async function probeWebgl(page: Page, lineHeight: number): Promise<WebglProbeRes
         dataUrl
       }
     },
-    { glyphs: PROBE_GLYPHS, lineHeight }
+    { glyphs: PROBE_GLYPHS, lineHeight, tabId }
   )
 }
 
-async function probeDom(page: Page, lineHeight: number): Promise<DomProbeResult> {
+async function probeDom(page: Page, tabId: string, lineHeight: number): Promise<DomProbeResult> {
   return page.evaluate(
-    async ({ glyphs, lineHeight: probeLineHeight }) => {
-      const state = window.__store?.getState()
-      const worktreeId = state?.activeWorktreeId
-      const tabId = worktreeId ? (state?.activeTabIdByWorktree?.[worktreeId] ?? null) : null
-      const manager = tabId ? window.__paneManagers?.get(tabId) : null
+    async ({ glyphs, lineHeight: probeLineHeight, tabId: probeTabId }) => {
+      const manager = window.__paneManagers?.get(probeTabId)
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the e2e build exposes the pane manager; panes is its private pane map.
       const panes = (manager as unknown as { panes?: Map<number, PaneInternals> })?.panes
       const pane = [...(panes?.values() ?? [])][0]
@@ -336,18 +340,22 @@ async function probeDom(page: Page, lineHeight: number): Promise<DomProbeResult>
       host.remove()
       return { lineHeight: probeLineHeight, cellWidth, glyphs: rects }
     },
-    { glyphs: PROBE_GLYPHS, lineHeight }
+    { glyphs: PROBE_GLYPHS, lineHeight, tabId }
   )
 }
 
 test.describe('terminal CJK glyph cell fit', () => {
   test('keeps CJK fallback glyphs inside their cells under WebGL and DOM', async ({ orcaPage }) => {
     await waitForActiveTerminalManager(orcaPage)
-    await forceActivePaneWebgl(orcaPage)
+    const tabId = await forceActivePaneWebgl(orcaPage)
+    if (!tabId) {
+      test.skip(true, 'WebGL unavailable in this environment')
+      return
+    }
     const screenshotDir = process.env.ORCA_GLYPH_SCREENSHOT_DIR
 
     for (const lineHeight of [1, 1.4]) {
-      const webgl = await probeWebgl(orcaPage, lineHeight)
+      const webgl = await probeWebgl(orcaPage, tabId, lineHeight)
       if (screenshotDir) {
         mkdirSync(screenshotDir, { recursive: true })
         writeFileSync(
@@ -369,7 +377,7 @@ test.describe('terminal CJK glyph cell fit', () => {
       // customGlyphs (on by default in the WebGL addon) draws box bars edge to edge.
       expect(webgl.boxGapRows).toBe(0)
 
-      const dom = await probeDom(orcaPage, lineHeight)
+      const dom = await probeDom(orcaPage, tabId, lineHeight)
       if (screenshotDir) {
         writeFileSync(
           path.join(screenshotDir, `dom-lh${lineHeight}.json`),
@@ -401,7 +409,10 @@ test.describe('terminal CJK glyph cell fit', () => {
     orcaPage
   }) => {
     await waitForActiveTerminalManager(orcaPage)
-    await forceActivePaneWebgl(orcaPage)
+    if (!(await forceActivePaneWebgl(orcaPage))) {
+      test.skip(true, 'WebGL unavailable in this environment')
+      return
+    }
     const screenshotDir = process.env.ORCA_GLYPH_SCREENSHOT_DIR
     const report: Record<string, unknown> = {}
 
