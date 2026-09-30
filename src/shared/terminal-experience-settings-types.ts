@@ -12,6 +12,8 @@ export type TerminalExperienceSettings = {
   terminalAdoptAppCaret?: boolean
   /** Animates wheel-notch, Shift+PageUp/PageDown and jump-to-latest scrolling in the scrollback; reduced-motion always wins. */
   terminalSmoothScroll: boolean
+  /** Trackpad/wheel scrollback moves by pixels and settles on a whole row (WebGL only); reduced motion always wins. Undefined means on. */
+  terminalPixelScroll?: boolean
   /** Plain click on the input line moves the cursor via arrow keys; 'shell-prompt' needs OSC 133 prompt marks. Optional for older profiles. */
   terminalClickToMoveCursor?: 'shell-prompt' | 'input-line' | 'off'
   /** Terminal composer: press Enter after pasting the composed text. Optional for older profiles; default on. */

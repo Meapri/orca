@@ -62,4 +62,23 @@ describe('vendored xterm WebGL runtime contract', () => {
       expect(contents, bundle).toContain('(prefers-reduced-motion: reduce)')
     }
   })
+
+  it('ships pixel scrolling in the core and WebGL bundles', () => {
+    // Orca sets the pixelScroll option; without the renderer hook the core falls back to row
+    // stepping, so a dropped hunk would pass typecheck and silently lose the feature.
+    expect(readInstalled('@xterm/xterm', 'src/browser/PixelScroll.ts')).toContain(
+      'export function resolvePixelScrollPosition'
+    )
+    expect(readInstalled('@xterm/addon-webgl', 'src/PixelScroll.ts')).toContain(
+      'export function writePixelScrollProjection'
+    )
+    for (const bundle of ['lib/xterm.js', 'lib/xterm.mjs']) {
+      const contents = readInstalled('@xterm/xterm', bundle)
+      expect(contents, bundle).toContain('pixelScroll')
+      expect(contents, bundle).toContain('setPixelScrollOffset')
+    }
+    for (const bundle of ['lib/addon-webgl.js', 'lib/addon-webgl.mjs']) {
+      expect(readInstalled('@xterm/addon-webgl', bundle), bundle).toContain('setPixelScrollOffset')
+    }
+  })
 })

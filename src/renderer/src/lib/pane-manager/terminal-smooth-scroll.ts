@@ -1,5 +1,6 @@
 import type { IDisposable } from '@xterm/xterm'
 import { syncTerminalScrollIntentFromViewport } from './terminal-scroll-intent'
+import { TERMINAL_PIXEL_SCROLL_SETTLE_MS } from './terminal-pixel-scroll'
 
 // Matches VS Code's terminal smooth-scroll duration (also xterm's scrollable).
 export const TERMINAL_SMOOTH_SCROLL_DURATION_MS = 125
@@ -12,7 +13,7 @@ const SMOOTH_SCROLL_MAX_ANIMATED_SCREENS = 2
 const XTERM_SCROLLABLE_SELECTOR = '.xterm-scrollable-element'
 
 export type TerminalSmoothScrollTarget = {
-  options: { smoothScrollDuration?: number }
+  options: { smoothScrollDuration?: number; pixelScroll?: boolean }
   element?: HTMLElement
   textarea?: HTMLTextAreaElement
   rows: number
@@ -54,6 +55,21 @@ function canAnimateViewport(
     !prefersReducedMotion() &&
     terminal.buffer.active.type === 'normal' &&
     // Why: with mouse wheel reporting on, xterm's viewport does not own the wheel.
+    terminal.modes.mouseTrackingMode === 'none'
+  )
+}
+
+// Why: xterm lands a pixel-scrolled viewport on a whole row after the gesture, so intent must be
+// sampled after that settle rather than from the fractional position.
+function canPixelScrollViewport(
+  terminal: TerminalSmoothScrollTarget,
+  state: SmoothScrollState
+): boolean {
+  return (
+    !state.disposed &&
+    terminal.options.pixelScroll === true &&
+    !prefersReducedMotion() &&
+    terminal.buffer.active.type === 'normal' &&
     terminal.modes.mouseTrackingMode === 'none'
   )
 }
@@ -102,7 +118,8 @@ function finishSettle(terminal: TerminalSmoothScrollTarget, state: SmoothScrollS
 function scheduleSettle(
   terminal: TerminalSmoothScrollTarget,
   state: SmoothScrollState,
-  goal: SmoothScrollSettleGoal
+  goal: SmoothScrollSettleGoal,
+  motionMs = TERMINAL_SMOOTH_SCROLL_DURATION_MS
 ): void {
   state.settleGoal = goal
   state.settleBottomBaseY = goal === 'up' ? null : terminal.buffer.active.baseY
@@ -126,14 +143,12 @@ function scheduleSettle(
     }
     finishSettle(terminal, state)
   }
-  state.settleTimer = setTimeout(
-    check,
-    TERMINAL_SMOOTH_SCROLL_DURATION_MS + SMOOTH_SCROLL_SETTLE_SLACK_MS
-  )
+  state.settleTimer = setTimeout(check, motionMs + SMOOTH_SCROLL_SETTLE_SLACK_MS)
 }
 
 /** Animates wheel notches and Shift+PageUp/PageDown in the scrollback by
- *  arming xterm's own smooth scrolling for just those gestures. */
+ *  arming xterm's own smooth scrolling for just those gestures, and re-samples
+ *  scroll intent once a pixel-scrolled wheel gesture settles on a row. */
 export function attachTerminalSmoothScroll(
   terminal: TerminalSmoothScrollTarget,
   host: HTMLElement,
@@ -152,11 +167,20 @@ export function attachTerminalSmoothScroll(
     if (event.deltaY === 0 || event.ctrlKey || event.defaultPrevented) {
       return
     }
-    if (!canAnimateViewport(terminal, state)) {
+    const animates = canAnimateViewport(terminal, state)
+    const pixelScrolls = canPixelScrollViewport(terminal, state)
+    if (!animates && !pixelScrolls) {
       return
     }
-    armForDispatch(terminal, terminal.element?.querySelector(XTERM_SCROLLABLE_SELECTOR), 'wheel')
-    scheduleSettle(terminal, state, event.deltaY > 0 ? 'down' : 'up')
+    if (animates) {
+      armForDispatch(terminal, terminal.element?.querySelector(XTERM_SCROLLABLE_SELECTOR), 'wheel')
+    }
+    scheduleSettle(
+      terminal,
+      state,
+      event.deltaY > 0 ? 'down' : 'up',
+      pixelScrolls ? TERMINAL_PIXEL_SCROLL_SETTLE_MS : TERMINAL_SMOOTH_SCROLL_DURATION_MS
+    )
   }
 
   const onKeyDown = (event: KeyboardEvent): void => {

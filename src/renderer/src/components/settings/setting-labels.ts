@@ -20,6 +20,7 @@ export const SETTING_LABELS: Partial<Record<keyof GlobalSettings, string>> = {
   terminalInlineImages: 'Inline Images',
   terminalImePreeditInGrid: 'Draw IME Composition in Terminal Cells',
   terminalFitWideGlyphs: 'Fit and Center Wide Characters',
+  terminalPixelScroll: 'Pixel Scrolling',
   terminalWordSeparator: 'Word Separator',
   primarySelectionMiddleClickPaste: 'Middle-click Paste from Selection',
   terminalFocusFollowsMouse: 'Focus Follows Mouse',

@@ -35,6 +35,7 @@ import { resolveTerminalMinimumContrastRatio } from '@/lib/terminal-contrast-cor
 import { resolveTerminalInlineImagesEnabled } from '../../../../shared/terminal-inline-images-settings'
 import { resolveTerminalImePreeditInGrid } from '@/lib/pane-manager/terminal-ime-grid-preedit'
 import { resolveTerminalFitWideGlyphs } from '@/lib/pane-manager/terminal-wide-glyph-fit'
+import { resolveTerminalPixelScroll } from '@/lib/pane-manager/terminal-pixel-scroll'
 import { resolveTerminalCursorAnimationEnabled } from '../../../../shared/terminal-cursor-animation-settings'
 import { resolveTerminalAdoptAppCaretEnabled } from '../../../../shared/terminal-app-caret-settings'
 
@@ -233,6 +234,7 @@ export function applyTerminalAppearance(
     if (pane.terminal.options.fitWideGlyphs !== fitWideGlyphs) {
       pane.terminal.options.fitWideGlyphs = fitWideGlyphs
     }
+    pane.terminal.options.pixelScroll = resolveTerminalPixelScroll(settings.terminalPixelScroll)
     // Why unconditional: the helper no-ops when addon state already matches, so this keeps new panes and live toggles in sync.
     manager.setPaneLigaturesEnabled(pane.id, ligaturesEnabled)
     // Why unconditional: setInlineImagesEnabled is idempotent (attach no-ops when

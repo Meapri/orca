@@ -18317,6 +18317,17 @@
           "spacing": "spacing",
           "center": "center"
         }
+      },
+      "TerminalPixelScroll": {
+        "title": "Pixel Scrolling",
+        "description": "Trackpad and wheel scrolling in the scrollback moves by pixels, then settles on a whole row. Requires GPU rendering; mouse-aware terminal apps and reduced motion keep row-by-row scrolling.",
+        "search": {
+          "scroll": "scroll",
+          "pixel": "pixel",
+          "smooth": "smooth",
+          "trackpad": "trackpad",
+          "wheel": "wheel"
+        }
       }
     },
     "agentChildRow": {

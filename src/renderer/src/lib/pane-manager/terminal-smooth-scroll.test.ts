@@ -7,6 +7,7 @@ import {
   type TerminalSmoothScrollTarget
 } from './terminal-smooth-scroll'
 import { getTerminalScrollIntentKind, markTerminalPinnedViewport } from './terminal-scroll-intent'
+import { TERMINAL_PIXEL_SCROLL_SETTLE_MS } from './terminal-pixel-scroll'
 
 const reducedMotion = { matches: false }
 
@@ -105,7 +106,11 @@ describe('terminal smooth scroll', () => {
     attach(terminal)
 
     terminal.textarea!.dispatchEvent(
-      new KeyboardEvent('keydown', { bubbles: true, key: 'PageUp', shiftKey: true })
+      new KeyboardEvent('keydown', {
+        bubbles: true,
+        key: 'PageUp',
+        shiftKey: true
+      })
     )
     terminal.textarea!.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'PageUp' }))
 
@@ -244,5 +249,43 @@ describe('terminal smooth scroll', () => {
 
     expect(terminal.buffer.active.viewportY).toBe(103)
     expect(getTerminalScrollIntentKind(terminal)).toBe('followOutput')
+  })
+})
+
+describe('terminal pixel scroll settle', () => {
+  it('samples intent only after xterm lands a pixel-scrolled gesture on the bottom row', () => {
+    const terminal = createTerminal()
+    terminal.options.pixelScroll = true
+    attach(terminal, false)
+    terminal.buffer.active.viewportY = 90
+    markTerminalPinnedViewport(terminal)
+
+    wheel(terminal.scrollable, 40)
+    // The trackpad stops one row short; xterm's settle glides onto the bottom afterwards.
+    terminal.buffer.active.viewportY = 99
+    vi.advanceTimersByTime(TERMINAL_PIXEL_SCROLL_SETTLE_MS)
+    expect(getTerminalScrollIntentKind(terminal)).toBe('pinnedViewport')
+    terminal.buffer.active.viewportY = 100
+    vi.advanceTimersByTime(1_000)
+
+    // Smooth scrolling is off, so nothing was armed for xterm.
+    expect(terminal.durationsSeenByXterm).toEqual([0])
+    expect(getTerminalScrollIntentKind(terminal)).toBe('followOutput')
+  })
+
+  it('leaves mouse-reporting apps and reduced motion alone', () => {
+    const terminal = createTerminal()
+    terminal.options.pixelScroll = true
+    terminal.modes.mouseTrackingMode = 'any'
+    attach(terminal, false)
+    terminal.buffer.active.viewportY = 90
+    markTerminalPinnedViewport(terminal)
+    reducedMotion.matches = true
+
+    wheel(terminal.scrollable, 40)
+    terminal.buffer.active.viewportY = 100
+    vi.advanceTimersByTime(1_000)
+
+    expect(getTerminalScrollIntentKind(terminal)).toBe('pinnedViewport')
   })
 })
