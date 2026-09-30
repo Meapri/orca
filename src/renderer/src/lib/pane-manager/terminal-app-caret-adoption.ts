@@ -130,6 +130,11 @@ export function setTerminalAppCaretAdoptionEnabled(enabled: boolean): void {
   }
 }
 
+/** The app caret the renderer currently draws the cursor at (screen row), if one is adopted. */
+export function getTerminalAdoptedAppCaret(terminal: Terminal): AdoptedAppCaret | undefined {
+  return liveTerminals.get(terminal)?.resolve()
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }

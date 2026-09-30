@@ -124,6 +124,8 @@ export function buildDefaultSettings(args: {
     terminalCopyTrimsGutter: true,
     // Why: default to prompts proven by shell integration; arrows sent to a raw reader would echo.
     terminalClickToMoveCursor: 'input-line',
+    // Why on: it acts only on a selection inside the known input span, with keys every captured line editor accepts.
+    terminalInputSelectionEditing: true,
     terminalComposerSubmitOnSend: true,
     // Why: default on so Zellij/tmux/nvim copy works out of the box. Query
     // replies stay disabled and payload size is capped in the OSC 52 handler.

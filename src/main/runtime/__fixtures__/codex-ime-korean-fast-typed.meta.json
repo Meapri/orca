@@ -1,0 +1,112 @@
+{
+  "capturedAt": "2026-09-30T11:47:44.812Z",
+  "platform": "darwin",
+  "command": [
+    "codex",
+    "-c",
+    "check_for_update_on_startup=false",
+    "-c",
+    "projects={\"/private/tmp/claude-501/ge/w\"={trust_level=\"trusted\"}}"
+  ],
+  "cols": 100,
+  "rows": 30,
+  "note": "codex-cli 0.157.1 default (alternate screen), TERM_PROGRAM=Orca, macOS; isolated CODEX_HOME, placeholder API key, folder trust and update check overridden with -c; committed Hangul syllables 25 ms apart with comma, space and exclamation mark as their own writes, then Left x3, a mid-line syllable and Backspace; stopped before any submit",
+  "exitCode": 0,
+  "sends": [
+    {
+      "atMs": 6000,
+      "text": "안",
+      "transcriptByteOffset": 3886
+    },
+    {
+      "atMs": 6025,
+      "text": "녕",
+      "transcriptByteOffset": 4060
+    },
+    {
+      "atMs": 6050,
+      "text": "하",
+      "transcriptByteOffset": 4162
+    },
+    {
+      "atMs": 6075,
+      "text": "세",
+      "transcriptByteOffset": 4264
+    },
+    {
+      "atMs": 6100,
+      "text": "요",
+      "transcriptByteOffset": 4411
+    },
+    {
+      "atMs": 6125,
+      "text": ",",
+      "transcriptByteOffset": 4560
+    },
+    {
+      "atMs": 6150,
+      "text": " ",
+      "transcriptByteOffset": 4663
+    },
+    {
+      "atMs": 6175,
+      "text": "반",
+      "transcriptByteOffset": 4751
+    },
+    {
+      "atMs": 6200,
+      "text": "가",
+      "transcriptByteOffset": 4856
+    },
+    {
+      "atMs": 6225,
+      "text": "워",
+      "transcriptByteOffset": 4961
+    },
+    {
+      "atMs": 6250,
+      "text": "요",
+      "transcriptByteOffset": 5066
+    },
+    {
+      "atMs": 6275,
+      "text": "!",
+      "transcriptByteOffset": 5171
+    },
+    {
+      "atMs": 6300,
+      "text": " ",
+      "transcriptByteOffset": 5274
+    },
+    {
+      "atMs": 6325,
+      "text": "테",
+      "transcriptByteOffset": 5318
+    },
+    {
+      "atMs": 6350,
+      "text": "스",
+      "transcriptByteOffset": 5467
+    },
+    {
+      "atMs": 6375,
+      "text": "트",
+      "transcriptByteOffset": 5572
+    },
+    {
+      "atMs": 7900,
+      "text": "\u001b[D\u001b[D\u001b[D",
+      "transcriptByteOffset": 5677
+    },
+    {
+      "atMs": 8700,
+      "text": "중",
+      "transcriptByteOffset": 5897
+    },
+    {
+      "atMs": 9500,
+      "text": "",
+      "transcriptByteOffset": 6035
+    }
+  ]
+}

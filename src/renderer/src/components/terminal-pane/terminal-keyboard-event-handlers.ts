@@ -19,6 +19,7 @@ import { dispatchTerminalShortcutAction } from './terminal-keyboard-action-dispa
 import { getLayoutCharacterForCode } from '@/lib/keyboard-layout/layout-base-character'
 import { createTerminalKeyboardReleaseHandlers } from './terminal-keyboard-release-handlers'
 import { synchronizeTerminalKeyboardPane } from './terminal-keyboard-pane-resolution'
+import { getTerminalInputSelectionEditing } from './terminal-input-selection-editing'
 
 const MAX_OBSERVED_ENTER_KEYDOWNS_PER_CODE = 8
 
@@ -195,6 +196,16 @@ export function createTerminalKeyboardEventHandlers(context: EventContext) {
     }
 
     if (handleEmptyFloatingWorkspacePanelCloseShortcut(e, shortcutPlatform, keybindings)) {
+      return
+    }
+
+    // Why: before the policy, so a selection on the input line wins over Cmd+Backspace's Ctrl+U.
+    if (
+      !hasPendingImeComposition &&
+      getTerminalInputSelectionEditing(keyboardPane?.terminal)?.handleKeyDown(e)
+    ) {
+      e.preventDefault()
+      e.stopImmediatePropagation()
       return
     }
 

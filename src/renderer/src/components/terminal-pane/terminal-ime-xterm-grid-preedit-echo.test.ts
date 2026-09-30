@@ -38,6 +38,13 @@ function keydown(terminal: Terminal, key: string, keyCode: number): void {
   terminal.textarea!.dispatchEvent(event)
 }
 
+/** Text the input system inserts outside a composition (a space or punctuation after a syllable). */
+function insertText(terminal: Terminal, text: string): void {
+  terminal.textarea!.dispatchEvent(
+    new InputEvent('input', { data: text, inputType: 'insertText', bubbles: true })
+  )
+}
+
 function waitMs(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
@@ -95,6 +102,78 @@ describe('in-grid IME commit held until echo', () => {
 
     await write(terminal, '녕 ')
     expect(isTerminalImePreeditDrawn(terminal)).toBe(false)
+  })
+
+  it('lays the next syllable after a space the text system inserted before the echo', async () => {
+    const { container, terminal, sent } = openTerminal()
+    await write(terminal, '$ ')
+    terminal.focus()
+    await typed(terminal, '요')
+    // macOS: Space commits the syllable, then arrives as its own insertText.
+    insertText(terminal, ' ')
+    compose(terminal, '반')
+    await waitMs(30)
+
+    expect(sent).toEqual(['요', ' '])
+    expect(renderedText(container, 0)).toBe('$ 요 반')
+    expect(underlinedText(container, 0)).toBe('반')
+
+    await write(terminal, '요 ')
+    await waitMs(30)
+    expect(renderedText(container, 0)).toBe('$ 요 반')
+    expect(textBeforeCursor(container, 0)).toBe('$ 요 반')
+  })
+
+  it('keeps the held commit through a printable keydown and holds the text it types', async () => {
+    const { container, terminal, sent } = openTerminal()
+    await write(terminal, '$ ')
+    terminal.focus()
+    await typed(terminal, '요')
+    keydown(terminal, '!', 49)
+    compose(terminal, '반')
+    await waitMs(30)
+
+    expect(sent).toEqual(['요', '!'])
+    expect(renderedText(container, 0)).toBe('$ 요!반')
+
+    // Echoed one write at a time, each held piece is consumed as the cursor passes it.
+    await write(terminal, '요')
+    expect(isTerminalImePreeditDrawn(terminal)).toBe(true)
+    await write(terminal, '!')
+    await waitMs(30)
+    expect(renderedText(container, 0)).toBe('$ 요!반')
+    expect(underlinedText(container, 0)).toBe('반')
+  })
+
+  it('holds a mark typed right after an already echoed commit, so the next syllable follows it', async () => {
+    const { container, terminal } = openTerminal()
+    await write(terminal, '$ ')
+    terminal.focus()
+    await typed(terminal, '요')
+    await write(terminal, '요')
+    insertText(terminal, '!')
+    insertText(terminal, ' ')
+    compose(terminal, '테')
+    await waitMs(30)
+
+    // Codex echoed 요 before the "! " typed after it (codex-ime-korean-fast-typed).
+    expect(renderedText(container, 0)).toBe('$ 요! 테')
+    await write(terminal, '! ')
+    await waitMs(30)
+    expect(renderedText(container, 0)).toBe('$ 요! 테')
+    expect(underlinedText(container, 0)).toBe('테')
+  })
+
+  it('holds nothing extra for typed text when no commit is held', async () => {
+    const { container, terminal, sent } = openTerminal()
+    await write(terminal, '$ ')
+    terminal.focus()
+    insertText(terminal, ' ')
+    compose(terminal, '가')
+    await waitMs(30)
+
+    expect(sent).toEqual([' '])
+    expect(renderedText(container, 0)).toBe('$ 가')
   })
 
   it('drops a commit the app never echoes once the hold expires', async () => {

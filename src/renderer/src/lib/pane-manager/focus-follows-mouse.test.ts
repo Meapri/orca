@@ -37,6 +37,10 @@ describe('shouldFollowMouseFocus', () => {
     expect(shouldFollowMouseFocus({ ...base, mouseButtons: 2 })).toBe(false)
   })
 
+  it('blocks while the active pane has an IME composition open', () => {
+    expect(shouldFollowMouseFocus({ ...base, activePaneComposing: true })).toBe(false)
+  })
+
   it('blocks when the window does not have OS focus', () => {
     expect(shouldFollowMouseFocus({ ...base, windowHasFocus: false })).toBe(false)
   })

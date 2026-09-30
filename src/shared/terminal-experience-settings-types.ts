@@ -16,6 +16,8 @@ export type TerminalExperienceSettings = {
   terminalPixelScroll?: boolean
   /** Plain click on the input line moves the cursor via arrow keys; 'shell-prompt' needs OSC 133 prompt marks. Optional for older profiles. */
   terminalClickToMoveCursor?: 'shell-prompt' | 'input-line' | 'off'
+  /** GUI text-field editing of an input-line selection (replace, delete, Shift+Arrow, Cmd/Ctrl+Z). Undefined means on. */
+  terminalInputSelectionEditing?: boolean
   /** Terminal composer: press Enter after pasting the composed text. Optional for older profiles; default on. */
   terminalComposerSubmitOnSend?: boolean
   /** Gutter and scrollbar ticks for prompt / submitted-input marks (OSC 133); navigation works either way. Default on. */

@@ -18076,8 +18076,12 @@
         "clickToMoveOff": "关闭",
         "clickToMoveShellPrompt": "在提示符处",
         "clickToMoveInputLine": "任意输入行",
+        "inputSelectionEditing": "像文本框一样编辑输入行",
+        "inputSelectionEditingDescription": "在正在输入的行上选中的文本可通过输入、Backspace、Delete 或粘贴替换；Shift+方向键扩展选区，撤销可还原替换。自行处理鼠标的应用保留其自身的编辑方式。",
         "search": {
           "click": "点击",
+          "selection": "选区",
+          "undo": "撤销",
           "cursor": "光标",
           "caret": "插入符"
         }

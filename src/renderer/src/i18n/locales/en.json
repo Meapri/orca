@@ -18254,8 +18254,12 @@
         "clickToMoveOff": "Off",
         "clickToMoveShellPrompt": "At prompts",
         "clickToMoveInputLine": "Any input line",
+        "inputSelectionEditing": "Edit Input Like a Text Field",
+        "inputSelectionEditingDescription": "Typing, Backspace, Delete or paste replaces text selected on the line you are typing; Shift+Arrow extends the selection and Undo reverses the replacement. Apps that handle the mouse themselves keep their own editing.",
         "search": {
           "click": "click",
+          "selection": "selection",
+          "undo": "undo",
           "cursor": "cursor",
           "caret": "caret"
         }

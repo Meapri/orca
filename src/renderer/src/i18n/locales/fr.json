@@ -18165,8 +18165,12 @@
         "clickToMoveOff": "Désactivé",
         "clickToMoveShellPrompt": "Aux invites",
         "clickToMoveInputLine": "Toute ligne de saisie",
+        "inputSelectionEditing": "Modifier la saisie comme un champ de texte",
+        "inputSelectionEditingDescription": "Saisir, Retour arrière, Suppr ou coller remplace le texte sélectionné sur la ligne en cours de saisie ; Maj+flèche étend la sélection et Annuler rétablit le remplacement. Les apps qui gèrent la souris gardent leur propre édition.",
         "search": {
           "click": "clic",
+          "selection": "sélection",
+          "undo": "annuler",
           "cursor": "curseur",
           "caret": "caret"
         }

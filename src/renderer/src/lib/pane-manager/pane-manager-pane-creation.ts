@@ -1,3 +1,4 @@
+import { hasPendingTerminalImeComposition } from '@/components/terminal-pane/terminal-ime-composition-route'
 import { focusPanePreservingOverlays } from './pane-overlay-focus'
 import type { ManagedPane, ManagedPaneInternal, PaneManagerOptions } from './pane-manager-types'
 import type { PaneManagerHost } from './pane-manager-host'
@@ -83,14 +84,17 @@ function handleManagedPaneMouseEnter(
   paneId: number,
   event: MouseEvent
 ): void {
+  const activePaneId = host.getActivePaneId()
+  const activePane = activePaneId === null ? undefined : host.panes.get(activePaneId)
   if (
     shouldFollowMouseFocus({
       featureEnabled: host.getStyleOptions().focusFollowsMouse ?? false,
-      activePaneId: host.getActivePaneId(),
+      activePaneId,
       hoveredPaneId: paneId,
       mouseButtons: event.buttons,
       windowHasFocus: document.hasFocus(),
-      managerDestroyed: host.isDestroyed()
+      managerDestroyed: host.isDestroyed(),
+      activePaneComposing: hasPendingTerminalImeComposition(activePane?.terminal.element)
     })
   ) {
     host.setActivePane(paneId, { focus: true })

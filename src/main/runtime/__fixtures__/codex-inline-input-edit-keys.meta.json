@@ -1,0 +1,263 @@
+{
+  "capturedAt": "2026-09-30T11:11:59.596Z",
+  "platform": "darwin",
+  "command": [
+    "codex",
+    "--no-alt-screen",
+    "-c",
+    "check_for_update_on_startup=false",
+    "-c",
+    "projects={\"/private/tmp/claude-501/ge/w\"={trust_level=\"trusted\"}}"
+  ],
+  "cols": 100,
+  "rows": 30,
+  "note": "codex-cli 0.157.1 --no-alt-screen (inline, normal buffer, no mouse reporting), macOS; isolated CODEX_HOME with a placeholder API key, folder trust and update check overridden with -c; typed Latin, Left/Right and Backspace bursts, Delete, Ctrl+A/E, Home/End, Shift+Left, Ctrl+_, Alt+Left, ESC b, Ctrl+J newline, Up/Down; stopped before any submit",
+  "exitCode": 0,
+  "sends": [
+    {
+      "atMs": 6000,
+      "text": "a",
+      "transcriptByteOffset": 4059
+    },
+    {
+      "atMs": 6050,
+      "text": "l",
+      "transcriptByteOffset": 4135
+    },
+    {
+      "atMs": 6100,
+      "text": "p",
+      "transcriptByteOffset": 4192
+    },
+    {
+      "atMs": 6150,
+      "text": "h",
+      "transcriptByteOffset": 4249
+    },
+    {
+      "atMs": 6200,
+      "text": "a",
+      "transcriptByteOffset": 4306
+    },
+    {
+      "atMs": 6250,
+      "text": " ",
+      "transcriptByteOffset": 4306
+    },
+    {
+      "atMs": 6300,
+      "text": "b",
+      "transcriptByteOffset": 4306
+    },
+    {
+      "atMs": 6350,
+      "text": "e",
+      "transcriptByteOffset": 4372
+    },
+    {
+      "atMs": 6400,
+      "text": "t",
+      "transcriptByteOffset": 4431
+    },
+    {
+      "atMs": 6450,
+      "text": "a",
+      "transcriptByteOffset": 4490
+    },
+    {
+      "atMs": 6500,
+      "text": " ",
+      "transcriptByteOffset": 4549
+    },
+    {
+      "atMs": 6550,
+      "text": "g",
+      "transcriptByteOffset": 4593
+    },
+    {
+      "atMs": 6600,
+      "text": "a",
+      "transcriptByteOffset": 4652
+    },
+    {
+      "atMs": 6650,
+      "text": "m",
+      "transcriptByteOffset": 4711
+    },
+    {
+      "atMs": 6700,
+      "text": "m",
+      "transcriptByteOffset": 4770
+    },
+    {
+      "atMs": 6750,
+      "text": "a",
+      "transcriptByteOffset": 4829
+    },
+    {
+      "atMs": 7500,
+      "text": "\u001b[D\u001b[D\u001b[D\u001b[D\u001b[D\u001b[D",
+      "transcriptByteOffset": 4888
+    },
+    {
+      "atMs": 8300,
+      "text": "",
+      "transcriptByteOffset": 4932
+    },
+    {
+      "atMs": 9100,
+      "text": "B",
+      "transcriptByteOffset": 5014
+    },
+    {
+      "atMs": 9150,
+      "text": "E",
+      "transcriptByteOffset": 5085
+    },
+    {
+      "atMs": 9200,
+      "text": "T",
+      "transcriptByteOffset": 5157
+    },
+    {
+      "atMs": 9250,
+      "text": "A",
+      "transcriptByteOffset": 5229
+    },
+    {
+      "atMs": 10100,
+      "text": "beta",
+      "transcriptByteOffset": 5301
+    },
+    {
+      "atMs": 10900,
+      "text": "\u001b[D\u001b[D\u001b[D\u001b[D",
+      "transcriptByteOffset": 5362
+    },
+    {
+      "atMs": 11700,
+      "text": "\u001b[3~\u001b[3~\u001b[3~\u001b[3~",
+      "transcriptByteOffset": 5405
+    },
+    {
+      "atMs": 12500,
+      "text": "beta",
+      "transcriptByteOffset": 5530
+    },
+    {
+      "atMs": 13300,
+      "text": "\u001b[C\u001b[C\u001b[C\u001b[C\u001b[C\u001b[C\u001b[C\u001b[C\u001b[C\u001b[C",
+      "transcriptByteOffset": 5597
+    },
+    {
+      "atMs": 14100,
+      "text": "\u0001",
+      "transcriptByteOffset": 5641
+    },
+    {
+      "atMs": 14900,
+      "text": "\u0005",
+      "transcriptByteOffset": 5684
+    },
+    {
+      "atMs": 15700,
+      "text": "\u001b[H",
+      "transcriptByteOffset": 5728
+    },
+    {
+      "atMs": 16500,
+      "text": "\u001b[F",
+      "transcriptByteOffset": 5771
+    },
+    {
+      "atMs": 17300,
+      "text": "\u001b[1;2D\u001b[1;2D\u001b[1;2D",
+      "transcriptByteOffset": 5815
+    },
+    {
+      "atMs": 18100,
+      "text": "",
+      "transcriptByteOffset": 5903
+    },
+    {
+      "atMs": 18900,
+      "text": "\u001f",
+      "transcriptByteOffset": 5973
+    },
+    {
+      "atMs": 19700,
+      "text": "\u001b[1;3D",
+      "transcriptByteOffset": 5973
+    },
+    {
+      "atMs": 20500,
+      "text": "\u001bb",
+      "transcriptByteOffset": 6017
+    },
+    {
+      "atMs": 21300,
+      "text": "\u001b[F",
+      "transcriptByteOffset": 6103
+    },
+    {
+      "atMs": 21700,
+      "text": "\n",
+      "transcriptByteOffset": 6147
+    },
+    {
+      "atMs": 22100,
+      "text": "d",
+      "transcriptByteOffset": 6609
+    },
+    {
+      "atMs": 22150,
+      "text": "e",
+      "transcriptByteOffset": 6666
+    },
+    {
+      "atMs": 22200,
+      "text": "l",
+      "transcriptByteOffset": 6723
+    },
+    {
+      "atMs": 22250,
+      "text": "t",
+      "transcriptByteOffset": 6780
+    },
+    {
+      "atMs": 22300,
+      "text": "a",
+      "transcriptByteOffset": 6837
+    },
+    {
+      "atMs": 23000,
+      "text": "\u001b[A",
+      "transcriptByteOffset": 6894
+    },
+    {
+      "atMs": 23800,
+      "text": "\u001b[D\u001b[D",
+      "transcriptByteOffset": 6937
+    },
+    {
+      "atMs": 24600,
+      "text": "\u001b[B",
+      "transcriptByteOffset": 6980
+    },
+    {
+      "atMs": 25400,
+      "text": "\u001b[F",
+      "transcriptByteOffset": 7023
+    },
+    {
+      "atMs": 26200,
+      "text": "\u001b[D\u001b[D\u001b[D\u001b[D\u001b[D\u001b[D",
+      "transcriptByteOffset": 7066
+    },
+    {
+      "atMs": 27000,
+      "text": "",
+      "transcriptByteOffset": 7110
+    }
+  ]
+}

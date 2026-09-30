@@ -53,6 +53,26 @@ export const getTerminalClickToMoveCursorSearchEntry = createLocalizedCatalog(()
   ]
 }))
 
+export const getTerminalInputSelectionEditingSearchEntry = createLocalizedCatalog(() => ({
+  title: translate(
+    'components.settings.TerminalInteraction.inputSelectionEditing',
+    'Edit Input Like a Text Field'
+  ),
+  description: translate(
+    'components.settings.TerminalInteraction.inputSelectionEditingDescription',
+    'Typing, Backspace, Delete or paste replaces text selected on the line you are typing; Shift+Arrow extends the selection and Undo reverses the replacement. Apps that handle the mouse themselves keep their own editing.'
+  ),
+  keywords: [
+    ...translateSearchKeyword(
+      'components.settings.TerminalInteraction.search.selection',
+      'selection'
+    ),
+    ...translateSearchKeyword('components.settings.TerminalInteraction.search.undo', 'undo'),
+    ...translateSearchKeyword('components.settings.TerminalInteraction.search.cursor', 'cursor'),
+    ...translateSearchKeyword('auto.components.settings.terminal.search.prompt', 'prompt')
+  ]
+}))
+
 export const getTerminalPaneInteractionSearchEntries = createLocalizedCatalog(() => [
   {
     title: translate('auto.components.settings.terminal.search.scrollSpeed.title', 'Scroll Speed'),
@@ -128,6 +148,7 @@ export const getTerminalPaneInteractionSearchEntries = createLocalizedCatalog(()
     ]
   },
   getTerminalClickToMoveCursorSearchEntry(),
+  getTerminalInputSelectionEditingSearchEntry(),
   ...getTerminalClipboardSearchEntries(),
   ...getTerminalCommandMarksSearchEntries(),
   ...getTerminalPixelScrollSearchEntries()

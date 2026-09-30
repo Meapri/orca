@@ -18083,8 +18083,12 @@
         "clickToMoveOff": "끄기",
         "clickToMoveShellPrompt": "프롬프트에서",
         "clickToMoveInputLine": "모든 입력 줄",
+        "inputSelectionEditing": "입력 줄을 텍스트 필드처럼 편집",
+        "inputSelectionEditingDescription": "입력 중인 줄에서 선택한 텍스트를 입력, Backspace, Delete, 붙여넣기로 바꿉니다. Shift+화살표로 선택을 넓히고 실행 취소로 바꾸기를 되돌립니다. 마우스를 직접 처리하는 앱은 자체 편집을 그대로 씁니다.",
         "search": {
           "click": "클릭",
+          "selection": "선택",
+          "undo": "실행 취소",
           "cursor": "커서",
           "caret": "캐럿"
         }

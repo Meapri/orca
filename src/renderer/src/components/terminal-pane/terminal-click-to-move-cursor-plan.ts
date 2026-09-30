@@ -26,7 +26,7 @@ export type ClickToMovePlanInput = {
 // Why: a run this long separates typed input from right-aligned prompt text (zsh RPROMPT).
 const INPUT_END_BLANK_RUN = 3
 
-type LinearCell = { chars: string; width: number }
+export type LinearCell = { chars: string; width: number }
 
 export function logicalLineStartRow(buffer: ClickToMoveBuffer, row: number): number {
   let startRow = row
@@ -113,64 +113,120 @@ function inputEndIndex(cells: readonly LinearCell[], from: number): number {
   return end
 }
 
-/**
- * Signed arrow-key count that moves a line editor's cursor from `cursor` to the clicked cell,
- * or null when the click is outside the cursor's (possibly wrapped) logical line.
- * Clamped to the known input span so no press lands past either end and rings the bell.
- */
-export function planTerminalClickToMoveArrows(input: ClickToMovePlanInput): number | null {
-  const { buffer, cols, cursor, target } = input
+/** A cursor's (possibly wrapped) logical line read as one run of cells, with its editable span. */
+export type TerminalInputLineSpan = {
+  cells: readonly LinearCell[]
+  cols: number
+  startRow: number
+  endRow: number
+  cursorIndex: number
+  /** First editable cell index; null when leftward edits are unsafe. */
+  lowerIndex: number | null
+  /** Cell index just past the last input character. */
+  upperIndex: number
+}
+
+export type TerminalInputLineSpanInput = Omit<ClickToMovePlanInput, 'target'>
+// Why: xterm reports x === cols while a wrap is pending; that is the next row's first cell.
+function normalizePosition(
+  position: ClickToMoveCellPosition,
+  cols: number
+): ClickToMoveCellPosition {
+  return position.x >= cols
+    ? { x: 0, y: position.y + 1 }
+    : { x: Math.max(position.x, 0), y: position.y }
+}
+
+export function resolveTerminalInputLineSpan(
+  input: TerminalInputLineSpanInput
+): TerminalInputLineSpan | null {
+  const { buffer, cols, cursor } = input
   if (cols <= 0) {
     return null
   }
-  // Why: xterm reports x === cols while a wrap is pending; that is the next row's first cell.
-  const normalize = (position: ClickToMoveCellPosition): ClickToMoveCellPosition =>
-    position.x >= cols ? { x: 0, y: position.y + 1 } : { x: Math.max(position.x, 0), y: position.y }
-  const cursorCell = normalize(cursor)
+  const cursorCell = normalizePosition(cursor, cols)
   const rows = logicalLineRows(buffer, cursor.y)
   const endRow = Math.max(rows.endRow, cursorCell.y)
-  if (target.y < rows.startRow || target.y > endRow) {
-    return null
-  }
   const cells = readLinearCells(buffer, cols, rows.startRow, endRow)
-  const toIndex = (position: ClickToMoveCellPosition): number => {
-    const cell = normalize(position)
-    return (cell.y - rows.startRow) * cols + cell.x
-  }
-  const cursorIndex = toIndex(cursor)
+  const span = { cells, cols, startRow: rows.startRow, endRow }
+  const cursorIndex = terminalInputLineIndex(span, cursor)
   let lowerIndex: number | null = null
   const inputStart = input.inputStart
   if (inputStart && inputStart.y >= rows.startRow && inputStart.y <= endRow) {
-    const startIndex = toIndex(inputStart)
+    const startIndex = terminalInputLineIndex(span, inputStart)
     lowerIndex = startIndex >= 0 && startIndex <= cursorIndex ? startIndex : null
   }
   if (lowerIndex === null && input.allowLineStartFallback) {
     lowerIndex = 0
   }
   const upperIndex = Math.max(cursorIndex, inputEndIndex(cells, cursorIndex))
-  let targetIndex = snapToCharacterStart(cells, Math.min(toIndex(target), cells.length - 1))
-  if (targetIndex < cursorIndex) {
-    if (lowerIndex === null) {
+  return { ...span, cursorIndex, lowerIndex, upperIndex }
+}
+
+/** Linear cell index of an absolute buffer position within the span's rows. */
+export function terminalInputLineIndex(
+  span: Pick<TerminalInputLineSpan, 'cols' | 'startRow'>,
+  position: ClickToMoveCellPosition
+): number {
+  const cell = normalizePosition(position, span.cols)
+  return (cell.y - span.startRow) * span.cols + cell.x
+}
+
+export function isTerminalInputLineRow(
+  span: Pick<TerminalInputLineSpan, 'startRow' | 'endRow'>,
+  row: number
+): boolean {
+  return row >= span.startRow && row <= span.endRow
+}
+
+/** Characters (not cells) between two cell indexes; negative when `to` is left of `from`. */
+export function terminalInputLineCharacterDistance(
+  span: Pick<TerminalInputLineSpan, 'cells'>,
+  from: number,
+  to: number
+): number {
+  return characterOffset(span.cells, to) - characterOffset(span.cells, from)
+}
+
+export function snapTerminalInputLineIndex(
+  span: Pick<TerminalInputLineSpan, 'cells'>,
+  index: number
+): number {
+  return snapToCharacterStart(span.cells, Math.min(Math.max(index, 0), span.cells.length - 1))
+}
+
+/**
+ * Signed arrow-key count that moves a line editor's cursor from `cursor` to the clicked cell,
+ * or null when the click is outside the cursor's (possibly wrapped) logical line.
+ * Clamped to the known input span so no press lands past either end and rings the bell.
+ */
+export function planTerminalClickToMoveArrows(input: ClickToMovePlanInput): number | null {
+  const span = resolveTerminalInputLineSpan(input)
+  if (!span || !isTerminalInputLineRow(span, input.target.y)) {
+    return null
+  }
+  let targetIndex = snapTerminalInputLineIndex(span, terminalInputLineIndex(span, input.target))
+  if (targetIndex < span.cursorIndex) {
+    if (span.lowerIndex === null) {
       return null
     }
-    targetIndex = Math.max(targetIndex, lowerIndex)
+    targetIndex = Math.max(targetIndex, span.lowerIndex)
   } else {
-    targetIndex = Math.min(targetIndex, upperIndex)
+    targetIndex = Math.min(targetIndex, span.upperIndex)
   }
-  return characterOffset(cells, targetIndex) - characterOffset(cells, cursorIndex)
+  return terminalInputLineCharacterDistance(span, span.cursorIndex, targetIndex)
 }
 
-export type ClickToMoveKeyModes = {
-  applicationCursorKeys: boolean
-  kittyKeyboardFlags: number
-}
+export type ClickToMoveKeyModes = { applicationCursorKeys: boolean; kittyKeyboardFlags: number }
 
-/** One Left/Right press encoded the way xterm itself would for the pane's current key modes. */
-export function encodeTerminalHorizontalArrow(
-  direction: 'left' | 'right',
+const ARROW_LETTERS = { left: 'D', right: 'C', up: 'A', down: 'B' } as const
+
+/** One arrow press encoded the way xterm itself would for the pane's current key modes. */
+export function encodeTerminalArrow(
+  direction: keyof typeof ARROW_LETTERS,
   modes: ClickToMoveKeyModes
 ): string {
-  const letter = direction === 'left' ? 'D' : 'C'
+  const letter = ARROW_LETTERS[direction]
   if (modes.kittyKeyboardFlags > 0) {
     // Why: xterm's kitty encoder ignores DECCKM and reports releases only with event types.
     const release = (modes.kittyKeyboardFlags & KITTY_REPORT_EVENT_TYPES) !== 0
@@ -183,5 +239,13 @@ export function encodeTerminalClickToMoveArrows(count: number, modes: ClickToMov
   if (count === 0) {
     return ''
   }
-  return encodeTerminalHorizontalArrow(count < 0 ? 'left' : 'right', modes).repeat(Math.abs(count))
+  return encodeTerminalArrow(count < 0 ? 'left' : 'right', modes).repeat(Math.abs(count))
+}
+
+/** Signed Up (negative) / Down presses. */
+export function encodeTerminalVerticalArrows(count: number, modes: ClickToMoveKeyModes): string {
+  if (count === 0) {
+    return ''
+  }
+  return encodeTerminalArrow(count < 0 ? 'up' : 'down', modes).repeat(Math.abs(count))
 }

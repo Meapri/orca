@@ -1,8 +1,12 @@
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import { translate } from '@/i18n/i18n'
-import { SettingsRow, SettingsSegmentedControl } from './SettingsFormControls'
+import { SettingsRow, SettingsSegmentedControl, SettingsSwitchRow } from './SettingsFormControls'
 import { SearchableSetting } from './SearchableSetting'
-import { getTerminalClickToMoveCursorSearchEntry } from './terminal-pane-appearance-search'
+import {
+  getTerminalClickToMoveCursorSearchEntry,
+  getTerminalInputSelectionEditingSearchEntry
+} from './terminal-pane-appearance-search'
+import { resolveTerminalInputSelectionEditingEnabled } from '../../../../shared/terminal-input-selection-editing-settings'
 import {
   normalizeTerminalClickToMoveCursorMode,
   type TerminalClickToMoveCursorMode
@@ -58,6 +62,26 @@ export function TerminalClickToMoveCursorSetting({
             ]}
           />
         }
+      />
+    </SearchableSetting>
+  )
+}
+
+export function TerminalInputSelectionEditingSetting({
+  settings,
+  updateSettings
+}: TerminalClickToMoveCursorSettingProps): React.JSX.Element {
+  const entry = getTerminalInputSelectionEditingSearchEntry()
+  const enabled = resolveTerminalInputSelectionEditingEnabled(
+    settings.terminalInputSelectionEditing
+  )
+  return (
+    <SearchableSetting {...entry}>
+      <SettingsSwitchRow
+        label={entry.title}
+        description={entry.description}
+        checked={enabled}
+        onChange={() => updateSettings({ terminalInputSelectionEditing: !enabled })}
       />
     </SearchableSetting>
   )
