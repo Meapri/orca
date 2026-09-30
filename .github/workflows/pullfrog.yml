@@ -28,6 +28,7 @@ concurrency:
 
 jobs:
   review_scope:
+    if: github.repository == 'stablyai/orca'
     runs-on: ubuntu-slim
     permissions:
       contents: read
