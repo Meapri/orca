@@ -243,7 +243,7 @@ index 497afcf535f3eaca00889525a77e15eb633ccd96..7cee04996e9bff6603aec38beb6f93aa
  
  export interface IBrowser {
 diff --git a/src/browser/input/CompositionHelper.ts b/src/browser/input/CompositionHelper.ts
-index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..efb5006ad88e62e96a785f34634f0ac133af03c5 100644
+index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..dc4d598eaad89abc9cce46ce347b6cd54e330780 100644
 --- a/src/browser/input/CompositionHelper.ts
 +++ b/src/browser/input/CompositionHelper.ts
 @@ -1,10 +1,22 @@
@@ -271,7 +271,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..efb5006ad88e62e96a785f34634f0ac1
  import { C0 } from '../../common/data/EscapeSequences';
  
  interface IPosition {
-@@ -12,6 +24,48 @@ interface IPosition {
+@@ -12,6 +24,53 @@ interface IPosition {
    end: number;
  }
  
@@ -313,6 +313,11 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..efb5006ad88e62e96a785f34634f0ac1
 +
 +const MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'AltGraph', 'Meta', 'CapsLock', 'Fn']);
 +
++/** A keydown that types its own `key` rather than asking the app to edit. */
++function isPrintableKeydown(ev: KeyboardEvent): boolean {
++  return [...ev.key].length === 1 && !ev.ctrlKey && !ev.metaKey && !ev.altKey;
++}
++
 +const XTERM_COMPOSITION_SESSION_START_EVENT = 'xterm-composition-session-start';
 +const XTERM_COMPOSITION_SESSION_END_EVENT = 'xterm-composition-session-end';
 +const XTERM_COMPOSITION_TRANSACTION_ACCEPTED_EVENT =
@@ -320,7 +325,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..efb5006ad88e62e96a785f34634f0ac1
  /**
   * Encapsulates the logic for handling compositionstart, compositionupdate and compositionend
   * events, displaying the in-progress composition to the UI and forwarding the final composition
-@@ -24,6 +78,15 @@ export class CompositionHelper {
+@@ -24,6 +83,15 @@ export class CompositionHelper {
     */
    private _isComposing: boolean;
    public get isComposing(): boolean { return this._isComposing; }
@@ -336,7 +341,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..efb5006ad88e62e96a785f34634f0ac1
  
    /**
     * The position within the input textarea's value of the current composition.
-@@ -36,52 +99,227 @@ export class CompositionHelper {
+@@ -36,52 +104,233 @@ export class CompositionHelper {
     */
    private _compositionSuffix: string;
  
@@ -427,6 +432,11 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..efb5006ad88e62e96a785f34634f0ac1
 +   */
 +  private _shownCursor?: { x: number, row: number };
 +
++  /** Set while this helper forwards a commit, so its own data is not taken for typed text. */
++  private _isForwardingCommit = false;
++
++  private _typedDataListener?: { dispose(): void };
++
 +  /** The in-grid preedit the renderers draw, laid out against the live cursor. */
 +  public get imePreedit(): IImePreedit | undefined {
 +    return (this._gridPreedit ?? this._gridEcho?.layout)?.resolve(
@@ -516,6 +526,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..efb5006ad88e62e96a785f34634f0ac1
 +    this._compositionTransactionId = 0;
 +    this._compositionTimers = new Set();
 +    this._imeKeydownAwaitingCommit = false;
++    this._typedDataListener = this._coreService.onData(data => this._holdTypedText(data));
    }
  
    /**
@@ -575,7 +586,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..efb5006ad88e62e96a785f34634f0ac1
    }
  
    /**
-@@ -89,22 +327,269 @@ export class CompositionHelper {
+@@ -89,22 +338,271 @@ export class CompositionHelper {
     * @param ev The event.
     */
    public compositionupdate(ev: Pick<CompositionEvent, 'data'>): void {
@@ -676,6 +687,8 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..efb5006ad88e62e96a785f34634f0ac1
 +  }
 +
 +  public dispose(): void {
++    this._typedDataListener?.dispose();
++    this._typedDataListener = undefined;
 +    if (this._textareaChangeTimer !== undefined) {
 +      clearTimeout(this._textareaChangeTimer);
 +      this._textareaChangeTimer = undefined;
@@ -854,7 +867,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..efb5006ad88e62e96a785f34634f0ac1
    }
  
    /**
-@@ -113,7 +598,19 @@ export class CompositionHelper {
+@@ -113,7 +611,19 @@ export class CompositionHelper {
     * @returns Whether the Terminal should continue processing the keydown event.
     */
    public keydown(ev: KeyboardEvent): boolean {
@@ -875,7 +888,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..efb5006ad88e62e96a785f34634f0ac1
        if (ev.keyCode === 20 || ev.keyCode === 229) {
          // 20 is CapsLock, 229 is Enter
          // Continue composing if the keyCode is the "composition character"
-@@ -128,6 +625,10 @@ export class CompositionHelper {
+@@ -128,6 +638,10 @@ export class CompositionHelper {
        this._finalizeComposition(false);
      }
  
@@ -886,12 +899,13 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..efb5006ad88e62e96a785f34634f0ac1
      if (ev.keyCode === 229) {
        // If the "composition character" is used but gets to this point it means a non-composition
        // character (eg. numbers and punctuation) was pressed when the IME was active.
-@@ -135,6 +636,78 @@ export class CompositionHelper {
+@@ -135,6 +649,79 @@ export class CompositionHelper {
        return false;
      }
  
-+    // A key the app handles itself (Backspace, arrows, Enter) repaints the input its own way.
-+    if (!MODIFIER_KEYS.has(ev.key)) {
++    // A key the app handles itself (Backspace, arrows, Enter) repaints the input its own way. A
++    // printable key is text typed after the held commit, which _holdTypedText keeps with it.
++    if (!MODIFIER_KEYS.has(ev.key) && !isPrintableKeydown(ev)) {
 +      this._clearGridEcho();
 +    }
 +    return true;
@@ -965,7 +979,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..efb5006ad88e62e96a785f34634f0ac1
      return true;
    }
  
-@@ -146,23 +719,55 @@ export class CompositionHelper {
+@@ -146,23 +733,55 @@ export class CompositionHelper {
     *   compositionend event is triggered, such as enter, so that the composition is sent before
     *   the command is executed.
     */
@@ -1032,7 +1046,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..efb5006ad88e62e96a785f34634f0ac1
  
        // Since composition* events happen before the changes take place in the textarea on most
        // browsers, use a setTimeout with 0ms time to allow the native compositionend event to
-@@ -172,35 +777,314 @@ export class CompositionHelper {
+@@ -172,37 +791,338 @@ export class CompositionHelper {
        // - The last compositionupdate event's data property does not always accurately describe
        //   the character, a counter example being Korean where an ending consonsant can move to
        //   the following character if the following input is a vowel.
@@ -1069,8 +1083,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..efb5006ad88e62e96a785f34634f0ac1
 +        }
 +        if (this._pendingComposition === pending) {
 +          this._sendPendingComposition(pending, true);
-         }
--      }, 0);
++        }
 +      });
 +    }
 +  }
@@ -1082,7 +1095,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..efb5006ad88e62e96a785f34634f0ac1
 +    this._cancelPendingFinalizer(pending);
 +    if (this._pendingComposition === pending) {
 +      this._pendingComposition = undefined;
-     }
++    }
 +    const textareaInput = this._getPendingTextareaInput(pending, includeFollowingInput);
 +    const observedInput = this._removeAlreadySentData(
 +      pending.inputData || pending.keypressData,
@@ -1241,8 +1254,30 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..efb5006ad88e62e96a785f34634f0ac1
 +      prevented = event.defaultPrevented;
 +    }
 +    if (input.length > 0 && !prevented) {
-+      this._coreService.triggerDataEvent(input, true);
++      this._isForwardingCommit = true;
++      try {
++        this._coreService.triggerDataEvent(input, true);
++      } finally {
++        this._isForwardingCommit = false;
++      }
 +    }
++  }
++
++  /**
++   * Text typed right after a held commit (a space or punctuation between syllables) lands after
++   * it, so it is held too: the next preedit is laid after it instead of jumping right once the
++   * echo arrives. Control input is the app's to repaint and leaves the hold alone.
++   */
++  private _holdTypedText(data: string): void {
++    const echo = this._gridEcho;
++    if (!echo || this._isForwardingCommit || !data || [...data].some(char => char < ' ' || char === '\x7f')) {
++      return;
++    }
++    echo.segments.push({ transactionId: -1, text: data, width: echo.layout.measure(data) });
++    this._cancelDeferredTimer(echo.timer);
++    echo.timer = this._defer(() => this._clearGridEcho(), GRID_ECHO_HOLD_MS);
++    this._syncGridEchoPrefix();
++    this._refreshGridPreedit();
 +  }
 +
 +  private _endPendingCompositionSession(pending: IPendingComposition): void {
@@ -1263,7 +1298,8 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..efb5006ad88e62e96a785f34634f0ac1
 +          id: pending.transactionId,
 +          data: input,
 +          dataPendingReconciliation: true
-+        }
+         }
+-      }, 0);
 +      }
 +    ));
 +  }
@@ -1271,9 +1307,9 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..efb5006ad88e62e96a785f34634f0ac1
 +  private _dispatchCompositionSessionEvent(event: CustomEvent): void {
 +    if (typeof this._textarea.dispatchEvent === 'function') {
 +      this._textarea.dispatchEvent(event);
-+    }
-+  }
-+
+     }
+   }
+ 
 +  private _dispatchCompositionTransactionSettled(): void {
 +    this._dispatchCompositionSessionEvent(new CustomEvent(
 +      'xterm-composition-transaction-settled',
@@ -1371,10 +1407,12 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..efb5006ad88e62e96a785f34634f0ac1
 +    }
 +    clearTimeout(timer);
 +    this._compositionTimers.delete(timer);
-   }
- 
++  }
++
    /**
-@@ -222,6 +1106,9 @@ export class CompositionHelper {
+    * Apply any changes made to the textarea after the current event chain is allowed to complete.
+    * This should be called when not currently composing but a keydown event with the "composition
+@@ -222,6 +1142,9 @@ export class CompositionHelper {
  
          const diff = newValue.replace(oldValue, '');
  
@@ -1384,7 +1422,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..efb5006ad88e62e96a785f34634f0ac1
          this._dataAlreadySent = diff;
  
          if (newValue.length > oldValue.length) {
-@@ -236,6 +1123,186 @@ export class CompositionHelper {
+@@ -236,6 +1159,186 @@ export class CompositionHelper {
      }, 0);
    }
  
@@ -1571,20 +1609,20 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..efb5006ad88e62e96a785f34634f0ac1
    /**
     * Positions the composition view on top of the cursor and the textarea just below it (so the
     * IME helper dialog is positioned correctly).
-@@ -243,9 +1310,26 @@ export class CompositionHelper {
+@@ -243,10 +1346,27 @@ export class CompositionHelper {
     *   necessary as the IME events across browsers are not consistently triggered.
     */
    public updateCompositionElements(dontRecurse?: boolean): void {
 -    if (!this._isComposing) {
 +    if (this._gridPreedit) {
 +      this._positionGridPreeditTextarea();
-       return;
-     }
-+    // Empty updates hide the overlay without ending the inferred transaction.
-+    if (!this._compositionView.classList.contains('active')) {
 +      return;
 +    }
-+
++    // Empty updates hide the overlay without ending the inferred transaction.
++    if (!this._compositionView.classList.contains('active')) {
+       return;
+     }
+ 
 +    // A TUI can repaint the row under an open composition (spinners, streamed output), and this
 +    // already runs on every render — so keep the rendered tail current with the buffer. A string
 +    // compare adds no layout read.
@@ -1596,10 +1634,11 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..efb5006ad88e62e96a785f34634f0ac1
 +      this._renderCompositionRemainder(rowRemainder);
 +    }
 +    this._styleCompositionCaret();
- 
++
      if (this._bufferService.buffer.isCursorInViewport) {
        const cursorX = Math.min(this._bufferService.buffer.x, this._bufferService.cols - 1);
-@@ -254,31 +1338,371 @@ export class CompositionHelper {
+ 
+@@ -254,31 +1374,371 @@ export class CompositionHelper {
        const cursorTop = this._bufferService.buffer.y * this._renderService.dimensions.css.cell.height;
        const cursorLeft = cursorX * this._renderService.dimensions.css.cell.width;
  
@@ -1759,7 +1798,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..efb5006ad88e62e96a785f34634f0ac1
 +        emit(index);
 +        spacing = nextSpacing;
 +      }
-+    }
+     }
 +    emit(data.length);
 +    nodes.push(doc.createTextNode('‎'));
 +    preedit.replaceChildren(...nodes);
@@ -1857,7 +1896,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..efb5006ad88e62e96a785f34634f0ac1
 +        continue;
 +      }
 +      cells.push({ codepoints: [code], width: Math.min(2, Math.max(1, width)), end: offset });
-     }
++    }
 +    return cells;
 +  }
 +
