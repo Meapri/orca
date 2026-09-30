@@ -644,13 +644,16 @@ describe('Jira client credential storage', () => {
 
     // Two PATs (both with empty email) to the same host must not collide onto
     // one id and silently overwrite each other — the viewer identity keys them.
-    const stored = JSON.parse(
+    const stored: unknown = JSON.parse(
       readFileSync(join(tempHome, APP_DISTRIBUTION.homeStateDirName, 'jira-sites.json'), 'utf-8')
-    ) as {
-      sites: { accountId: string }[]
-    }
-    expect(stored.sites).toHaveLength(2)
-    expect(stored.sites.map((site) => site.accountId).sort()).toEqual(['alice', 'bot'])
+    )
+    expect(stored).toMatchObject({
+      sites: expect.arrayContaining([
+        expect.objectContaining({ accountId: 'alice' }),
+        expect.objectContaining({ accountId: 'bot' })
+      ])
+    })
+    expect(stored).toHaveProperty('sites.length', 2)
   })
 
   it('uses Bearer auth and REST v2 for stored self-hosted sites', async () => {

@@ -115,6 +115,7 @@ async function reachDownloaded(): Promise<{
 }> {
   const send = vi.fn()
   const updater = await loadUpdaterModule()
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the updater only calls webContents.send on its window.
   updater.setupAutoUpdater({ webContents: { send } } as never)
   await vi.waitFor(() => expect(mocks.autoUpdaterMock.checkForUpdates).toHaveBeenCalledTimes(1))
   mocks.autoUpdaterMock.emit('checking-for-update')
