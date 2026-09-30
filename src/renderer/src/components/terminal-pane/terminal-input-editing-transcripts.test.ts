@@ -325,3 +325,56 @@ describe('cursor-agent: edits act at the adopted app caret, not the parked curso
     expect(replay.sent).toEqual([LEFT.repeat(5)])
   })
 })
+
+function clickCell(replay: Replay, column: number, row: number): void {
+  const init = { bubbles: true, button: 0, detail: 1 }
+  const clientX = column * CELL.width + CELL.width / 2
+  const clientY = row * CELL.height + CELL.height / 2
+  replay.terminal.element?.dispatchEvent(new MouseEvent('mousedown', { ...init, clientX, clientY }))
+  replay.terminal.element?.dispatchEvent(new MouseEvent('mouseup', { ...init, clientX, clientY }))
+}
+
+describe('click-to-move across the rows of Codex’s inline composer', () => {
+  it('sends Up, then the Left presses the capture sent once Codex has moved the cursor', async () => {
+    const replay = openReplay('codex-inline-input-edit-keys')
+    replay.terminal.focus()
+    await typeRecorded(replay, 0, 'alpha beta gamma')
+    const newline = sendIndex(replay, '\n')
+    await replay.feedTo(newline + 1)
+    const up = await typeRecorded(replay, newline + 1, 'delta')
+    expect(replay.sends[up].text).toBe('\x1b[A')
+    await replay.feedTo(up)
+    expect(replay.cursor()).toEqual({ x: 7, y: 12 })
+
+    replay.sent.length = 0
+    clickCell(replay, 5, 11)
+    expect(replay.sent).toEqual(['\x1b[A'])
+    // Codex's repaint for that Up: the cursor keeps column 7 on the first row.
+    await replay.feedTo(up + 1)
+    expect(replay.sent).toEqual(['\x1b[A', replay.sends[up + 1].text])
+    expect(replay.sends[up + 1].text).toBe(LEFT.repeat(2))
+  })
+
+  it('does the same across a soft wrap, whose continuation row the composer indents too', async () => {
+    const replay = openReplay('codex-inline-input-edit-wrap')
+    replay.terminal.focus()
+    const words = Array.from({ length: 30 }, (_, i) => `w${String(i + 1).padStart(2, '0')} `)
+    const up = await typeRecorded(replay, 0, words.join(''))
+    await replay.feedTo(up)
+    expect(replay.cursor()).toEqual({ x: 26, y: 12 })
+    replay.sent.length = 0
+    clickCell(replay, 24, 11)
+    await replay.feedTo(up + 1)
+    expect(replay.sent).toEqual([replay.sends[up].text, replay.sends[up + 1].text])
+  })
+
+  it('never presses Up or Down at a shell prompt, where they recall history', async () => {
+    const replay = openReplay('bash-input-edit-keys')
+    replay.terminal.focus()
+    const next = await typeRecorded(replay, 0, 'alpha beta gamma')
+    await replay.feedTo(next)
+    replay.sent.length = 0
+    clickCell(replay, 3, 1)
+    expect(replay.sent).toEqual([])
+  })
+})

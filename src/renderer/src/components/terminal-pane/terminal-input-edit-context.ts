@@ -46,7 +46,7 @@ export function resolveTerminalInputEditContext(
     buffer,
     cols: terminal.cols,
     cursor,
-    inputStart: getTerminalShellInputAnchor(terminal).inputStart
+    inputStart: getTerminalShellInputAnchor(terminal, cursor.y).inputStart
   })
   if (!span) {
     return null

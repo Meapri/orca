@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   encodeTerminalClickToMoveArrows,
-  encodeTerminalHorizontalArrow,
+  encodeTerminalArrow,
   planTerminalClickToMoveArrows,
   type ClickToMoveBuffer
 } from './terminal-click-to-move-cursor-plan'
@@ -170,10 +170,10 @@ describe('encodeTerminalClickToMoveArrows', () => {
 
   it('matches xterm kitty encoding, adding releases only when event types are reported', () => {
     expect(
-      encodeTerminalHorizontalArrow('left', { applicationCursorKeys: true, kittyKeyboardFlags: 1 })
+      encodeTerminalArrow('left', { applicationCursorKeys: true, kittyKeyboardFlags: 1 })
     ).toBe('\x1b[D')
     expect(
-      encodeTerminalHorizontalArrow('right', {
+      encodeTerminalArrow('right', {
         applicationCursorKeys: false,
         kittyKeyboardFlags: 3
       })

@@ -18,30 +18,37 @@ export type ShellInputAnchorTerminal = {
   registerMarker: (cursorYOffset?: number) => AnchorMarker | undefined
 }
 
+type Anchor = { marker: AnchorMarker; x: number; exact: boolean }
+
 type AnchorState = {
   phase: TerminalShellPromptPhase
-  anchor: { marker: AnchorMarker; x: number; exact: boolean } | null
+  /** Most recent last; one per logical line, so a multi-row composer keeps each row's start. */
+  anchors: Anchor[]
 }
+
+// Why: a composer's rows plus a few recent prompts; older lines are no longer being edited.
+const MAX_ANCHORS = 8
 
 const anchorStates = new WeakMap<ShellInputAnchorTerminal, AnchorState>()
 
 function stateFor(terminal: ShellInputAnchorTerminal): AnchorState {
   let state = anchorStates.get(terminal)
   if (!state) {
-    state = { phase: 'unknown', anchor: null }
+    state = { phase: 'unknown', anchors: [] }
     anchorStates.set(terminal, state)
   }
   return state
 }
 
-function clearAnchor(state: AnchorState): void {
-  state.anchor?.marker.dispose()
-  state.anchor = null
+function clearAnchors(state: AnchorState): void {
+  for (const anchor of state.anchors.splice(0)) {
+    anchor.marker.dispose()
+  }
 }
 
 type AnchorPosition = { x: number; y: number }
 
-function setAnchor(
+function addAnchor(
   terminal: ShellInputAnchorTerminal,
   state: AnchorState,
   exact: boolean,
@@ -50,10 +57,37 @@ function setAnchor(
   const buffer = terminal.buffer.active
   const cursorRow = buffer.baseY + buffer.cursorY
   const marker = terminal.registerMarker(position ? position.y - cursorRow : 0)
-  clearAnchor(state)
-  if (marker) {
-    state.anchor = { marker, x: position ? position.x : buffer.cursorX, exact }
+  if (!marker) {
+    return
   }
+  state.anchors.push({ marker, x: position ? position.x : buffer.cursorX, exact })
+  while (state.anchors.length > MAX_ANCHORS) {
+    state.anchors.shift()?.marker.dispose()
+  }
+}
+
+function isLive(anchor: Anchor | undefined): anchor is Anchor {
+  return anchor !== undefined && !anchor.marker.isDisposed && anchor.marker.line >= 0
+}
+
+function anchorOnLine(
+  buffer: ClickToMoveBuffer,
+  state: AnchorState,
+  row: number
+): Anchor | undefined {
+  const lineStart = logicalLineStartRow(buffer, row)
+  for (let index = state.anchors.length - 1; index >= 0; index -= 1) {
+    const anchor = state.anchors[index]
+    if (isLive(anchor) && logicalLineStartRow(buffer, anchor.marker.line) === lineStart) {
+      return anchor
+    }
+  }
+  return undefined
+}
+
+function removeAnchor(state: AnchorState, anchor: Anchor): void {
+  state.anchors = state.anchors.filter((candidate) => candidate !== anchor)
+  anchor.marker.dispose()
 }
 
 /** Feeds one OSC 133 payload (`A`, `B`, `C`, `D;0`, …) parsed at the current cursor position. */
@@ -68,16 +102,17 @@ export function observeTerminalShellIntegrationMark(
   const kind = data.split(';', 1)[0]
   if (kind === 'A') {
     state.phase = 'prompt'
-    clearAnchor(state)
+    clearAnchors(state)
   } else if (kind === 'B') {
     // Why: B is emitted exactly where editable input begins, so it beats any learned guess.
     state.phase = 'prompt'
-    setAnchor(terminal, state, true)
+    clearAnchors(state)
+    addAnchor(terminal, state, true)
   } else if (kind === 'C') {
     state.phase = 'running'
-    clearAnchor(state)
+    clearAnchors(state)
   } else if (kind === 'D') {
-    clearAnchor(state)
+    clearAnchors(state)
   }
 }
 
@@ -100,22 +135,31 @@ export function observeTerminalUserInputPosition(
     return
   }
   const state = stateFor(terminal)
-  const anchor = state.anchor
-  if (
-    !anchor ||
-    anchor.marker.isDisposed ||
-    logicalLineStartRow(buffer, anchor.marker.line) !== logicalLineStartRow(buffer, row)
-  ) {
-    setAnchor(terminal, state, false, position)
+  const anchor = anchorOnLine(buffer, state, row)
+  if (!anchor) {
+    addAnchor(terminal, state, false, position)
     return
   }
   const isLeftOfAnchor = row < anchor.marker.line || (row === anchor.marker.line && x < anchor.x)
   if (!anchor.exact && isLeftOfAnchor) {
-    setAnchor(terminal, state, false, position)
+    removeAnchor(state, anchor)
+    addAnchor(terminal, state, false, position)
   }
 }
 
-export function getTerminalShellInputAnchor(terminal: ShellInputAnchorTerminal): {
+/** Every live learned input start, for inputs that span several rows. */
+export function getTerminalShellInputAnchors(
+  terminal: ShellInputAnchorTerminal
+): { x: number; y: number }[] {
+  const anchors = anchorStates.get(terminal)?.anchors ?? []
+  return anchors.filter(isLive).map((anchor) => ({ x: anchor.x, y: anchor.marker.line }))
+}
+
+/** The input start learned on `row`'s logical line (default: the latest one learned). */
+export function getTerminalShellInputAnchor(
+  terminal: ShellInputAnchorTerminal,
+  row?: number
+): {
   phase: TerminalShellPromptPhase
   inputStart: { x: number; y: number } | null
 } {
@@ -123,10 +167,15 @@ export function getTerminalShellInputAnchor(terminal: ShellInputAnchorTerminal):
   if (!state) {
     return { phase: 'unknown', inputStart: null }
   }
-  const anchor = state.anchor
-  const inputStart =
-    anchor && !anchor.marker.isDisposed && anchor.marker.line >= 0
-      ? { x: anchor.x, y: anchor.marker.line }
-      : null
-  return { phase: state.phase, inputStart }
+  const latest = state.anchors.at(-1)
+  const anchor =
+    row === undefined
+      ? isLive(latest)
+        ? latest
+        : undefined
+      : anchorOnLine(terminal.buffer.active, state, row)
+  return {
+    phase: state.phase,
+    inputStart: anchor ? { x: anchor.x, y: anchor.marker.line } : null
+  }
 }

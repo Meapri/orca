@@ -219,12 +219,14 @@ export function planTerminalClickToMoveArrows(input: ClickToMovePlanInput): numb
 
 export type ClickToMoveKeyModes = { applicationCursorKeys: boolean; kittyKeyboardFlags: number }
 
-/** One Left/Right press encoded the way xterm itself would for the pane's current key modes. */
-export function encodeTerminalHorizontalArrow(
-  direction: 'left' | 'right',
+const ARROW_LETTERS = { left: 'D', right: 'C', up: 'A', down: 'B' } as const
+
+/** One arrow press encoded the way xterm itself would for the pane's current key modes. */
+export function encodeTerminalArrow(
+  direction: keyof typeof ARROW_LETTERS,
   modes: ClickToMoveKeyModes
 ): string {
-  const letter = direction === 'left' ? 'D' : 'C'
+  const letter = ARROW_LETTERS[direction]
   if (modes.kittyKeyboardFlags > 0) {
     // Why: xterm's kitty encoder ignores DECCKM and reports releases only with event types.
     const release = (modes.kittyKeyboardFlags & KITTY_REPORT_EVENT_TYPES) !== 0
@@ -237,5 +239,13 @@ export function encodeTerminalClickToMoveArrows(count: number, modes: ClickToMov
   if (count === 0) {
     return ''
   }
-  return encodeTerminalHorizontalArrow(count < 0 ? 'left' : 'right', modes).repeat(Math.abs(count))
+  return encodeTerminalArrow(count < 0 ? 'left' : 'right', modes).repeat(Math.abs(count))
+}
+
+/** Signed Up (negative) / Down presses. */
+export function encodeTerminalVerticalArrows(count: number, modes: ClickToMoveKeyModes): string {
+  if (count === 0) {
+    return ''
+  }
+  return encodeTerminalArrow(count < 0 ? 'up' : 'down', modes).repeat(Math.abs(count))
 }

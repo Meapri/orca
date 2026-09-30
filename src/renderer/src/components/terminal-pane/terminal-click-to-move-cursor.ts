@@ -5,6 +5,7 @@ import {
 } from './terminal-click-to-move-cursor-plan'
 import {
   getTerminalShellInputAnchor,
+  getTerminalShellInputAnchors,
   observeTerminalUserInputPosition,
   type TerminalShellPromptPhase
 } from './terminal-shell-input-anchor'
@@ -14,6 +15,7 @@ import {
   resolveTerminalInputEditCursor,
   resolveTerminalInputLearningCursor
 } from './terminal-input-edit-cursor'
+import { MAX_INPUT_ROWS, moveTerminalCursorAcrossInputRows } from './terminal-click-to-move-rows'
 
 export type TerminalClickToMoveCursorMode = 'shell-prompt' | 'input-line' | 'off'
 
@@ -96,6 +98,16 @@ export function installTerminalClickToMoveCursor(
     return { dispose: () => undefined }
   }
   let pending: PendingClick | null = null
+  // A row-crossing move waiting for the app to land on the target row; any new gesture cancels it.
+  let rowMove: IDisposable | null = null
+  const cancelRowMove = (): void => {
+    rowMove?.dispose()
+    rowMove = null
+  }
+  const keyModes = () => ({
+    applicationCursorKeys: terminal.modes.applicationCursorKeysMode,
+    kittyKeyboardFlags: options.getKittyKeyboardFlags()
+  })
 
   const syncNativeAltClick = (): void => {
     // Why: keep xterm's alt-click where it navigates rows (alt screen) or when the feature is off.
@@ -107,6 +119,7 @@ export function installTerminalClickToMoveCursor(
 
   const onMouseDown = (event: MouseEvent): void => {
     pending = null
+    cancelRowMove()
     syncNativeAltClick()
     const noOtherModifiers = !event.metaKey && !event.ctrlKey && !event.shiftKey
     if (event.button !== 0 || event.detail > 1 || !noOtherModifiers) {
@@ -134,8 +147,8 @@ export function installTerminalClickToMoveCursor(
       return
     }
     const buffer = terminal.buffer.active
-    const anchor = getTerminalShellInputAnchor(terminal)
     const cursor = resolveTerminalInputEditCursor(terminal)
+    const anchor = getTerminalShellInputAnchor(terminal, cursor?.y)
     const eligible = isTerminalClickToMoveEligible({
       mode: options.getMode(),
       explicit: click.explicit,
@@ -156,27 +169,38 @@ export function installTerminalClickToMoveCursor(
     if (!position) {
       return
     }
+    const target = { x: position.x - 1, y: position.y - 1 }
     const count = planTerminalClickToMoveArrows({
       buffer,
       cols: terminal.cols,
       cursor,
-      target: { x: position.x - 1, y: position.y - 1 },
+      target,
       inputStart: anchor.inputStart,
       allowLineStartFallback: click.explicit
     })
-    const data = count
-      ? encodeTerminalClickToMoveArrows(count, {
-          applicationCursorKeys: terminal.modes.applicationCursorKeysMode,
-          kittyKeyboardFlags: options.getKittyKeyboardFlags()
-        })
-      : ''
+    if (count === null && !click.explicit) {
+      const textColumns = getTerminalShellInputAnchors(terminal)
+        .filter((start) => Math.abs(start.y - cursor.y) <= MAX_INPUT_ROWS)
+        .map((start) => start.x)
+      rowMove = moveTerminalCursorAcrossInputRows({
+        terminal,
+        cursor,
+        target,
+        textColumns,
+        modes: keyModes
+      })
+      return
+    }
+    const data = count ? encodeTerminalClickToMoveArrows(count, keyModes()) : ''
     if (data) {
       terminal.input(data, true)
     }
   }
 
-  const onUserInput = (): void =>
+  const onUserInput = (): void => {
+    cancelRowMove()
     observeTerminalUserInputPosition(terminal, resolveTerminalInputLearningCursor(terminal))
+  }
 
   element.addEventListener('mousedown', onMouseDown, true)
   element.addEventListener('mouseup', onMouseUp)
@@ -188,6 +212,7 @@ export function installTerminalClickToMoveCursor(
   return {
     dispose: () => {
       pending = null
+      cancelRowMove()
       element.removeEventListener('mousedown', onMouseDown, true)
       element.removeEventListener('mouseup', onMouseUp)
       textarea?.removeEventListener('keydown', onUserInput, true)
