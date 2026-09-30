@@ -1,0 +1,391 @@
+name: Fork upstream sync
+
+# Merges upstream main into this fork's main as a real merge commit, checks it, and
+# fast-forwards main only when every check passes. Anything else leaves a pushed
+# sync/upstream-<date> branch and one tracking issue. See docs/reference/fork-upstream-sync.md.
+on:
+  schedule:
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Merge, check, and push the sync branch, but leave main untouched
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fork-upstream-sync
+  cancel-in-progress: false
+
+env:
+  UPSTREAM_REPOSITORY: stablyai/orca
+  ISSUE_TITLE: Upstream sync needs attention
+
+jobs:
+  # No secrets in this job: the xterm check runs upstream xterm's npm toolchain.
+  merge:
+    if: github.repository != 'stablyai/orca'
+    # ARM shares the xterm dependency cache that ci-xterm-cache.yml seeds.
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
+    env:
+      GIT_AUTHOR_NAME: github-actions[bot]
+      GIT_AUTHOR_EMAIL: 41898083+github-actions[bot]@users.noreply.github.com
+      GIT_COMMITTER_NAME: github-actions[bot]
+      GIT_COMMITTER_EMAIL: 41898083+github-actions[bot]@users.noreply.github.com
+    outputs:
+      status: ${{ steps.xterm.outputs.status || steps.merge.outputs.status }}
+      branch: ${{ steps.merge.outputs.branch }}
+      base_sha: ${{ steps.merge.outputs.base_sha }}
+      upstream_sha: ${{ steps.merge.outputs.upstream_sha }}
+      head_sha: ${{ steps.xterm.outputs.head_sha || steps.merge.outputs.head_sha }}
+
+    steps:
+      - name: Checkout fork main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      # The sync driver starts git through the repository's child-process wrapper, bundled by esbuild.
+      - uses: ./.github/actions/install-node-dependencies
+
+      - name: Fetch upstream main
+        run: |
+          git remote add upstream "https://github.com/${UPSTREAM_REPOSITORY}.git"
+          git fetch --no-tags --quiet upstream main
+
+      - name: Merge upstream main
+        id: merge
+        run: >-
+          node config/scripts/fork-upstream-sync.mjs merge
+          --report="$RUNNER_TEMP/fork-sync/report.json"
+          --base=origin/main
+          --upstream=upstream/main
+          --date="$(date -u +%F)"
+
+      - uses: ./.github/actions/prepare-xterm-dependencies
+        if: steps.merge.outputs.status == 'merged'
+
+      - name: Check or regenerate xterm patches
+        id: xterm
+        if: steps.merge.outputs.status == 'merged'
+        run: >-
+          node config/scripts/fork-upstream-sync.mjs xterm
+          --report="$RUNNER_TEMP/fork-sync/report.json"
+          --work-dir="$RUNNER_TEMP/xterm-patch-build"
+
+      - name: Bundle the sync branch
+        if: steps.merge.outputs.status == 'merged'
+        env:
+          BRANCH: ${{ steps.merge.outputs.branch }}
+          BASE_SHA: ${{ steps.merge.outputs.base_sha }}
+          HEAD_SHA: ${{ steps.xterm.outputs.head_sha || steps.merge.outputs.head_sha }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/fork-sync-bundle"
+          if [ "$HEAD_SHA" != "$BASE_SHA" ]; then
+            test "$(git rev-parse "refs/heads/$BRANCH")" = "$HEAD_SHA"
+            git bundle create "$RUNNER_TEMP/fork-sync-bundle/sync.bundle" "$BASE_SHA..$BRANCH"
+          fi
+
+      - name: Upload sync report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fork-sync-report
+          path: ${{ runner.temp }}/fork-sync/report.json
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Upload sync bundle
+        if: steps.merge.outputs.status == 'merged'
+        uses: actions/upload-artifact@v7
+        with:
+          name: fork-sync-bundle
+          path: ${{ runner.temp }}/fork-sync-bundle/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # Pushes from a fresh runner so the push token never shares a job with third-party build code.
+  publish:
+    needs: merge
+    if: contains(fromJSON('["merged", "conflict", "xterm-failed"]'), needs.merge.outputs.status)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout fork main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+          # A merge that touches .github/workflows needs a token with the workflow scope.
+          token: ${{ secrets.FORK_SYNC_TOKEN || github.token }}
+
+      - uses: actions/download-artifact@v8
+        if: needs.merge.outputs.head_sha != needs.merge.outputs.base_sha
+        with:
+          name: fork-sync-bundle
+          path: ${{ runner.temp }}/fork-sync-bundle
+
+      - name: Push the sync branch
+        env:
+          BRANCH: ${{ needs.merge.outputs.branch }}
+          BASE_SHA: ${{ needs.merge.outputs.base_sha }}
+          HEAD_SHA: ${{ needs.merge.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          if [ "$HEAD_SHA" != "$BASE_SHA" ]; then
+            git fetch --no-tags "$RUNNER_TEMP/fork-sync-bundle/sync.bundle" "refs/heads/$BRANCH:refs/fork-sync/head"
+            test "$(git rev-parse refs/fork-sync/head)" = "$HEAD_SHA"
+          fi
+          # Never --force: an existing branch of the same name must already be an ancestor.
+          if ! git push origin "$HEAD_SHA:refs/heads/$BRANCH"; then
+            echo "::error::Push of $BRANCH was rejected. If upstream changed .github/workflows, set FORK_SYNC_TOKEN to a token with the workflow scope."
+            exit 1
+          fi
+          echo "Pushed $BRANCH at $HEAD_SHA" >> "$GITHUB_STEP_SUMMARY"
+
+  static_checks:
+    needs: [merge, publish]
+    if: needs.merge.outputs.status == 'merged'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    steps:
+      - name: Checkout sync branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.merge.outputs.head_sha }}
+          persist-credentials: false
+
+      - uses: ./.github/actions/install-node-dependencies
+        with:
+          native-runtime: node
+
+      - name: Typecheck
+        run: pnpm tc
+
+      - name: Lint
+        run: pnpm lint
+
+  unit_plan:
+    needs: [merge, publish]
+    if: needs.merge.outputs.status == 'merged'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      shards: ${{ steps.plan.outputs.shards }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.merge.outputs.head_sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/install-node-dependencies
+      # A non-pull-request event always plans the full suite.
+      - name: Plan unit shards
+        id: plan
+        run: node config/scripts/ci-unit-plan.mjs
+      - uses: actions/upload-artifact@v7
+        continue-on-error: true
+        with:
+          name: fork-sync-unit-selection-${{ github.run_attempt }}
+          path: ci-shards/unit-selection.json
+          retention-days: 14
+
+  # Mirrors unit-tests.yml, which cannot be called here: its checkout pins the triggering SHA.
+  unit_tests:
+    name: unit tests ${{ matrix.shard.index }}/${{ matrix.shard.count }}
+    needs: [merge, unit_plan]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.unit_plan.outputs.shards) }}
+    steps:
+      - name: Checkout sync branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.merge.outputs.head_sha }}
+          persist-credentials: false
+
+      - uses: ./.github/actions/install-node-dependencies
+        with:
+          native-runtime: node
+          cache-electron-package: 'true'
+
+      - name: Install Electron package binary for tests
+        run: node config/scripts/install-electron-package-binary.mjs
+
+      - uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          name: fork-sync-unit-selection-${{ github.run_attempt }}
+          path: ci-shards/
+
+      - name: Test shard
+        env:
+          ORCA_BALANCE_UNIT_SHARDS: '1'
+          ORCA_BACKGROUND_LAUNCH: '1'
+          SHARD: ${{ matrix.shard.index }}/${{ matrix.shard.count }}
+        run: |
+          ORCA_SHARD_SOURCE_SHA="$(git rev-parse HEAD)"
+          export ORCA_SHARD_SOURCE_SHA
+          pnpm exec vitest run --config config/vitest.config.ts --shard="$SHARD"
+
+  relay_integration:
+    needs: [merge, publish]
+    if: needs.merge.outputs.status == 'merged'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout sync branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.merge.outputs.head_sha }}
+          persist-credentials: false
+
+      - uses: ./.github/actions/install-node-dependencies
+        with:
+          native-runtime: node
+          cache-electron-package: 'true'
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            cloud/pnpm-lock.yaml
+
+      - name: Install relay integration dependencies
+        working-directory: cloud
+        run: |
+          npx --yes pnpm@10.24.0 --filter '@orca-cloud/relay...' install --frozen-lockfile --ignore-scripts
+          npx --yes pnpm@10.24.0 --filter '@orca-cloud/relay^...' build
+
+      - name: Test relay integration contracts
+        env:
+          ORCA_BACKGROUND_LAUNCH: '1'
+        run: >-
+          pnpm exec vitest run --config config/vitest.config.ts
+          tests/e2e/relay-region-compatibility.unit.test.ts
+          tests/e2e/relay-region-correction.unit.test.ts
+
+  build:
+    needs: [merge, publish]
+    if: needs.merge.outputs.status == 'merged'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout sync branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.merge.outputs.head_sha }}
+          persist-credentials: false
+
+      - uses: ./.github/actions/install-node-dependencies
+        with:
+          native-runtime: electron
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            mobile/pnpm-lock.yaml
+
+      # The mobile web bundle resolves React Native and Expo from mobile/node_modules.
+      - uses: ./.github/actions/install-mobile-dependencies
+
+      - name: Build release inputs
+        env:
+          ORCA_BACKGROUND_LAUNCH: '1'
+        run: pnpm run build:release:parallel
+
+  finalize:
+    needs: [merge, publish, static_checks, unit_plan, unit_tests, relay_integration, build]
+    if: >-
+      !cancelled() &&
+      needs.merge.result != 'skipped' &&
+      needs.merge.outputs.status != 'up-to-date'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      issues: write
+    env:
+      BRANCH: ${{ needs.merge.outputs.branch }}
+      HEAD_SHA: ${{ needs.merge.outputs.head_sha }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      GH_TOKEN: ${{ github.token }}
+      SYNC_OK: >-
+        ${{ needs.merge.outputs.status == 'merged' &&
+        needs.publish.result == 'success' &&
+        needs.static_checks.result == 'success' &&
+        needs.unit_tests.result == 'success' &&
+        needs.relay_integration.result == 'success' &&
+        needs.build.result == 'success' }}
+    steps:
+      - name: Checkout fork main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+          filter: blob:none
+          token: ${{ secrets.FORK_SYNC_TOKEN || github.token }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: package.json
+          package-manager-cache: false
+
+      - uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          name: fork-sync-report
+          path: ${{ runner.temp }}/fork-sync
+
+      # A plain push is refused unless it is a fast-forward, so main history can only grow.
+      - name: Fast-forward main
+        id: fast_forward
+        if: env.SYNC_OK == 'true' && !inputs.dry_run
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main "refs/heads/$BRANCH:refs/remotes/origin/$BRANCH"
+          test "$(git rev-parse "origin/$BRANCH")" = "$HEAD_SHA"
+          if ! git merge-base --is-ancestor origin/main "$HEAD_SHA"; then
+            echo "reason=main moved to $(git rev-parse --short=12 origin/main) during the sync, so $BRANCH is no longer a fast-forward. Merge main into $BRANCH, rerun the checks, then fast-forward." >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if git push origin "$HEAD_SHA:refs/heads/main"; then
+            echo "pushed=true" >> "$GITHUB_OUTPUT"
+            echo "Fast-forwarded main to $HEAD_SHA" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "reason=The fast-forward push of $HEAD_SHA to main was rejected (branch protection, or a token without the workflow scope)." >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Close the tracking issue
+        if: steps.fast_forward.outputs.pushed == 'true'
+        run: |
+          set -euo pipefail
+          number="$(gh issue list --state open --search "in:title \"$ISSUE_TITLE\"" --json number,title |
+            jq -r --arg title "$ISSUE_TITLE" 'map(select(.title == $title)) | .[0].number // empty')"
+          if [ -n "$number" ]; then
+            gh issue close "$number" --comment "Resolved: main fast-forwarded to $HEAD_SHA by $RUN_URL."
+          fi
+
+      - name: Open or update the tracking issue
+        if: env.SYNC_OK != 'true' || steps.fast_forward.outputs.reason != ''
+        env:
+          SYNC_NEEDS: ${{ toJSON(needs) }}
+          SYNC_FAST_FORWARD: ${{ steps.fast_forward.outputs.reason }}
+        run: |
+          set -euo pipefail
+          node config/scripts/fork-upstream-sync-issue.mjs \
+            --report="$RUNNER_TEMP/fork-sync/report.json" \
+            --run-url="$RUN_URL" > "$RUNNER_TEMP/issue-body.md"
+          number="$(gh issue list --state open --search "in:title \"$ISSUE_TITLE\"" --json number,title |
+            jq -r --arg title "$ISSUE_TITLE" 'map(select(.title == $title)) | .[0].number // empty')"
+          if [ -n "$number" ]; then
+            gh issue edit "$number" --body-file "$RUNNER_TEMP/issue-body.md"
+            gh issue comment "$number" --body "Sync attempt failed again: $RUN_URL (branch \`${BRANCH:-none}\`)."
+          else
+            gh issue create --title "$ISSUE_TITLE" --body-file "$RUNNER_TEMP/issue-body.md"
+          fi
