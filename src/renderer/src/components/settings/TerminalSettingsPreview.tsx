@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
-import { LigaturesAddon } from '@xterm/addon-ligatures'
 import { Moon, Sun } from 'lucide-react'
 import '@xterm/xterm/css/xterm.css'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -13,6 +12,7 @@ import { resolveTerminalFontWeights } from '../../../../shared/terminal-fonts'
 import { resolveTerminalLigaturesEnabled } from '../../../../shared/terminal-ligatures'
 import { normalizeTerminalLineHeight } from '../../../../shared/terminal-line-height-settings'
 import { resolveTerminalFitWideGlyphs } from '@/lib/pane-manager/terminal-wide-glyph-fit'
+import { TerminalLigaturesAddon } from '@/lib/pane-manager/terminal-ligatures-addon'
 import { PREVIEW_BUFFER } from './terminal-preview-content'
 import { SettingsSwitch } from './SettingsFormControls'
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
@@ -61,7 +61,7 @@ export function TerminalSettingsPreview({
 }: TerminalSettingsPreviewProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const terminalRef = useRef<Terminal | null>(null)
-  const ligaturesAddonRef = useRef<LigaturesAddon | null>(null)
+  const ligaturesAddonRef = useRef<TerminalLigaturesAddon | null>(null)
   const skipInitialOptionMutationRef = useRef(false)
   const skipInitialThemeRewriteRef = useRef(false)
 
@@ -243,7 +243,7 @@ export function TerminalSettingsPreview({
     const enabled = resolveTerminalLigaturesEnabled(settings.terminalLigatures, effectiveFontFamily)
     const current = ligaturesAddonRef.current
     if (enabled && !current) {
-      const addon = new LigaturesAddon()
+      const addon = new TerminalLigaturesAddon()
       try {
         terminal.loadAddon(addon)
         ligaturesAddonRef.current = addon
