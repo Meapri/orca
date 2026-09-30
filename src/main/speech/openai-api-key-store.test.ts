@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import type * as Os from 'node:os'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { APP_DISTRIBUTION } from '../../shared/app-distribution'
 
 const safeStorageMock = vi.hoisted(() => ({
   decryptString: vi.fn((value: Buffer) => value.toString('utf8')),
@@ -39,7 +40,7 @@ function mkdtempLike(prefix: string): string {
 }
 
 function writeStoredOpenAiKey(value: string): void {
-  const orcaDir = join(tempHome, '.orca')
+  const orcaDir = join(tempHome, APP_DISTRIBUTION.homeStateDirName)
   mkdirSync(orcaDir, { recursive: true })
   writeFileSync(join(orcaDir, 'openai-speech-token.enc'), value)
 }
@@ -84,7 +85,7 @@ describe('OpenAI speech API key store', () => {
     const store = await loadStoreModule()
 
     expect(store.hasOpenAiSpeechApiKey()).toBe(false)
-    expect(existsSync(join(tempHome, '.orca'))).toBe(false)
+    expect(existsSync(join(tempHome, APP_DISTRIBUTION.homeStateDirName))).toBe(false)
     expect(safeStorageMock.decryptString).not.toHaveBeenCalled()
   })
 })

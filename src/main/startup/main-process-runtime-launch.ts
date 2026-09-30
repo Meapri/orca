@@ -1,5 +1,6 @@
 import { app, powerMonitor, type BrowserWindow } from 'electron'
 import { is } from '@electron-toolkit/utils'
+import { APP_DISTRIBUTION } from '../../shared/app-distribution'
 import { getOrcaCloudAuthConfig } from '../orca-profiles/profile-cloud-auth-config'
 import { getProfileUserDataPath } from '../orca-profiles/profile-storage-paths'
 import {
@@ -75,6 +76,9 @@ function installRuntimeRpc(
   }
   // Why: pin dev to 6769 so `pnpm dev` doesn't race packaged Orca on 6768 and fall back to a random port, breaking deterministic mobile pairing/repro (STA-1511).
   const devWsPort = is.dev && !isE2E ? 6769 : undefined
+  // Why: the desktop app gets its own default so it never races the official Orca's 6768.
+  const desktopWsPort =
+    !is.dev && !isE2E && !serveOptions ? APP_DISTRIBUTION.desktopRuntimeWebSocketPort : undefined
   const runtimeRpc = new OrcaRuntimeRpcServer({
     runtime,
     // Why: mobile pairing needs the stable pre-setName() path (getCanonicalUserDataPath), not a late app.getPath('userData') that drops paired devices across restarts.
@@ -85,6 +89,7 @@ function installRuntimeRpc(
     exposeNetworkByDefault: Boolean(serveOptions) || isE2E,
     ...(isE2E ? { wsPort: e2eWsPort } : {}),
     ...(devWsPort !== undefined ? { wsPort: devWsPort } : {}),
+    ...(desktopWsPort !== undefined ? { wsPort: desktopWsPort } : {}),
     ...(serveOptions?.wsPort !== undefined
       ? {
           wsPort: serveOptions.wsPort,

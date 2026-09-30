@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { APP_DISTRIBUTION } from '../../shared/app-distribution'
 import { setSecretStore } from '../../shared/secret-store'
 import type * as MiniMaxApiKeyStore from './minimax-api-key-store'
 
@@ -38,7 +39,7 @@ vi.mock('../../shared/secure-file', () => ({
   writeSecureFile: writeSecureFileMock
 }))
 
-const storePath = '/home/test/.orca/minimax-api-key.enc'
+const storePath = `/home/test/${APP_DISTRIBUTION.homeStateDirName}/minimax-api-key.enc`
 const envelope = (kind: 'encrypted' | 'plaintext', value: string): string =>
   `orca-minimax-api-key:v1:${kind}:${Buffer.from(value, 'utf8').toString('base64')}`
 
