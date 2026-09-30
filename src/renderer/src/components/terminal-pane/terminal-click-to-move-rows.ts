@@ -9,7 +9,7 @@ import {
 } from './terminal-click-to-move-cursor-plan'
 import { resolveTerminalInputEditCursor } from './terminal-input-edit-cursor'
 
-type RowShape = 'blank' | 'prompt' | 'continuation' | 'other'
+type ComposerRowRole = 'blank' | 'prompt' | 'continuation' | 'other'
 
 // Why: past this the app would have to repaint a row per press; no composer is this tall.
 export const MAX_INPUT_ROWS = 40
@@ -23,12 +23,12 @@ function isBlankChars(chars: string): boolean {
  * prompt glyph, a separator and text on its first row, and blanks the same prefix on every
  * continuation row, hard newline or soft wrap alike.
  */
-function rowShape(
+function composerRowRole(
   buffer: ClickToMoveBuffer,
   row: number,
   textColumn: number,
   cols: number
-): RowShape {
+): ComposerRowRole {
   const line = buffer.getLine(row)
   if (!line || line.isWrapped) {
     return 'other'
@@ -75,19 +75,19 @@ export function resolveTerminalInputRowBlock(input: {
   if (textColumn <= 0 || textColumn >= cols) {
     return null
   }
-  const shape = (row: number): RowShape => rowShape(buffer, row, textColumn, cols)
+  const roleOf = (row: number): ComposerRowRole => composerRowRole(buffer, row, textColumn, cols)
   let top = cursorRow
-  if (shape(cursorRow) === 'continuation') {
-    while (top > 0 && cursorRow - top < MAX_INPUT_ROWS && shape(top - 1) === 'continuation') {
+  if (roleOf(cursorRow) === 'continuation') {
+    while (top > 0 && cursorRow - top < MAX_INPUT_ROWS && roleOf(top - 1) === 'continuation') {
       top -= 1
     }
     top -= 1
   }
-  if (top < 0 || shape(top) !== 'prompt') {
+  if (top < 0 || roleOf(top) !== 'prompt') {
     return null
   }
   let bottom = top
-  while (bottom - top < MAX_INPUT_ROWS && shape(bottom + 1) === 'continuation') {
+  while (bottom - top < MAX_INPUT_ROWS && roleOf(bottom + 1) === 'continuation') {
     bottom += 1
   }
   return cursorRow <= bottom ? { top, bottom } : null
