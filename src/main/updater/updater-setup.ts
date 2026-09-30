@@ -18,6 +18,7 @@ import { createUpdaterDiagnosticLogger } from '../linux-package-install-diagnost
 import { registerAutoUpdaterHandlers } from '../updater-events'
 import { getServeUpdateHandoffFailure } from '../serve-update-handoff'
 import { recordUpdaterLifecycle } from '../updater-lifecycle-diagnostics'
+import { APP_DISTRIBUTION_LATEST_DOWNLOAD_URL } from '../../shared/app-distribution'
 import { AUTO_UPDATE_CHECK_INTERVAL_MS } from './updater-state'
 import { UpdaterDownloadInstall } from './updater-download-install'
 import type { PreQuitCleanupFailureMode, UpdateInstallMode } from './updater-state'
@@ -161,7 +162,7 @@ export class UpdaterSetup extends UpdaterDownloadInstall {
     if (this.activeUpdateSource === 'release') {
       autoUpdater.setFeedURL({
         provider: 'generic',
-        url: 'https://github.com/stablyai/orca/releases/latest/download'
+        url: APP_DISTRIBUTION_LATEST_DOWNLOAD_URL
       })
     }
     if (this.autoUpdaterInitialized) {
