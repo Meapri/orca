@@ -31,6 +31,8 @@ const {
 const { verifySkillsCliRuntime } = require('./scripts/verify-skills-cli-runtime.cjs')
 const { verifyStaticAppImagePackage } = require('./scripts/static-appimage-package-contract.cjs')
 const { signWindowsUninstallerViaSignPath } = require('./scripts/windows-uninstaller-signing.cjs')
+// Why: the fork's name, ids, scheme, and update repo live in one file (see src/shared/app-distribution.ts).
+const appDistribution = require('../src/shared/app-distribution.json')
 
 // Why: dev-channel builds must carry the *release* identity — same bundle id,
 // Developer ID signature, and notarization ticket — or Squirrel.Mac refuses to
@@ -74,7 +76,7 @@ const devChannelRepo = isHourlyChannel
     : isAdhocChannel
       ? 'orca-adhoc'
       : null
-const appId = 'com.stablyai.orca'
+const appId = appDistribution.appId
 const featureWallResources = {
   from: 'resources/onboarding/feature-wall',
   to: 'onboarding/feature-wall'
@@ -172,14 +174,19 @@ const windowsRuntimeResources = existsSync(
 /** @type {import('electron-builder').Configuration} */
 module.exports = {
   appId,
-  productName: 'Orca',
-  protocols: [{ name: 'Orca', schemes: ['orca'] }],
+  productName: appDistribution.productName,
+  // Why not `orca`: pairing links are payloads parsed in-app, and the official Orca owns the OS scheme.
+  protocols: [{ name: appDistribution.productName, schemes: [appDistribution.urlScheme] }],
   toolsets: { appimage: '1.0.3' },
-  ...(devChannelBuildVersion
-    ? { extraMetadata: { version: devChannelBuildVersion } }
-    : localBuildVersion
-      ? { extraMetadata: { version: localBuildVersion } }
-      : {}),
+  // Why `name`: it names the updater cache dir and Electron's pre-ready app name, both shared otherwise.
+  extraMetadata: {
+    name: appDistribution.packageName,
+    ...(devChannelBuildVersion
+      ? { version: devChannelBuildVersion }
+      : localBuildVersion
+        ? { version: localBuildVersion }
+        : {})
+  },
   directories: {
     buildResources: 'resources/build'
   },
@@ -573,6 +580,8 @@ module.exports = {
         to: 'MacOS/orca-keyboard-layout'
       }
     ],
+    // Why explicit: the default zip name embeds productName, whose space GitHub rewrites on upload.
+    artifactName: `${appDistribution.artifactBaseName}-macos-\${arch}.\${ext}`,
     target: [
       {
         target: 'dmg',
@@ -588,7 +597,7 @@ module.exports = {
   // silently downgrading to ad-hoc artifacts that look shippable in CI logs.
   forceCodeSigning: isMacRelease,
   dmg: {
-    artifactName: 'orca-macos-${arch}.${ext}'
+    artifactName: `${appDistribution.artifactBaseName}-macos-\${arch}.\${ext}`
   },
   linux: {
     // Why mimeTypes and not fileAssociations: shared-mime-info already maps *.md/*.markdown to
@@ -686,8 +695,8 @@ module.exports = {
   npmRebuild: true,
   publish: {
     provider: 'github',
-    owner: 'stablyai',
-    repo: devChannelRepo ?? 'orca',
+    owner: devChannelRepo ? 'stablyai' : appDistribution.updateRepository.owner,
+    repo: devChannelRepo ?? appDistribution.updateRepository.repo,
     // Why draft on the main repo: `--publish always` otherwise creates a
     // public GitHub release as soon as the first platform uploads, and
     // /releases/latest serves a missing Windows exe. release-cut undrafts
