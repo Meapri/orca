@@ -7,6 +7,7 @@ import { SettingsSubsectionHeader, SettingsSwitchRow } from './SettingsFormContr
 import { SearchableSetting } from './SearchableSetting'
 import { TerminalClickToMoveCursorSetting } from './TerminalClickToMoveCursorSetting'
 import { TerminalCommandMarksSetting } from './TerminalCommandMarksSetting'
+import { TerminalPixelScrollSetting } from './TerminalPixelScrollSetting'
 import { matchesSettingsSearch } from './settings-search'
 import { getTerminalRightClickToPasteSearchEntry } from './terminal-windows-search'
 import { OSC52_CLIPBOARD_SETTING_ID } from '../terminal-pane/osc52-clipboard-setting-anchor'
@@ -211,6 +212,8 @@ export function TerminalInteractionSection({
             }
           />
         </SearchableSetting>
+
+        <TerminalPixelScrollSetting settings={settings} updateSettings={updateSettings} />
 
         {matchesSettingsSearch(searchQuery, getTerminalRightClickToPasteSearchEntry()) ? (
           <SearchableSetting

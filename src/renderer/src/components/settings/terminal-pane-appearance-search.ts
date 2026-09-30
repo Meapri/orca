@@ -1,5 +1,6 @@
 import { getTerminalClipboardSearchEntries } from './terminal-clipboard-search'
 import { getTerminalCommandMarksSearchEntries } from './terminal-command-marks-search'
+import { getTerminalPixelScrollSearchEntries } from './terminal-pixel-scroll-search'
 import { translate } from '@/i18n/i18n'
 import { translateSearchKeyword } from './settings-search-keywords'
 import { createLocalizedCatalog } from '@/i18n/localized-catalog'
@@ -128,5 +129,6 @@ export const getTerminalPaneInteractionSearchEntries = createLocalizedCatalog(()
   },
   getTerminalClickToMoveCursorSearchEntry(),
   ...getTerminalClipboardSearchEntries(),
-  ...getTerminalCommandMarksSearchEntries()
+  ...getTerminalCommandMarksSearchEntries(),
+  ...getTerminalPixelScrollSearchEntries()
 ])

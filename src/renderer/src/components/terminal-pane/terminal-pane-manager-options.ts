@@ -32,6 +32,7 @@ import type { TerminalPaneManagerOptionsContext } from './terminal-pane-mount-co
 import { resolveTerminalInlineImagesEnabled } from '../../../../shared/terminal-inline-images-settings'
 import { resolveTerminalImePreeditInGrid } from '@/lib/pane-manager/terminal-ime-grid-preedit'
 import { resolveTerminalFitWideGlyphs } from '@/lib/pane-manager/terminal-wide-glyph-fit'
+import { resolveTerminalPixelScroll } from '@/lib/pane-manager/terminal-pixel-scroll'
 
 /** Builds the imperative PaneManager option bag from the mount context. */
 export function createTerminalPaneManagerOptions(
@@ -164,7 +165,8 @@ export function createTerminalPaneManagerOptions(
         imePreeditInGrid: resolveTerminalImePreeditInGrid(
           currentSettings?.terminalImePreeditInGrid
         ),
-        fitWideGlyphs: resolveTerminalFitWideGlyphs(currentSettings?.terminalFitWideGlyphs)
+        fitWideGlyphs: resolveTerminalFitWideGlyphs(currentSettings?.terminalFitWideGlyphs),
+        pixelScroll: resolveTerminalPixelScroll(currentSettings?.terminalPixelScroll)
       }
     },
     terminalTuiScrollSensitivity: () =>
