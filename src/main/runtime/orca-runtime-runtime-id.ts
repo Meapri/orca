@@ -56,9 +56,6 @@ import {
 } from './orca-runtime-postlude'
 import { RuntimeTerminalWait as RuntimeTerminalWaitController } from './runtime-terminal-wait'
 import type { PtyLivenessVerdict } from '../../shared/pty-liveness-verdict'
-import { ClosedTerminalSurfaceLedger } from './closed-terminal-surface-ledger'
-import { createRuntimeHostEditorTabs } from './runtime-host-editor-tabs-wiring'
-import { HEADLESS_RUNTIME_WINDOW_ID } from '../../shared/runtime-types'
 
 export class OrcaRuntimeWithRuntimeId {
   protected readonly runtimeId = randomUUID()
@@ -170,26 +167,6 @@ export class OrcaRuntimeWithRuntimeId {
   >()
 
   protected clientSessionTabSelections = new ClientSessionTabSelectionStore()
-
-  // Why: the host, not any client's restored copy, decides whether a closed tab id may return.
-  // In-memory until the constructor installs the durable file (production hosts only).
-  protected closedTerminalSurfaceLedger = new ClosedTerminalSurfaceLedger(null)
-
-  // Why: editor tabs on a host with no renderer; in-memory until the constructor installs the file.
-  protected hostEditorTabs = this.createHostEditorTabs(null)
-
-  protected createHostEditorTabs(storage) {
-    return createRuntimeHostEditorTabs(storage, {
-      isRetired: (tabId) => this.closedTerminalSurfaceLedger.findRetiredSurface(tabId) !== null,
-      ownsEditorTabs: () =>
-        this.authoritativeWindowId === HEADLESS_RUNTIME_WINDOW_ID && !this.notifier?.openFile,
-      resolveFileTarget: (worktreeId) => this.resolveRuntimeFileTarget(`id:${worktreeId}`),
-      requireStore: () => this.requireStore(),
-      publish: (worktreeId) => this.publishHostEditorTabs(worktreeId),
-      retire: (worktreeId, tabIds) =>
-        this.closedTerminalSurfaceLedger.recordClosedTabs(worktreeId, tabIds)
-    })
-  }
 
   // Why: idempotency map for mobile terminal creation — a retried create with the
   // same clientMutationId returns the in-flight operation instead of duplicating.
