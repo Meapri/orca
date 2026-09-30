@@ -193,7 +193,7 @@ export function parseOrcadWebClientManifest(text: string): OrcadWebClientFile[] 
 }
 
 export function serializeOrcadWebClientManifest(files: readonly OrcadWebClientFile[]): string {
-  const sorted = files.toSorted((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
+  const sorted = [...files].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
   return `${JSON.stringify({ schemaVersion: ORCAD_WEB_CLIENT_MANIFEST_SCHEMA_VERSION, files: sorted }, null, 2)}\n`
 }
 
