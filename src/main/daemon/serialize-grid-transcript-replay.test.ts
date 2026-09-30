@@ -69,7 +69,9 @@ const KNOWN_PREEXISTING_I2_FAILURES: Record<string, number> = {
   'dsh-tui-ready-no-key': 10,
   // Same counts on da6d483ab9's serializer: alt-screen repaints under resize, not IME regressions.
   'claude-code-ime-korean-typed': 2,
-  'grok-ime-korean-typed': 24
+  'grok-ime-korean-typed': 24,
+  // Hermes banner cells restore with an extra bold bit under the jitter schedule.
+  'hermes-tui-ready': 2
 }
 
 // Exact resize checkpoints and full GridDiff hashes from base 6835b9b4e3ea, not this branch.
@@ -207,6 +209,12 @@ describe('serialize round trip over captured PTY transcripts', () => {
         console.log(`${transcript.name} ${JSON.stringify(counts)}`)
       }
       expect(blocking).toEqual([])
+      if (SEEDS === 2 && transcript.name === 'hermes-tui-ready') {
+        expect(failureSignatures).toEqual([
+          'jitter/false/2/34:0db2561506ff28d2e83276b07bc8684541957f61e488b6f8081627e8cad80c63',
+          'jitter/true/2/34:0db2561506ff28d2e83276b07bc8684541957f61e488b6f8081627e8cad80c63'
+        ])
+      }
       if (SEEDS === 2 && transcript.name.startsWith('freebuff-')) {
         expect(failureSignatures).toEqual(FREEBUFF_BASELINE[transcript.name] ?? [])
       } else if (!OLD_ADDON_PATH && SEEDS === 2) {

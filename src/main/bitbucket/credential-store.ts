@@ -9,6 +9,8 @@ import {
 } from '../integration-credential-file'
 import type { BitbucketAuthMode } from '../../shared/bitbucket-credentials'
 import { getAppSecretHomeDir } from '../app-secret-home-dir'
+import { readCredentialFileProtection } from '../credential-file-protection'
+import type { SecretAtRestProtection } from '../../shared/secret-at-rest-protection'
 
 // Why: the secret stays encrypted via safeStorage while this metadata stays
 // plaintext, so status reads render the connected account without decrypting —
@@ -154,6 +156,11 @@ export function loadStoredBitbucketSecret(
     }
     return null
   }
+}
+
+/** How the stored Bitbucket secret sits on disk, or null when none is stored. */
+export function getBitbucketCredentialProtection(): SecretAtRestProtection | null {
+  return readCredentialFileProtection(getSecretPath())
 }
 
 export function saveBitbucketCredential(input: BitbucketCredentialSaveInput): void {
