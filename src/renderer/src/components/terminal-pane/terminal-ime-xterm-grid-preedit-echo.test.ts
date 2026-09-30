@@ -145,6 +145,25 @@ describe('in-grid IME commit held until echo', () => {
     expect(underlinedText(container, 0)).toBe('반')
   })
 
+  it('holds a mark typed right after an already echoed commit, so the next syllable follows it', async () => {
+    const { container, terminal } = openTerminal()
+    await write(terminal, '$ ')
+    terminal.focus()
+    await typed(terminal, '요')
+    await write(terminal, '요')
+    insertText(terminal, '!')
+    insertText(terminal, ' ')
+    compose(terminal, '테')
+    await waitMs(30)
+
+    // Codex echoed 요 before the "! " typed after it (codex-ime-korean-fast-typed).
+    expect(renderedText(container, 0)).toBe('$ 요! 테')
+    await write(terminal, '! ')
+    await waitMs(30)
+    expect(renderedText(container, 0)).toBe('$ 요! 테')
+    expect(underlinedText(container, 0)).toBe('테')
+  })
+
   it('holds nothing extra for typed text when no commit is held', async () => {
     const { container, terminal, sent } = openTerminal()
     await write(terminal, '$ ')

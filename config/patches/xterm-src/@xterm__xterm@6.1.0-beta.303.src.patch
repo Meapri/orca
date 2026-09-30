@@ -243,7 +243,7 @@ index 497afcf535f3eaca00889525a77e15eb633ccd96..7cee04996e9bff6603aec38beb6f93aa
  
  export interface IBrowser {
 diff --git a/src/browser/input/CompositionHelper.ts b/src/browser/input/CompositionHelper.ts
-index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..dc4d598eaad89abc9cce46ce347b6cd54e330780 100644
+index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..43b574113b63eb7532b6040495570824029e7280 100644
 --- a/src/browser/input/CompositionHelper.ts
 +++ b/src/browser/input/CompositionHelper.ts
 @@ -1,10 +1,22 @@
@@ -341,7 +341,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..dc4d598eaad89abc9cce46ce347b6cd5
  
    /**
     * The position within the input textarea's value of the current composition.
-@@ -36,52 +104,233 @@ export class CompositionHelper {
+@@ -36,52 +104,236 @@ export class CompositionHelper {
     */
    private _compositionSuffix: string;
  
@@ -436,6 +436,9 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..dc4d598eaad89abc9cce46ce347b6cd5
 +  private _isForwardingCommit = false;
 +
 +  private _typedDataListener?: { dispose(): void };
++
++  /** When the in-grid path last held a commit, so text typed right after it can be held too. */
++  private _lastGridCommitAt = Number.NEGATIVE_INFINITY;
 +
 +  /** The in-grid preedit the renderers draw, laid out against the live cursor. */
 +  public get imePreedit(): IImePreedit | undefined {
@@ -586,7 +589,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..dc4d598eaad89abc9cce46ce347b6cd5
    }
  
    /**
-@@ -89,22 +338,271 @@ export class CompositionHelper {
+@@ -89,22 +341,279 @@ export class CompositionHelper {
     * @param ev The event.
     */
    public compositionupdate(ev: Pick<CompositionEvent, 'data'>): void {
@@ -754,21 +757,11 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..dc4d598eaad89abc9cce46ce347b6cd5
 +  /** Keeps the committing preedit drawn, without its underline, until the app echoes it. */
 +  private _holdGridEcho(): void {
 +    const preedit = this._gridPreedit;
-+    if (!preedit?.text || !this._unicodeService) {
++    const echo = preedit?.text ? this._ensureGridEcho() : undefined;
++    if (!preedit || !echo) {
 +      return;
 +    }
-+    let echo = this._gridEcho;
-+    if (!echo) {
-+      const buffer = this._bufferService.buffer;
-+      const position = this._inputPosition();
-+      echo = {
-+        x: position?.x ?? buffer.x,
-+        row: buffer.ybase + (position?.y ?? buffer.y),
-+        segments: [],
-+        layout: new CompositionGridPreedit(this._bufferService, this._unicodeService)
-+      };
-+      this._gridEcho = echo;
-+    }
++    this._lastGridCommitAt = Date.now();
 +    echo.segments.push({
 +      transactionId: this._compositionTransactionId,
 +      text: preedit.text,
@@ -777,6 +770,24 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..dc4d598eaad89abc9cce46ce347b6cd5
 +    this._cancelDeferredTimer(echo.timer);
 +    echo.timer = this._defer(() => this._clearGridEcho(), GRID_ECHO_HOLD_MS);
 +    this._syncGridEchoPrefix();
++  }
++
++  /** The hold at the input position, started if none is open. */
++  private _ensureGridEcho(): IGridEcho | undefined {
++    if (!this._unicodeService) {
++      return undefined;
++    }
++    if (!this._gridEcho) {
++      const buffer = this._bufferService.buffer;
++      const position = this._inputPosition();
++      this._gridEcho = {
++        x: position?.x ?? buffer.x,
++        row: buffer.ybase + (position?.y ?? buffer.y),
++        segments: [],
++        layout: new CompositionGridPreedit(this._bufferService, this._unicodeService)
++      };
++    }
++    return this._gridEcho;
 +  }
 +
 +  /** Replaces a held commit's provisional text with what was actually sent, or drops it. */
@@ -867,7 +878,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..dc4d598eaad89abc9cce46ce347b6cd5
    }
  
    /**
-@@ -113,7 +611,19 @@ export class CompositionHelper {
+@@ -113,7 +622,19 @@ export class CompositionHelper {
     * @returns Whether the Terminal should continue processing the keydown event.
     */
    public keydown(ev: KeyboardEvent): boolean {
@@ -888,7 +899,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..dc4d598eaad89abc9cce46ce347b6cd5
        if (ev.keyCode === 20 || ev.keyCode === 229) {
          // 20 is CapsLock, 229 is Enter
          // Continue composing if the keyCode is the "composition character"
-@@ -128,6 +638,10 @@ export class CompositionHelper {
+@@ -128,6 +649,10 @@ export class CompositionHelper {
        this._finalizeComposition(false);
      }
  
@@ -899,7 +910,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..dc4d598eaad89abc9cce46ce347b6cd5
      if (ev.keyCode === 229) {
        // If the "composition character" is used but gets to this point it means a non-composition
        // character (eg. numbers and punctuation) was pressed when the IME was active.
-@@ -135,6 +649,79 @@ export class CompositionHelper {
+@@ -135,6 +660,79 @@ export class CompositionHelper {
        return false;
      }
  
@@ -979,7 +990,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..dc4d598eaad89abc9cce46ce347b6cd5
      return true;
    }
  
-@@ -146,23 +733,55 @@ export class CompositionHelper {
+@@ -146,23 +744,55 @@ export class CompositionHelper {
     *   compositionend event is triggered, such as enter, so that the composition is sent before
     *   the command is executed.
     */
@@ -1046,7 +1057,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..dc4d598eaad89abc9cce46ce347b6cd5
  
        // Since composition* events happen before the changes take place in the textarea on most
        // browsers, use a setTimeout with 0ms time to allow the native compositionend event to
-@@ -172,37 +791,338 @@ export class CompositionHelper {
+@@ -172,37 +802,344 @@ export class CompositionHelper {
        // - The last compositionupdate event's data property does not always accurately describe
        //   the character, a counter example being Korean where an ending consonsant can move to
        //   the following character if the following input is a vowel.
@@ -1269,8 +1280,14 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..dc4d598eaad89abc9cce46ce347b6cd5
 +   * echo arrives. Control input is the app's to repaint and leaves the hold alone.
 +   */
 +  private _holdTypedText(data: string): void {
-+    const echo = this._gridEcho;
-+    if (!echo || this._isForwardingCommit || !data || [...data].some(char => char < ' ' || char === '\x7f')) {
++    if (this._isForwardingCommit || !data || [...data].some(char => char < ' ' || char === '\x7f')) {
++      return;
++    }
++    // The commit before it may already be echoed; a mark typed that soon after still belongs to
++    // the typing, so the syllable after it is laid past it. Unrelated typing is never held.
++    const typingAfterCommit = Date.now() - this._lastGridCommitAt <= GRID_ECHO_HOLD_MS;
++    const echo = this._gridEcho ?? (typingAfterCommit ? this._ensureGridEcho() : undefined);
++    if (!echo) {
 +      return;
 +    }
 +    echo.segments.push({ transactionId: -1, text: data, width: echo.layout.measure(data) });
@@ -1412,7 +1429,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..dc4d598eaad89abc9cce46ce347b6cd5
    /**
     * Apply any changes made to the textarea after the current event chain is allowed to complete.
     * This should be called when not currently composing but a keydown event with the "composition
-@@ -222,6 +1142,9 @@ export class CompositionHelper {
+@@ -222,6 +1159,9 @@ export class CompositionHelper {
  
          const diff = newValue.replace(oldValue, '');
  
@@ -1422,7 +1439,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..dc4d598eaad89abc9cce46ce347b6cd5
          this._dataAlreadySent = diff;
  
          if (newValue.length > oldValue.length) {
-@@ -236,6 +1159,186 @@ export class CompositionHelper {
+@@ -236,6 +1176,186 @@ export class CompositionHelper {
      }, 0);
    }
  
@@ -1609,7 +1626,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..dc4d598eaad89abc9cce46ce347b6cd5
    /**
     * Positions the composition view on top of the cursor and the textarea just below it (so the
     * IME helper dialog is positioned correctly).
-@@ -243,10 +1346,27 @@ export class CompositionHelper {
+@@ -243,10 +1363,27 @@ export class CompositionHelper {
     *   necessary as the IME events across browsers are not consistently triggered.
     */
    public updateCompositionElements(dontRecurse?: boolean): void {
@@ -1638,7 +1655,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..dc4d598eaad89abc9cce46ce347b6cd5
      if (this._bufferService.buffer.isCursorInViewport) {
        const cursorX = Math.min(this._bufferService.buffer.x, this._bufferService.cols - 1);
  
-@@ -254,31 +1374,371 @@ export class CompositionHelper {
+@@ -254,31 +1391,371 @@ export class CompositionHelper {
        const cursorTop = this._bufferService.buffer.y * this._renderService.dimensions.css.cell.height;
        const cursorLeft = cursorX * this._renderService.dimensions.css.cell.width;
  
