@@ -71,6 +71,8 @@ export class OrcaRuntimeWithOnPtyExit extends OrcaRuntimeWithOnClientDisconnecte
       `runtime:${this.runtimeId}:${this.getPtyLifecycleGeneration(ptyId)}`
     this.advancePtyLifecycleGeneration(ptyId)
     let retirement: Promise<void> | undefined
+    // Why outside the try: the headless resume observer below reads the surfaces this exit ended.
+    let exactSurfaces: Pick<RetiredTerminalSurface, 'worktreeId' | 'parentTabId' | 'leafId'>[] = []
     try {
       const exactSurfaceByKey = new Map<
         string,
@@ -105,7 +107,7 @@ export class OrcaRuntimeWithOnPtyExit extends OrcaRuntimeWithOnClientDisconnecte
           leafId: parsedPaneKey.leafId
         })
       }
-      const exactSurfaces = [...exactSurfaceByKey.values()]
+      exactSurfaces = [...exactSurfaceByKey.values()]
       const pendingIncarnation = this.pendingPtyRegistrationIncarnations.get(ptyId)
       const exitMatchesPendingRegistration =
         this.pendingPtyRegistrationIncarnations.has(ptyId) &&
