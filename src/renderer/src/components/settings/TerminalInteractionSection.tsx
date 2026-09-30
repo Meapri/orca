@@ -5,7 +5,10 @@ import { Label } from '../ui/label'
 import { ScrollSpeedSlider } from './TerminalScrollSpeedSlider'
 import { SettingsSubsectionHeader, SettingsSwitchRow } from './SettingsFormControls'
 import { SearchableSetting } from './SearchableSetting'
-import { TerminalClickToMoveCursorSetting } from './TerminalClickToMoveCursorSetting'
+import {
+  TerminalClickToMoveCursorSetting,
+  TerminalInputSelectionEditingSetting
+} from './TerminalClickToMoveCursorSetting'
 import { TerminalCommandMarksSetting } from './TerminalCommandMarksSetting'
 import { matchesSettingsSearch } from './settings-search'
 import { getTerminalRightClickToPasteSearchEntry } from './terminal-windows-search'
@@ -267,6 +270,8 @@ export function TerminalInteractionSection({
         </SearchableSetting>
 
         <TerminalClickToMoveCursorSetting settings={settings} updateSettings={updateSettings} />
+
+        <TerminalInputSelectionEditingSetting settings={settings} updateSettings={updateSettings} />
 
         <SearchableSetting
           title={translate('auto.components.settings.TerminalPane.902f5dee1f', 'Copy on Select')}

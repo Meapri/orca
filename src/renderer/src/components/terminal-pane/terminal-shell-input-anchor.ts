@@ -39,11 +39,20 @@ function clearAnchor(state: AnchorState): void {
   state.anchor = null
 }
 
-function setAnchor(terminal: ShellInputAnchorTerminal, state: AnchorState, exact: boolean): void {
-  const marker = terminal.registerMarker(0)
+type AnchorPosition = { x: number; y: number }
+
+function setAnchor(
+  terminal: ShellInputAnchorTerminal,
+  state: AnchorState,
+  exact: boolean,
+  position?: AnchorPosition
+): void {
+  const buffer = terminal.buffer.active
+  const cursorRow = buffer.baseY + buffer.cursorY
+  const marker = terminal.registerMarker(position ? position.y - cursorRow : 0)
   clearAnchor(state)
   if (marker) {
-    state.anchor = { marker, x: terminal.buffer.active.cursorX, exact }
+    state.anchor = { marker, x: position ? position.x : buffer.cursorX, exact }
   }
 }
 
@@ -75,28 +84,34 @@ export function observeTerminalShellIntegrationMark(
 /**
  * Called on each user keystroke before the program echoes it: the cursor then sits inside the
  * editable span, so the leftmost such position on a logical line bounds where input starts.
+ * `position` (absolute buffer cells) replaces the cursor when an app draws its own caret.
  */
-export function observeTerminalUserInputPosition(terminal: ShellInputAnchorTerminal): void {
+export function observeTerminalUserInputPosition(
+  terminal: ShellInputAnchorTerminal,
+  position?: AnchorPosition | null
+): void {
   const buffer = terminal.buffer.active
-  if (buffer.type !== 'normal' || buffer.cursorX >= terminal.cols) {
+  if (position === null) {
+    return
+  }
+  const x = position ? position.x : buffer.cursorX
+  const row = position ? position.y : buffer.baseY + buffer.cursorY
+  if (buffer.type !== 'normal' || x >= terminal.cols) {
     return
   }
   const state = stateFor(terminal)
-  const cursorRow = buffer.baseY + buffer.cursorY
   const anchor = state.anchor
   if (
     !anchor ||
     anchor.marker.isDisposed ||
-    logicalLineStartRow(buffer, anchor.marker.line) !== logicalLineStartRow(buffer, cursorRow)
+    logicalLineStartRow(buffer, anchor.marker.line) !== logicalLineStartRow(buffer, row)
   ) {
-    setAnchor(terminal, state, false)
+    setAnchor(terminal, state, false, position)
     return
   }
-  const isLeftOfAnchor =
-    cursorRow < anchor.marker.line ||
-    (cursorRow === anchor.marker.line && buffer.cursorX < anchor.x)
+  const isLeftOfAnchor = row < anchor.marker.line || (row === anchor.marker.line && x < anchor.x)
   if (!anchor.exact && isLeftOfAnchor) {
-    setAnchor(terminal, state, false)
+    setAnchor(terminal, state, false, position)
   }
 }
 

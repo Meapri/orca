@@ -18066,8 +18066,12 @@
         "clickToMoveOff": "オフ",
         "clickToMoveShellPrompt": "プロンプトで",
         "clickToMoveInputLine": "すべての入力行",
+        "inputSelectionEditing": "入力行をテキストフィールドのように編集",
+        "inputSelectionEditingDescription": "入力中の行で選択したテキストを、入力・Backspace・Delete・貼り付けで置き換えます。Shift+矢印キーで選択を広げ、取り消しで置き換えを元に戻します。マウスを自分で扱うアプリは独自の編集を使います。",
         "search": {
           "click": "クリック",
+          "selection": "選択",
+          "undo": "取り消し",
           "cursor": "カーソル",
           "caret": "キャレット"
         }

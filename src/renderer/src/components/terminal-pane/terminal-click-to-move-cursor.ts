@@ -10,6 +10,10 @@ import {
 } from './terminal-shell-input-anchor'
 import { getTerminalBufferPositionForMouseEvent } from './terminal-mouse-buffer-position'
 import { hasPendingTerminalImeComposition } from './terminal-ime-composition-route'
+import {
+  resolveTerminalInputEditCursor,
+  resolveTerminalInputLearningCursor
+} from './terminal-input-edit-cursor'
 
 export type TerminalClickToMoveCursorMode = 'shell-prompt' | 'input-line' | 'off'
 
@@ -34,6 +38,7 @@ export type ClickToMoveEligibilityInput = {
   phase: TerminalShellPromptPhase
   bufferType: 'normal' | 'alternate'
   mouseTrackingMode: string
+  /** The cursor is shown, or Orca adopted the caret the app draws while hiding it. */
   showCursor: boolean
   hadSelection: boolean
   hasSelection: boolean
@@ -46,7 +51,7 @@ export function isTerminalClickToMoveEligible(input: ClickToMoveEligibilityInput
   if (input.mode === 'off' || input.bufferType !== 'normal') {
     return false
   }
-  // Why: a mouse-reporting app owns clicks; a hidden cursor means the app draws its own caret.
+  // Why: a mouse-reporting app owns clicks; a hidden, unadopted cursor says nothing about input.
   if (input.mouseTrackingMode !== 'none' || !input.showCursor) {
     return false
   }
@@ -130,20 +135,21 @@ export function installTerminalClickToMoveCursor(
     }
     const buffer = terminal.buffer.active
     const anchor = getTerminalShellInputAnchor(terminal)
+    const cursor = resolveTerminalInputEditCursor(terminal)
     const eligible = isTerminalClickToMoveEligible({
       mode: options.getMode(),
       explicit: click.explicit,
       phase: anchor.phase,
       bufferType: buffer.type,
       mouseTrackingMode: terminal.modes.mouseTrackingMode,
-      showCursor: terminal.modes.showCursor,
+      showCursor: cursor !== null,
       hadSelection: click.hadSelection,
       hasSelection: terminal.hasSelection(),
       wasFocused: click.wasFocused,
       linkHovered: element.classList.contains('xterm-cursor-pointer'),
       composing: hasPendingTerminalImeComposition(element)
     })
-    if (!eligible) {
+    if (!eligible || !cursor) {
       return
     }
     const position = getTerminalBufferPositionForMouseEvent(terminal, event)
@@ -153,7 +159,7 @@ export function installTerminalClickToMoveCursor(
     const count = planTerminalClickToMoveArrows({
       buffer,
       cols: terminal.cols,
-      cursor: { x: buffer.cursorX, y: buffer.baseY + buffer.cursorY },
+      cursor,
       target: { x: position.x - 1, y: position.y - 1 },
       inputStart: anchor.inputStart,
       allowLineStartFallback: click.explicit
@@ -169,7 +175,8 @@ export function installTerminalClickToMoveCursor(
     }
   }
 
-  const onUserInput = (): void => observeTerminalUserInputPosition(terminal)
+  const onUserInput = (): void =>
+    observeTerminalUserInputPosition(terminal, resolveTerminalInputLearningCursor(terminal))
 
   element.addEventListener('mousedown', onMouseDown, true)
   element.addEventListener('mouseup', onMouseUp)

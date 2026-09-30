@@ -15191,8 +15191,12 @@
         "clickToMoveOff": "Desactivado",
         "clickToMoveShellPrompt": "En prompts",
         "clickToMoveInputLine": "Cualquier línea de entrada",
+        "inputSelectionEditing": "Editar la entrada como un campo de texto",
+        "inputSelectionEditingDescription": "Escribir, Retroceso, Suprimir o pegar reemplaza el texto seleccionado en la línea que estás escribiendo; Mayús+flecha amplía la selección y Deshacer revierte el reemplazo. Las apps que gestionan el ratón conservan su propia edición.",
         "search": {
           "click": "clic",
+          "selection": "selección",
+          "undo": "deshacer",
           "cursor": "cursor",
           "caret": "cursor de texto"
         }
