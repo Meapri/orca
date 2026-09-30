@@ -1,8 +1,8 @@
 import { getSecretStore } from '../../shared/secret-store'
 import { existsSync, readFileSync, rmSync } from 'node:fs'
-import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { hardenExistingSecureFile, writeSecureFile } from '../../shared/secure-file'
+import { getAppSecretHomeDir } from '../app-secret-home-dir'
 
 const MINIMAX_API_KEY_FILE = 'minimax-api-key.enc'
 const API_KEY_ENVELOPE_PREFIX = 'orca-minimax-api-key:v1:'
@@ -15,7 +15,7 @@ type MiniMaxApiKeyEnvelope = {
 }
 
 function getOrcaDir(): string {
-  return join(homedir(), '.orca')
+  return getAppSecretHomeDir()
 }
 
 function getMiniMaxApiKeyPath(): string {

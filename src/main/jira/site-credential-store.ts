@@ -1,5 +1,4 @@
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
-import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { getSecretStore } from '../../shared/secret-store'
 import {
@@ -8,6 +7,7 @@ import {
   readStoredCredentialToken
 } from '../integration-credential-file'
 import type { JiraSite, JiraSiteSelection } from '../../shared/jira-types'
+import { getAppSecretHomeDir } from '../app-secret-home-dir'
 
 export type JiraSiteFile = {
   version: 1
@@ -24,7 +24,7 @@ const cachedTokens = new Map<string, string>()
 export const credentialErrors = new Map<string, string>()
 
 function getOrcaDir(): string {
-  return join(homedir(), '.orca')
+  return getAppSecretHomeDir()
 }
 
 function getSiteFilePath(): string {

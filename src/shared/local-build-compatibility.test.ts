@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   getLocalBuildCompatibilityError,
+  ORCA_APP_ID,
   parseLocalBuildCompatibility,
   type LocalBuildCompatibility
 } from './local-build-compatibility'
@@ -8,7 +9,7 @@ import {
 function target(overrides: Partial<LocalBuildCompatibility> = {}): LocalBuildCompatibility {
   return {
     formatVersion: 1,
-    appId: 'com.stablyai.orca',
+    appId: ORCA_APP_ID,
     buildId: '1.2.3-abc-arm64',
     version: '1.2.3-local.1.abc',
     commit: 'abc',

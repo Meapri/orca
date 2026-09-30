@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { APP_DISTRIBUTION } from '../../../../shared/app-distribution'
 import { parseSkillShareId } from './skill-share-link'
 
 describe('parseSkillShareId', () => {
@@ -7,6 +8,13 @@ describe('parseSkillShareId', () => {
     expect(parseSkillShareId('https://app.orca.dev/skills/share/share_123')).toBe('share_123')
     expect(parseSkillShareId('https://share.onorca.dev/skills/share/share_123/')).toBe('share_123')
     expect(parseSkillShareId('orca://skills/share/share_123')).toBe('share_123')
+  })
+
+  it("accepts this distribution's own OS deep-link scheme", () => {
+    expect(parseSkillShareId(`${APP_DISTRIBUTION.urlScheme}://skills/share/share_123`)).toBe(
+      'share_123'
+    )
+    expect(parseSkillShareId('orca-other://skills/share/share_123')).toBeNull()
   })
 
   it('rejects attacker origins and lookalike paths', () => {

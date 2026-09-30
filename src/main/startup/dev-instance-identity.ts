@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import path from 'node:path'
+import { APP_DISTRIBUTION } from '../../shared/app-distribution'
 import type { AppIdentity } from '../../shared/app-identity'
 
 const BASE_APP_NAME = 'Orca'
@@ -66,16 +67,17 @@ export function getDevInstanceIdentity(
   env: NodeJS.ProcessEnv = process.env
 ): DevInstanceIdentity {
   if (!isDev) {
+    // Why dev keeps BASE_*: its Keychain key and hook namespace must survive this fork's rename.
     return {
-      name: BASE_APP_NAME,
-      appName: BASE_APP_NAME,
+      name: APP_DISTRIBUTION.productName,
+      appName: APP_DISTRIBUTION.productName,
       isDev: false,
       devLabel: null,
       devBranch: null,
       devWorktreeName: null,
       devRepoRoot: null,
       dockBadgeLabel: null,
-      appUserModelId: BASE_APP_USER_MODEL_ID
+      appUserModelId: APP_DISTRIBUTION.appId
     }
   }
 

@@ -6,8 +6,9 @@ const workflow = parse(readFileSync('.github/workflows/orcad-release.yml', 'utf8
 const { build, publish } = workflow.jobs
 
 describe('orcad release workflow', () => {
-  it('publishes only for pushed orcad-v* tags or an explicit dispatch', () => {
-    expect(Object.keys(workflow.on).sort()).toEqual(['push', 'workflow_dispatch'])
+  it('publishes only for pushed orcad-v* tags, an explicit dispatch, or a release caller', () => {
+    expect(Object.keys(workflow.on).sort()).toEqual(['push', 'workflow_call', 'workflow_dispatch'])
+    expect(workflow.on.workflow_call.inputs.tag).toMatchObject({ required: true, type: 'string' })
     expect(workflow.on.push).toEqual({ tags: ['orcad-v*'] })
     expect(workflow.on.push.branches).toBeUndefined()
   })

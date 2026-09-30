@@ -18,6 +18,7 @@ import {
   targetIsOwnedFallbackCopy
 } from './codex-managed-home-resource-copy-marker'
 import { observe, observeResolvedPathEntry } from './codex-path-observation'
+import { APP_DISTRIBUTION } from '../../shared/app-distribution'
 
 const CODEX_GLOBAL_INSTRUCTIONS_ENTRY = 'AGENTS.md'
 
@@ -66,12 +67,18 @@ export function getOrcaUserDataPath(): string {
   // Why: CLI hook commands import this module outside Electron. Mirror the CLI
   // runtime metadata path so offline hook status/on/off uses the same userData.
   if (process.platform === 'darwin') {
-    return join(homedir(), 'Library', 'Application Support', 'orca')
+    return join(homedir(), 'Library', 'Application Support', APP_DISTRIBUTION.packageName)
   }
   if (process.platform === 'win32') {
-    return join(process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming'), 'orca')
+    return join(
+      process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming'),
+      APP_DISTRIBUTION.packageName
+    )
   }
-  return join(process.env.XDG_CONFIG_HOME || join(homedir(), '.config'), 'orca')
+  return join(
+    process.env.XDG_CONFIG_HOME || join(homedir(), '.config'),
+    APP_DISTRIBUTION.packageName
+  )
 }
 
 // Why: each managed home (the shared runtime mirror, or a per-account

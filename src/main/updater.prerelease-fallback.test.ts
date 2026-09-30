@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { APP_DISTRIBUTION_RELEASES_URL } from '../shared/app-distribution'
 import { loadUpdaterModule, warmUpdaterModule } from './updater-test-module-loader'
 
 const { appMock, autoUpdaterMock, fetchNewerReleaseTagsMock, moduleFactories, resetUpdaterMocks } =
@@ -57,11 +58,11 @@ describe('updater', () => {
       expect(autoUpdaterMock.checkForUpdates).toHaveBeenCalledTimes(2)
       expect(autoUpdaterMock.setFeedURL).toHaveBeenCalledWith({
         provider: 'generic',
-        url: 'https://github.com/stablyai/orca/releases/download/v1.3.51-rc.7'
+        url: `${APP_DISTRIBUTION_RELEASES_URL}/download/v1.3.51-rc.7`
       })
       expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
         provider: 'generic',
-        url: 'https://github.com/stablyai/orca/releases/download/v1.3.51-rc.6'
+        url: `${APP_DISTRIBUTION_RELEASES_URL}/download/v1.3.51-rc.6`
       })
     })
 
@@ -687,7 +688,7 @@ describe('updater', () => {
     })
     expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
       provider: 'generic',
-      url: 'https://github.com/stablyai/orca/releases/download/v1.3.18'
+      url: `${APP_DISTRIBUTION_RELEASES_URL}/download/v1.3.18`
     })
   })
 
@@ -713,7 +714,7 @@ describe('updater', () => {
     expect(autoUpdaterMock.allowPrerelease).toBe(true)
     expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
       provider: 'generic',
-      url: 'https://github.com/stablyai/orca/releases/download/v1.3.18-rc.1'
+      url: `${APP_DISTRIBUTION_RELEASES_URL}/download/v1.3.18-rc.1`
     })
   })
 })

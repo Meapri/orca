@@ -15,6 +15,13 @@ on:
         description: Existing orcad-v* tag to build and (re)publish
         required: true
         type: string
+  # Why: distribution-release.yml builds orcad for the same version in the same run.
+  workflow_call:
+    inputs:
+      tag:
+        description: Existing orcad-v* tag to build and (re)publish
+        required: true
+        type: string
 
 permissions:
   contents: read

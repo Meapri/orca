@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import type * as Os from 'node:os'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { APP_DISTRIBUTION } from '../../shared/app-distribution'
 
 type ViewerFixture = {
   displayName: string
@@ -26,7 +27,7 @@ function writeLegacyLinearFiles(token: string, viewer: Record<string, unknown>):
 }
 
 function writeLegacyLinearToken(token: string | Buffer, viewer: Record<string, unknown>): void {
-  const orcaDir = join(tempHome, '.orca')
+  const orcaDir = join(tempHome, APP_DISTRIBUTION.homeStateDirName)
   mkdirSync(orcaDir, { recursive: true })
   writeFileSync(join(orcaDir, 'linear-token.enc'), token)
   writeFileSync(join(orcaDir, 'linear-viewer.json'), JSON.stringify(viewer), {
@@ -37,7 +38,7 @@ function writeLegacyLinearToken(token: string | Buffer, viewer: Record<string, u
 function workspaceTokenPath(workspaceId: string): string {
   return join(
     tempHome,
-    '.orca',
+    APP_DISTRIBUTION.homeStateDirName,
     'linear-tokens',
     `${Buffer.from(workspaceId).toString('base64url')}.enc`
   )
@@ -47,7 +48,7 @@ function writeMultiWorkspaceFiles(
   workspaces: { id: string; token: string | Buffer }[],
   selectedWorkspaceId: string
 ): void {
-  const orcaDir = join(tempHome, '.orca')
+  const orcaDir = join(tempHome, APP_DISTRIBUTION.homeStateDirName)
   mkdirSync(join(orcaDir, 'linear-tokens'), { recursive: true })
   writeFileSync(
     join(orcaDir, 'linear-workspaces.json'),
@@ -212,10 +213,15 @@ describe('Linear client workspace storage', () => {
       workspaces: [{ id: 'org-alpha', organizationName: 'Alpha' }]
     })
     expect(status.workspaces?.some((workspace) => workspace.id === 'legacy')).toBe(false)
-    expect(existsSync(join(tempHome, '.orca', 'linear-token.enc'))).toBe(false)
-    expect(readFileSync(join(tempHome, '.orca', 'linear-workspaces.json'), 'utf-8')).toContain(
-      'org-alpha'
+    expect(existsSync(join(tempHome, APP_DISTRIBUTION.homeStateDirName, 'linear-token.enc'))).toBe(
+      false
     )
+    expect(
+      readFileSync(
+        join(tempHome, APP_DISTRIBUTION.homeStateDirName, 'linear-workspaces.json'),
+        'utf-8'
+      )
+    ).toContain('org-alpha')
   })
 
   it('preserves plaintext legacy token fallback when safeStorage cannot decrypt it', async () => {
@@ -240,7 +246,7 @@ describe('Linear client workspace storage', () => {
   })
 
   it('does not pass encrypted safeStorage bytes to the Linear SDK when encryption is unavailable', async () => {
-    const tokenPath = join(tempHome, '.orca', 'linear-token.enc')
+    const tokenPath = join(tempHome, APP_DISTRIBUTION.homeStateDirName, 'linear-token.enc')
     writeLegacyLinearToken(Buffer.from([0x76, 0x31, 0x30, 0xff, 0xfe]), {
       displayName: 'Ada',
       email: 'ada@example.com',
@@ -265,7 +271,7 @@ describe('Linear client workspace storage', () => {
   })
 
   it('does not clear the Linear token when safeStorage decryption fails', async () => {
-    const tokenPath = join(tempHome, '.orca', 'linear-token.enc')
+    const tokenPath = join(tempHome, APP_DISTRIBUTION.homeStateDirName, 'linear-token.enc')
     writeLegacyLinearToken(Buffer.from([0x76, 0x31, 0x30, 0xff, 0xfe]), {
       displayName: 'Ada',
       email: 'ada@example.com',
