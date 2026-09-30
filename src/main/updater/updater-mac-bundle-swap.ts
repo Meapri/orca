@@ -69,7 +69,7 @@ export abstract class UpdaterMacBundleSwap extends UpdaterPackageRecovery {
       const zipPath = await downloadMacBundleSwapAsset({
         asset,
         destinationDir: join(workDir, 'download'),
-        fetch: (url, init) => net.fetch(url, init),
+        request: (url, init) => net.fetch(url, init),
         onProgress: (fraction) => {
           // Why cap at 99: 100% while 'downloading' arms the Squirrel quit guard (updater-mac-install).
           const percent = Math.min(99, Math.floor(fraction * 100))

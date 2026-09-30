@@ -15,7 +15,7 @@ export type MacBundleSwapFetch = (
 export async function downloadMacBundleSwapAsset(options: {
   asset: MacBundleSwapAsset
   destinationDir: string
-  fetch: MacBundleSwapFetch
+  request: MacBundleSwapFetch
   onProgress?: (fraction: number) => void
   signal?: AbortSignal
 }): Promise<string> {
@@ -25,7 +25,7 @@ export async function downloadMacBundleSwapAsset(options: {
   const partialPath = `${finalPath}.partial`
   await rm(partialPath, { force: true })
 
-  const response = await options.fetch(asset.url, { signal: options.signal })
+  const response = await options.request(asset.url, { signal: options.signal })
   if (!response.ok || !response.body) {
     throw new Error(`Update download failed with HTTP ${response.status}`)
   }

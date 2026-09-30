@@ -38,7 +38,7 @@ describe('downloadMacBundleSwapAsset', () => {
     const zipPath = await downloadMacBundleSwapAsset({
       asset: asset(),
       destinationDir: tempRoot,
-      fetch: fetchReturning(PAYLOAD),
+      request: fetchReturning(PAYLOAD),
       onProgress: (fraction) => progress.push(fraction)
     })
     expect(readFileSync(zipPath).equals(PAYLOAD)).toBe(true)
@@ -52,7 +52,7 @@ describe('downloadMacBundleSwapAsset', () => {
       downloadMacBundleSwapAsset({
         asset: asset(),
         destinationDir: tempRoot,
-        fetch: fetchReturning(tampered)
+        request: fetchReturning(tampered)
       })
     ).rejects.toThrow(/checksum/)
     expect(readdirSync(tempRoot)).toEqual([])
@@ -64,7 +64,7 @@ describe('downloadMacBundleSwapAsset', () => {
       downloadMacBundleSwapAsset({
         asset: asset(PAYLOAD_SHA512, PAYLOAD.length + 1),
         destinationDir: tempRoot,
-        fetch: fetchReturning(PAYLOAD)
+        request: fetchReturning(PAYLOAD)
       })
     ).rejects.toThrow(/size/)
     expect(existsSync(join(tempRoot, 'orca-next-macos-arm64.zip'))).toBe(false)
@@ -76,7 +76,7 @@ describe('downloadMacBundleSwapAsset', () => {
       downloadMacBundleSwapAsset({
         asset: asset(),
         destinationDir: tempRoot,
-        fetch: vi.fn(async () => new Response(null, { status: 404 }))
+        request: vi.fn(async () => new Response(null, { status: 404 }))
       })
     ).rejects.toThrow(/HTTP 404/)
   })

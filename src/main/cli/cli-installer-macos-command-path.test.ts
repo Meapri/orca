@@ -42,7 +42,7 @@ describe('CliInstaller', () => {
       const resourcesPath = await createPackagedMacLauncher(fixture.root)
       // Simulate arm64: point defaultMacCommandPath at a dir that does not exist
       // in the fixture so existsSync(dirname(...)) returns false.
-      const absentUsrLocalBin = join(fixture.root, 'usr', 'local', 'bin', 'orca')
+      const absentUsrLocalBin = join(fixture.root, 'usr', 'local', 'bin', PACKAGED_MAC_COMMAND_NAME)
       const installer = new CliInstaller({
         platform: 'darwin',
         isPackaged: true,
@@ -470,7 +470,7 @@ describe('CliInstaller', () => {
       const fixture = await makeFixture()
       const homePath = join(fixture.root, 'home')
       const resourcesPath = await createPackagedMacLauncher(fixture.root)
-      const absentUsrLocalBin = join(fixture.root, 'usr', 'local', 'bin', 'orca')
+      const absentUsrLocalBin = join(fixture.root, 'usr', 'local', 'bin', PACKAGED_MAC_COMMAND_NAME)
       const installer = new CliInstaller({
         platform: 'darwin',
         isPackaged: true,
@@ -496,7 +496,7 @@ describe('CliInstaller', () => {
       const fixture = await makeFixture()
       const homePath = join(fixture.root, 'home')
       const resourcesPath = await createPackagedMacLauncher(fixture.root)
-      const absentUsrLocalBin = join(fixture.root, 'usr', 'local', 'bin', 'orca')
+      const absentUsrLocalBin = join(fixture.root, 'usr', 'local', 'bin', PACKAGED_MAC_COMMAND_NAME)
       const installer = new CliInstaller({
         platform: 'darwin',
         isPackaged: true,
@@ -526,7 +526,7 @@ describe('CliInstaller', () => {
     async () => {
       const fixture = await makeFixture()
       const homePath = join(fixture.root, 'home')
-      const absentUsrLocalBin = join(fixture.root, 'usr', 'local', 'bin', 'orca')
+      const absentUsrLocalBin = join(fixture.root, 'usr', 'local', 'bin', PACKAGED_MAC_COMMAND_NAME)
       const resourcesPath = join(fixture.root, 'resources')
       const bundledLauncher = join(resourcesPath, 'bin', 'orca')
       await mkdir(join(resourcesPath, 'bin'), { recursive: true })
