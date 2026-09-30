@@ -18,3 +18,15 @@ export const TERMINAL_PIXEL_SCROLL_SETTLE_MS = 120 + 90
 export function resolveTerminalPixelScroll(setting: boolean | undefined): boolean {
   return setting ?? DEFAULT_TERMINAL_PIXEL_SCROLL
 }
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+/** CSS pixels the patched renderer currently draws every row above its cell; 0 without an offset. */
+export function getTerminalPixelScrollCssOffset(terminal: object): number {
+  const core: unknown = '_core' in terminal ? terminal._core : undefined
+  const renderService: unknown = isRecord(core) ? core._renderService : undefined
+  const offset = isRecord(renderService) ? renderService.pixelScrollOffset : undefined
+  return typeof offset === 'number' && Number.isFinite(offset) && offset > 0 ? offset : 0
+}
