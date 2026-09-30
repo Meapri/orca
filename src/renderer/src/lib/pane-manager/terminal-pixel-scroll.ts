@@ -23,8 +23,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
+/** Any xterm Terminal; the offset itself lives on the private `_core` the patch extends. */
+type PixelScrollTerminal = { readonly rows: number }
+
 /** CSS pixels the patched renderer currently draws every row above its cell; 0 without an offset. */
-export function getTerminalPixelScrollCssOffset(terminal: object): number {
+export function getTerminalPixelScrollCssOffset(terminal: PixelScrollTerminal): number {
   const core: unknown = '_core' in terminal ? terminal._core : undefined
   const renderService: unknown = isRecord(core) ? core._renderService : undefined
   const offset = isRecord(renderService) ? renderService.pixelScrollOffset : undefined
