@@ -86,6 +86,16 @@ const KNOWN_PREEXISTING_I2_FAILURES: Record<string, number> = {
   // regression, by replaying it against the previous build
   // (`build-serialize-addon-at-ref.mjs --ref origin/main`): I1 and I3 both hold.
   'dsh-tui-ready-no-key': 10,
+  // Same counts on da6d483ab9's serializer: alt-screen repaints under resize, not IME regressions.
+  'claude-code-ime-korean-typed': 2,
+  'grok-ime-korean-typed': 24,
+  // Input-editing and fast-typed IME captures: visible-grid/cursor diffs on the unchanged serializer.
+  'claude-code-ime-korean-fast-typed': 12,
+  'claude-code-input-edit-keys': 10,
+  'claude-code-input-edit-mouse': 4,
+  'codex-ime-korean-fast-typed': 6,
+  'codex-inline-input-edit-wrap': 2,
+  'codex-input-edit-mouse': 8,
   // Hermes banner cells restore with an extra bold bit under the jitter schedule.
   'hermes-tui-ready': 2,
   // STA-8741 agy/Cline/Prime captures, serializer untouched: the same true-colour background

@@ -76,7 +76,7 @@ function isImeOwnedKey(event: TerminalOptionShortcutEvent): boolean {
   )
 }
 
-function kittyEncodesModifiedTextKeys(flags: number): boolean {
+export function kittyEncodesModifiedTextKeys(flags: number): boolean {
   return (
     kittyReportsAllKeysAsEscapeCodes(flags) ||
     (flags & (KITTY_DISAMBIGUATE_ESCAPE_CODES | KITTY_REPORT_EVENT_TYPES)) !== 0

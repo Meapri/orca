@@ -11,7 +11,15 @@ export function getOrcaElectronLaunchArgs(mainPath: string, headful: boolean): s
   const keychainArgs = getElectronIsolatedKeychainArgs()
   if (process.platform === 'darwin') {
     // Crash tests must not block later launches on AppKit's saved-window recovery dialog.
-    return [...keychainArgs, appPath, '-ApplePersistenceIgnoreState', 'YES']
+    // Specs match English copy, so a non-English host locale must not localize the app.
+    return [
+      ...keychainArgs,
+      appPath,
+      '-ApplePersistenceIgnoreState',
+      'YES',
+      '-AppleLanguages',
+      '(en-US)'
+    ]
   }
   if (headful && process.platform === 'linux' && process.env.CI) {
     // Hosted runners have no GPU; SwiftShader keeps WebGL assertions from silently skipping.
