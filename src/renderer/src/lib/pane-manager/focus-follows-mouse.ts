@@ -12,6 +12,8 @@ export type FocusFollowsMouseInput = {
   mouseButtons: number // MouseEvent.buttons bitmask
   windowHasFocus: boolean // document.hasFocus()
   managerDestroyed: boolean
+  /** The active pane has an IME composition open. */
+  activePaneComposing?: boolean
 }
 
 /** Returns true iff the hovered pane should be activated. */
@@ -39,6 +41,11 @@ export function shouldFollowMouseFocus(input: FocusFollowsMouseInput): boolean {
   // separate WebContents) — accepted. Users close DevTools or click to
   // resume normal behavior.
   if (!input.windowHasFocus) {
+    return false
+  }
+  // Why: moving focus ends the composition, committing half a syllable to one pane and sending
+  // the rest to the hovered one.
+  if (input.activePaneComposing) {
     return false
   }
   return true
