@@ -35,7 +35,9 @@ export const VALUE_TAKING_FLAGS = new Set([
   '--user-data-dir',
   '--proxy-server',
   '--environment',
-  '--pairing-code'
+  '--pairing-code',
+  // Why: `serve --data-root <root> status` must still read as the admin subcommand.
+  '--data-root'
 ])
 
 // Why: a CLI-form `serve` is not a serve launch when help was asked for. The AppImage redirect
@@ -44,6 +46,16 @@ export const VALUE_TAKING_FLAGS = new Set([
 // Scoped to the subcommand form on purpose: `--serve` is the CLI's own contract and never carries
 // `--help`, so widening this would risk the one path that already works.
 const HELP_FLAGS = new Set(['--help', '-h', 'help'])
+
+// Why: `serve status|doctor|pairing|devices|relay …` administers a running runtime; treating it as a serve
+// launch would start a second server against the same profile instead of reaching the CLI.
+const SERVE_ADMINISTRATION_SUBCOMMANDS = new Set([
+  'status',
+  'doctor',
+  'pairing',
+  'devices',
+  'relay'
+])
 
 function isFlagToken(token: string | undefined): boolean {
   return Boolean(token && token.startsWith('-'))
@@ -98,11 +110,27 @@ export function findServeSubcommandIndex(argv: readonly string[]): number {
       return -1
     }
     if (!isFlagToken(token)) {
-      return token === 'serve' ? i : -1
+      return token === 'serve' && !namesServeAdministration(argv, i) ? i : -1
     }
     i = indexAfterToken(argv, i)
   }
   return -1
+}
+
+/** True when the first positional after the `serve` token at `serveIndex` is an admin subcommand. */
+export function namesServeAdministration(argv: readonly string[], serveIndex: number): boolean {
+  let i = serveIndex + 1
+  while (i < argv.length) {
+    const token = argv[i]!
+    if (token === '--') {
+      return false
+    }
+    if (!isFlagToken(token)) {
+      return SERVE_ADMINISTRATION_SUBCOMMANDS.has(token)
+    }
+    i = indexAfterToken(argv, i)
+  }
+  return false
 }
 
 /** True when argv already has `--serve` or a bare `serve` CLI subcommand. */
