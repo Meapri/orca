@@ -8,7 +8,7 @@
 // ad-hoc deep sign) derives the correct code identifier automatically —
 // macOS keys notification records to that identifier.
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
@@ -28,7 +28,11 @@ if (process.platform !== 'darwin') {
 }
 
 const args = process.argv.slice(2)
-const bundleId = readArg('--bundle-id') ?? 'com.stablyai.orca'
+// Why the distribution id: notification records are keyed to it, so another app id reads that app's settings.
+const { appId } = JSON.parse(
+  readFileSync(path.join(repoRoot, 'src', 'shared', 'app-distribution.json'), 'utf8')
+)
+const bundleId = readArg('--bundle-id') ?? appId
 const outputPath = readArg('--output') ?? defaultOutputPath
 // Why: dev launches only need the host architecture; release builds ship a
 // universal binary matching the app's x64 + arm64 targets.

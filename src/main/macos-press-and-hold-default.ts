@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { APP_DISTRIBUTION } from '../shared/app-distribution'
 import { runProcessSync, type ProcessResult } from '../shared/child-process/run-process'
 import { writeFileAtomically } from './codex-accounts/fs-utils'
 
@@ -42,7 +43,8 @@ const DEFAULTS_TIMEOUT_MS = 5_000
 /** Why: `defaults` exits 1 for "does not exist"; anything else means the probe itself failed. */
 const DEFAULTS_MISSING_STATUS = 1
 
-const ORCA_BUNDLE_ID = 'com.stablyai.orca'
+// Why both: packaged builds carry the distribution id; dev wrapper bundles keep com.stablyai.orca.dev.*.
+const ORCA_BUNDLE_IDS = [APP_DISTRIBUTION.appId, 'com.stablyai.orca']
 
 export type PressAndHoldDecision =
   /** Not macOS — nothing is read or written. */
@@ -83,7 +85,7 @@ export type PressAndHoldHost = {
 /** Only Orca's own bundle: an unpackaged run is `com.github.Electron`, shared with every other
  *  unpackaged Electron app on the machine. */
 export function isOrcaPreferencesDomain(domain: string): boolean {
-  return domain === ORCA_BUNDLE_ID || domain.startsWith(`${ORCA_BUNDLE_ID}.`)
+  return ORCA_BUNDLE_IDS.some((id) => domain === id || domain.startsWith(`${id}.`))
 }
 
 /** `<bundle>/Contents/MacOS/<exe>` → `<bundle>/Contents/Info.plist`. */
