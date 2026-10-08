@@ -3,6 +3,7 @@ import type { RpcAnyMethodDeclaration } from '../rpc/core'
 import type { DeviceRegistry } from '../device-registry'
 import type { E2EEKeypair } from '../e2ee-keypair'
 import type { MobileSocketTransportMetadata } from '../rpc/mobile-socket-wiring'
+import type { WebSocketProbeRequestHandler } from '../rpc/ws-transport-http-server'
 import type { PairingRelay } from '../../../shared/mobile-relay-pairing-offer'
 import type { MobilePairingConnectionMode } from '../../../shared/mobile-pairing-connection-mode'
 import type { MobileRelayMintFailure } from '../../../shared/mobile-relay-mint-failure'
@@ -13,8 +14,9 @@ import type {
   PairingProvisionRelayParams
 } from '../../../shared/mobile-relay-credential-contract'
 import type { RelayDeviceBinding, RelayRevokeOutboxItem } from '../relay/relay-revoke-outbox'
+import { RUNTIME_DEFAULT_WS_PORT } from '../../../shared/runtime-default-ws-port'
 
-export const DEFAULT_WS_PORT = 6768
+export const DEFAULT_WS_PORT = RUNTIME_DEFAULT_WS_PORT
 
 // Why: STA-2370 — the WS listener defaults to loopback so a desktop with no paired device is not
 // reachable from the LAN; it widens to all interfaces only on explicit pairing (or `orca serve`).
@@ -36,6 +38,10 @@ export type OrcaRuntimeRpcServerOptions = {
   wsPort?: number
   // Why: true when the caller pinned a port (`orca serve --port`) so bind order prefers it over a stale STA-1511 fallback (#8535).
   preferPinnedWsPort?: boolean
+  // Why: orcad `--port` fails closed — start() rejects rather than serving on another port or socket-only.
+  requirePinnedWsPort?: boolean
+  // Why: unauthenticated supervisor probes (orcad /healthz, /readyz) share the WS listener.
+  httpProbeHandler?: WebSocketProbeRequestHandler
   // Why: STA-2370 — bind the WS listener to all interfaces at startup instead of loopback-until-paired.
   // Only `orca serve` (explicit remote opt-in) and E2E set this; the desktop app widens lazily on pairing.
   exposeNetworkByDefault?: boolean
@@ -50,6 +56,8 @@ export type OrcaRuntimeRpcServerOptions = {
    */
   pinnedBindHost?: string
   webClientRoot?: string
+  // Why: an unattended host keeps an NDJSON audit of pairing and auth; unset (desktop) records nothing.
+  securityLogPath?: string
   // Why: test-only overrides for the two constants below; production must not pass these (defaults set by §3.1).
   keepaliveIntervalMs?: number
   longPollCap?: number
@@ -57,6 +65,8 @@ export type OrcaRuntimeRpcServerOptions = {
   metadataOwnershipPollMs?: number
   // Why: tests may inject inert protocol stages before production authorization registers them.
   methods?: readonly RpcAnyMethodDeclaration[]
+  // Why: a host (orcad) adds its own methods to the shared registry without replacing it.
+  extraMethods?: readonly RpcAnyMethodDeclaration[]
 }
 
 export type PairingOfferUnavailableReason =
@@ -66,6 +76,8 @@ export type PairingOfferUnavailableReason =
   | 'invalid_advertised_endpoint'
   | 'relay_mint_failed'
   | 'network_exposure_failed'
+  | 'relay_unavailable'
+  | 'relay_scope_unsupported'
 
 export type PairingOfferUnavailable = {
   available: false
@@ -83,6 +95,8 @@ export type MobilePairingOfferAvailable = {
   webClientUrl: string | null
   /** Mode the offer actually encodes. */
   connectionMode: MobilePairingConnectionMode
+  /** Only standalone offers minted with a lifetime carry one. */
+  offerExpiresAt?: number | null
 }
 
 export type MobilePairingOffer = PairingOfferUnavailable | MobilePairingOfferAvailable
