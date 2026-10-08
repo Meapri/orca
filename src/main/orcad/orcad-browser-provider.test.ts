@@ -228,6 +228,35 @@ describe('resolveOrcadBrowserProvider', () => {
     expect(runtimeBrowserUnavailableCause()).toEqual({ reason: 'unconfigured' })
   })
 
+  it('--browser electron never falls back to Chromium', async () => {
+    await expect(
+      resolveOrcadBrowserProvider({
+        userDataPath: root,
+        mode: 'electron',
+        environment: { ORCA_BROWSER_EXECUTABLE: '/usr/bin/chromium' },
+        resolveInstalledElectronExecutable: async () => null,
+        resolveAgentBrowserBinary: () => '/agent-browser'
+      })
+    ).resolves.toBeNull()
+    expect(runtimeBrowserUnavailableCause()).toEqual({ reason: 'electron_not_installed' })
+  })
+
+  it('--browser chromium skips the installed Electron app', async () => {
+    const resolveInstalledElectronExecutable = vi.fn(async () => '/opt/Orca/orca-ide')
+    await expect(
+      resolveOrcadBrowserProvider({
+        userDataPath: root,
+        mode: 'chromium',
+        environment: {},
+        resolveInstalledElectronExecutable,
+        resolveAgentBrowserBinary: () => '/agent-browser'
+      })
+    ).resolves.toBeNull()
+    expect(resolveInstalledElectronExecutable).not.toHaveBeenCalled()
+    expect(spawnProcessMock).not.toHaveBeenCalled()
+    expect(runtimeBrowserUnavailableCause()).toEqual({ reason: 'unconfigured' })
+  })
+
   it('reports a missing driver rather than falling through as unconfigured', async () => {
     const executable = join(root, 'chromium')
     await writeFile(executable, '')

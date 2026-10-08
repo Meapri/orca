@@ -40,6 +40,11 @@ export const BROWSER_UNAVAILABLE_ERROR_CODE = 'browser_unavailable' as const
 const BROWSER_UNAVAILABLE_MESSAGES: Record<RuntimeBrowserUnavailableReason, string> = {
   unconfigured:
     'Browser automation has no backend on this host. Install the Orca desktop app, or set ORCA_BROWSER_EXECUTABLE to a Chromium executable.',
+  disabled:
+    'Browser automation is turned off on this host (--browser none or ORCA_BROWSER_PROVIDER=none).',
+  starting: 'The browser provider is still starting; browser commands wait for it.',
+  electron_not_installed:
+    'The Electron browser provider was requested, but no installed Orca desktop app was found on this host.',
   driver_missing:
     'ORCA_BROWSER_EXECUTABLE is set, but the bundled agent-browser driver is missing or not executable on this host, so Chromium cannot be driven.',
   executable_not_found: 'ORCA_BROWSER_EXECUTABLE points at a path that does not exist.',

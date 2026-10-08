@@ -22,7 +22,12 @@ const BASE = {
   sessionName: 'orca-orcad-0123456789abcdef'
 }
 
-type Spec = { args?: readonly string[]; env?: NodeJS.ProcessEnv; signal?: AbortSignal }
+type Spec = {
+  program?: string
+  args?: readonly string[]
+  env?: NodeJS.ProcessEnv
+  signal?: AbortSignal
+}
 
 function commands(): string[][] {
   return runProcessMock.mock.calls.map((call) => [...((call[0] as Spec).args ?? [])])
@@ -69,7 +74,12 @@ describe('orcad external-chromium agent-browser environment', () => {
         '/state'
       )
       await expect(session.start(controller.signal)).rejects.toMatchObject({ name: 'AbortError' })
-      const specs = runProcessMock.mock.calls.map(([spec]) => spec)
+      // Only the driver's own calls: the orphan reaper's `ps` scans are not startup steps.
+      const driverSpecs = (): Spec[] =>
+        runProcessMock.mock.calls
+          .map(([spec]) => spec)
+          .filter((spec) => spec.program === '/opt/orca/agent-browser')
+      const specs = driverSpecs()
       const issued = specs.map((spec) =>
         spec.args?.find((arg) => ['tab', 'close', 'open'].includes(arg))
       )
@@ -80,8 +90,8 @@ describe('orcad external-chromium agent-browser environment', () => {
         expect(spec.signal).toBe(spec.args?.includes('close') ? undefined : controller.signal)
       }
       await session.stop()
-      expect(runProcessMock.mock.lastCall?.[0]).toMatchObject({ signal: undefined })
-      expect(commands().at(-1)).toContain('close')
+      expect(driverSpecs().at(-1)).toMatchObject({ signal: undefined })
+      expect(driverSpecs().at(-1)?.args).toContain('close')
     }
   )
 
@@ -179,5 +189,29 @@ describe('orcad external-chromium agent-browser environment', () => {
     const issued = commands().map((args) => args.filter((arg) => !arg.startsWith('-')))
     expect(issued.some((args) => args.includes('close'))).toBe(true)
     expect(issued.some((args) => args.includes('open'))).toBe(true)
+  })
+
+  // Why: a killed driver cannot `close`, and its re-parented Chromium would otherwise keep the
+  // profile locked so every relaunch hands off to a browser nothing drives.
+  it('reaps the profile tree after a close the dead driver could not perform', async () => {
+    runProcessMock.mockResolvedValue({
+      code: 1,
+      signal: null,
+      stdout: '',
+      stderr: 'daemon not running',
+      timedOut: false
+    })
+    const reap = vi.fn(async () => ({ signalled: [4242], killed: [] }))
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const session = new ExternalChromiumBrowserSession(
+      '/opt/orca/agent-browser',
+      { executablePath: BASE.executablePath, provider: 'chromium' },
+      '/state',
+      reap
+    )
+    await session.stop()
+
+    expect(commands().some((args) => args.includes('close'))).toBe(true)
+    expect(reap).toHaveBeenCalledWith(expect.stringContaining('browser-chromium'))
   })
 })
