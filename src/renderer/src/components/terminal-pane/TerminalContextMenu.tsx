@@ -35,6 +35,8 @@ import { isMacPlatform, nativeChatToggleShortcutLabel } from '../native-chat/nat
 import { AgentSessionContinuationMenuItem } from './AgentSessionContinuationMenuItem'
 import type { TerminalQuickCommandMenuHost } from '@/hooks/use-terminal-quick-command-hosts'
 import { TerminalQuickCommandsSubmenu } from './TerminalQuickCommandsSubmenu'
+import { TerminalMarksMenuItems } from './TerminalMarksMenuItems'
+import type { Terminal } from '@xterm/xterm'
 
 type TerminalContextMenuProps = {
   open: boolean
@@ -45,6 +47,7 @@ type TerminalContextMenuProps = {
   canExpandPane: boolean
   menuPaneIsExpanded: boolean
   onCopy: () => void
+  onCopyRaw: () => void
   onSelectAll: () => void
   onPaste: () => void
   onSplitRight: () => void
@@ -78,6 +81,7 @@ type TerminalContextMenuProps = {
   onCopyPaneId: () => void
   canCopyAgentSessionId: boolean
   onCopyAgentSessionId: () => void
+  getMenuTerminal: () => Terminal | null
 }
 
 export default function TerminalContextMenu(props: TerminalContextMenuProps): React.JSX.Element {
@@ -137,6 +141,7 @@ function TerminalContextMenuItems({
   canExpandPane,
   menuPaneIsExpanded,
   onCopy,
+  onCopyRaw,
   onSelectAll,
   onPaste,
   onSplitRight,
@@ -167,7 +172,8 @@ function TerminalContextMenuItems({
   onCopyTerminalId,
   onCopyPaneId,
   canCopyAgentSessionId,
-  onCopyAgentSessionId
+  onCopyAgentSessionId,
+  getMenuTerminal
 }: TerminalContextMenuProps): React.JSX.Element {
   // Why: one primary binding prevents Windows/Linux shortcut labels from forcing row wraps.
   const shortcuts = useMemo(
@@ -196,6 +202,10 @@ function TerminalContextMenuItems({
         {translate('auto.components.terminal.pane.TerminalContextMenu.f3eeb1de13', 'Copy')}
         <DropdownMenuShortcut>{shortcuts.copy}</DropdownMenuShortcut>
       </DropdownMenuItem>
+      <DropdownMenuItem onSelect={onCopyRaw}>
+        <Copy />
+        {translate('components.terminalPane.TerminalContextMenu.copyRaw', 'Copy Raw')}
+      </DropdownMenuItem>
       <DropdownMenuItem onSelect={onSelectAll}>
         <TextSelect />
         {translate('auto.components.terminal.pane.TerminalContextMenu.selectAll', 'Select All')}
@@ -215,6 +225,7 @@ function TerminalContextMenuItems({
         onClose={() => onOpenChange(false)}
         onAdd={onAddQuickCommand}
       />
+      <TerminalMarksMenuItems getTerminal={getMenuTerminal} keybindings={keybindings} />
       {canContinueAgentSessionInNewSession ? (
         <AgentSessionContinuationMenuItem onSelect={onContinueAgentSessionInNewSession} />
       ) : null}
