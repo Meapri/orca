@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { APP_DISTRIBUTION } from '../shared/app-distribution'
 import type { ProcessResult } from '../shared/child-process/run-process'
 import {
   ensureMacPressAndHoldDefault,
@@ -141,6 +142,7 @@ describe('ensureMacPressAndHoldDefault', () => {
     })
 
     it('accepts Orca and its channel-scoped bundles, and nothing else', () => {
+      expect(isOrcaPreferencesDomain(APP_DISTRIBUTION.appId)).toBe(true)
       expect(isOrcaPreferencesDomain('com.stablyai.orca')).toBe(true)
       expect(isOrcaPreferencesDomain('com.stablyai.orca.dev')).toBe(true)
       expect(isOrcaPreferencesDomain('com.github.Electron')).toBe(false)

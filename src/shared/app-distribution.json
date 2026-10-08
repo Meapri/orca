@@ -1,0 +1,12 @@
+{
+  "productName": "Orca Next",
+  "packageName": "orca-next",
+  "appId": "com.meapri.orca-next",
+  "urlScheme": "orca-next",
+  "cliCommandName": "orca-next",
+  "artifactBaseName": "orca-next",
+  "homeStateDirName": ".orca-next",
+  "desktopRuntimeWebSocketPort": 6770,
+  "updateRepository": { "owner": "Meapri", "repo": "orca" },
+  "devChannelsEnabled": false
+}

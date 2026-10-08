@@ -4110,7 +4110,17 @@ private func isTrustedOrcaApplication(_ pid: pid_t) -> Bool {
     // Orca-owned bundle ids; the sidecar peer check must still authorize them.
     return bundleId == "com.stablyai.orca" ||
         bundleId.hasPrefix("com.stablyai.orca.dev.") ||
-        bundleId == "com.github.Electron"
+        bundleId == "com.github.Electron" ||
+        bundleId == owningAppBundleId()
+}
+
+// Why: a renamed distribution ships this helper as "<app id>.computer-use", so trust that app too.
+private func owningAppBundleId() -> String? {
+    let suffix = ".computer-use"
+    guard let ownId = Bundle.main.bundleIdentifier, ownId.hasSuffix(suffix) else {
+        return nil
+    }
+    return String(ownId.dropLast(suffix.count))
 }
 
 private func parentProcessId(_ pid: pid_t) -> pid_t? {

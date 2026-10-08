@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { chmodSync, copyFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 const repoRoot = path.resolve(import.meta.dirname, '../..')
@@ -14,7 +14,12 @@ const entitlementsPath = path.join(
   'build',
   'entitlements.computer-use.mac.plist'
 )
-const bundleId = process.env.ORCA_COMPUTER_MACOS_BUNDLE_ID ?? 'com.stablyai.orca.computer-use'
+const appDistribution = JSON.parse(
+  readFileSync(path.join(repoRoot, 'src', 'shared', 'app-distribution.json'), 'utf8')
+)
+// Why derived: the helper's TCC grants and its parent trust check key off the app's own bundle id.
+const bundleId =
+  process.env.ORCA_COMPUTER_MACOS_BUNDLE_ID ?? `${appDistribution.appId}.computer-use`
 const displayName = 'Orca Computer Use'
 const signingIdentity = resolveSigningIdentity()
 const universalTriples = ['arm64-apple-macosx', 'x86_64-apple-macosx']

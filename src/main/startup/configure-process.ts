@@ -3,6 +3,7 @@ import { quitProcess } from './process-quit-request'
 import { mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { APP_DISTRIBUTION } from '../../shared/app-distribution'
 import { getVersionManagerBinPaths } from '../codex-cli/command'
 import { getMainE2EConfig } from '../e2e-config'
 import { DISABLED_CHROMIUM_FEATURES } from './disabled-chromium-features'
@@ -211,6 +212,9 @@ export function configureDevUserDataPath(isDev: boolean): void {
   }
 
   if (!isDev) {
+    // Why pin: Electron derives userData from the app name, and the post-ready setName to the
+    // product name would otherwise move late getPath('userData') callers to a second directory.
+    app.setPath('userData', join(app.getPath('appData'), APP_DISTRIBUTION.packageName))
     return
   }
   const overrideUserDataPath = process.env.ORCA_DEV_USER_DATA_PATH
