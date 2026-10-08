@@ -70,6 +70,8 @@ export function createTerminalPaneClosedHandler(
     paneLastThemeModeRef.current.delete(paneId)
     disposeMapEntry(refs.osc52DisposablesRef.current, paneId)
     disposeMapEntry(refs.osc7DisposablesRef.current, paneId)
+    disposeMapEntry(refs.commandMarksDisposablesRef.current, paneId)
+    disposeMapEntry(refs.oscNotificationDisposablesRef.current, paneId)
     paneCwdRef.current.delete(paneId)
     disposeMapEntry(refs.mouseHideDisposablesRef.current, paneId)
 

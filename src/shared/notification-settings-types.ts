@@ -56,6 +56,8 @@ export type NotificationDispatchRequest = {
   agentLastAssistantMessage?: string
   /** The verdict on the turn this notification reports, which picks its wording. */
   agentTurnOutcome?: AgentTurnOutcome
+  /** Text a program asked for via OSC 9 / OSC 777 (terminal-bell source only); untrusted. */
+  terminalNotification?: { title: string | null; body: string }
   /**
    * Which lane raised this, so the click handler knows how to reveal the subject. Absent means the
    * terminal lane, which is every sender that predates structured chat.
