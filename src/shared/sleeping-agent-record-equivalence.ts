@@ -1,9 +1,6 @@
-import type {
-  SleepingAgentSessionRecord,
-  SleepingAgentLaunchConfig
-} from '../../../../shared/agent-session-resume'
-import { agentProviderSessionsEqual } from '../../../../shared/agent-session-resume'
-import { agentMainAgentVerdict } from '../../../../shared/agent-main-agent-verdict'
+import type { SleepingAgentSessionRecord, SleepingAgentLaunchConfig } from './agent-session-resume'
+import { agentProviderSessionsEqual } from './agent-session-resume'
+import { agentMainAgentVerdict } from './agent-main-agent-verdict'
 
 export function launchConfigsEqual(
   a: SleepingAgentLaunchConfig | undefined,

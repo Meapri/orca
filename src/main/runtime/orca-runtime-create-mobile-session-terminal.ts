@@ -7,8 +7,22 @@ import type { RuntimeNavigationTarget } from '../../shared/runtime-navigation'
 import type { RuntimeMobileSessionCreateTerminalResult } from '../../shared/runtime-types'
 import { navigationTargetsHost } from '../../shared/runtime-navigation'
 import { MOBILE_TERMINAL_CREATE_RESULT_TTL_MS } from './orca-runtime-core'
+import { assertTerminalSurfaceNotRetired } from './closed-terminal-surface-recording'
 
 export class OrcaRuntimeWithCreateMobileSessionTerminal extends OrcaRuntimeWithCreateTerminal {
+  // Why before any create path: a client restoring a stale copy hints the ids it remembers; a
+  // closed id must not come back.
+  override async createTerminal(
+    ...args: Parameters<OrcaRuntimeWithCreateTerminal['createTerminal']>
+  ): ReturnType<OrcaRuntimeWithCreateTerminal['createTerminal']> {
+    assertTerminalSurfaceNotRetired(
+      this.closedTerminalSurfaceLedger,
+      args[1]?.tabId,
+      args[1]?.leafId
+    )
+    return super.createTerminal(...args)
+  }
+
   async createMobileSessionTerminal(
     worktreeSelector: string,
     opts: {

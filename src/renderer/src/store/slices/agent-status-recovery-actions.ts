@@ -9,7 +9,7 @@ import {
 import {
   recoveryRecordTargetsSameSession,
   sleepingRecordsEquivalentIgnoringCaptureTime
-} from './agent-status-recovery-equivalence'
+} from '../../../../shared/sleeping-agent-record-equivalence'
 import { getLaunchConfigForEntry } from './agent-status-launch-config'
 import { findAgentPaneWorktreeId } from './agent-status-pane-key-tab-binding'
 import { isCompletedPiCompatibleAgentWithLiveRecoveryRecord } from '@/lib/live-resume-anchor-record'

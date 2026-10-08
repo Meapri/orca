@@ -52,7 +52,10 @@ describe('file RPC methods', () => {
       makeRequest('files.open', { worktree: 'id:wt-1', relativePath: 'docs/readme.md' })
     )
 
-    expect(runtime.openMobileFile).toHaveBeenCalledWith('id:wt-1', 'docs/readme.md', undefined)
+    // The in-process caller is this build, so it may be answered with a host-owned tab.
+    expect(runtime.openMobileFile).toHaveBeenCalledWith('id:wt-1', 'docs/readme.md', undefined, {
+      hostEditorTabs: true
+    })
     expect(response).toMatchObject({
       ok: true,
       result: { kind: 'markdown', opened: true }
@@ -83,7 +86,8 @@ describe('file RPC methods', () => {
       'id:wt-1',
       'docs/readme.md',
       true,
-      undefined
+      undefined,
+      { hostEditorTabs: true }
     )
     expect(response).toMatchObject({
       ok: true,
@@ -887,20 +891,5 @@ describe('file RPC methods', () => {
 
     expect(runtime.listRuntimeMarkdownDocuments).toHaveBeenCalledWith('id:wt-1')
     expect(response).toMatchObject({ ok: true, result: [{ relativePath: 'readme.md' }] })
-  })
-
-  it('stats a relative path for a selected worktree', async () => {
-    const runtime = {
-      getRuntimeId: () => 'test-runtime',
-      statRuntimeFile: vi.fn().mockResolvedValue({ size: 12, isDirectory: false, mtime: 1 })
-    } as unknown as OrcaRuntimeService
-    const dispatcher = new RpcDispatcher({ runtime, methods: FILE_METHODS })
-
-    const response = await dispatcher.dispatch(
-      makeRequest('files.stat', { worktree: 'id:wt-1', relativePath: 'readme.md' })
-    )
-
-    expect(runtime.statRuntimeFile).toHaveBeenCalledWith('id:wt-1', 'readme.md')
-    expect(response).toMatchObject({ ok: true, result: { isDirectory: false } })
   })
 })

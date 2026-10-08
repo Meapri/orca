@@ -13,11 +13,14 @@ import {
   WORKTREE_BACKGROUND_REMOVAL_RUNTIME_CAPABILITY
 } from './protocol-version'
 import { AGENT_SESSION_OPTIONAL_MODEL_CLIENT_CAPABILITY } from './agent-session-optional-model-capability'
+import { SESSION_TABS_HOST_EDITOR_TABS_RUNTIME_CAPABILITY } from './host-owned-surface-capabilities'
 
 // Electron clients can decode client-hosted page placement; becoming a page
 // host still requires the separate authenticated browser-client lease.
 export const ELECTRON_REMOTE_RUNTIME_CLIENT_CAPABILITIES = [
   ...NATIVE_REMOTE_RUNTIME_CLIENT_CAPABILITIES,
+  // A renderer-less host may answer files.open with its own tab, which the renderer lists like any tab.
+  SESSION_TABS_HOST_EDITOR_TABS_RUNTIME_CAPABILITY,
   AGENT_SESSION_PENDING_SEND_RESULT_RUNTIME_CAPABILITY,
   AGENT_SESSION_ACCEPTED_SEND_RUNTIME_CAPABILITY,
   // The renderer that reads a paired host's structured chats is the one that reads its own.
