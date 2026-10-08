@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const netFetchMock = vi.hoisted(() => vi.fn())
-vi.mock('electron', () => ({ net: { fetch: netFetchMock } }))
+vi.mock('../network/http-client', () => ({
+  getMainHttpClient: () => ({
+    fetch: netFetchMock,
+    proxySession: () => null,
+    partitionSession: () => null
+  })
+}))
 vi.mock('./grok-auth', () => ({
   readGrokAuthSession: () => {
     throw new Error('Tests must supply synthetic auth')

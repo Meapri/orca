@@ -1,4 +1,5 @@
-import { net, session, type Session } from 'electron'
+import type { Session } from 'electron'
+import { getMainHttpClient } from '../../network/http-client'
 import type { MiniMaxEndpoint } from '../../../shared/global-settings-types'
 
 const MINIMAX_USAGE_PATH = '/v1/api/openplatform/coding_plan/remains'
@@ -137,6 +138,17 @@ export function makeMiniMaxRequestHeaders(
   return headers
 }
 
+// Why a thrown refusal: a Node host has no Chromium cookie jar, and only the API-key transport works there.
+function requireMiniMaxSession(): Session {
+  const miniMaxSession = getMainHttpClient().partitionSession(MINIMAX_SESSION_PARTITION)
+  if (!miniMaxSession) {
+    throw new Error(
+      'MiniMax cookie sign-in needs the desktop app on this host; add an API key instead'
+    )
+  }
+  return miniMaxSession
+}
+
 async function clearMiniMaxSessionCookieJarForSession(
   miniMaxSession: Session,
   origin: string
@@ -148,7 +160,10 @@ export async function clearMiniMaxSessionCookieJar(): Promise<void> {
   // Why: clear cookies under both origins so a user who switches endpoint
   // (overseas -> CN or vice versa) does not leave stale cookies that the
   // next request might pick up against the wrong host.
-  const miniMaxSession = session.fromPartition(MINIMAX_SESSION_PARTITION)
+  const miniMaxSession = getMainHttpClient().partitionSession(MINIMAX_SESSION_PARTITION)
+  if (!miniMaxSession) {
+    return
+  }
   await Promise.all([
     clearMiniMaxSessionCookieJarForSession(miniMaxSession, getMiniMaxOrigin('overseas')),
     clearMiniMaxSessionCookieJarForSession(miniMaxSession, getMiniMaxOrigin('cn'))
@@ -162,7 +177,7 @@ export async function fetchMiniMaxWithSessionCookieJar(args: {
   endpointMode: MiniMaxEndpoint
   signal: AbortSignal
 }): Promise<MiniMaxFetchResponse> {
-  const miniMaxSession = session.fromPartition(MINIMAX_SESSION_PARTITION)
+  const miniMaxSession = requireMiniMaxSession()
   const cookiePairs = parseCookiePairs(args.cookie)
   const origin = getMiniMaxOrigin(args.endpointMode)
   try {
@@ -203,7 +218,7 @@ export async function fetchMiniMaxWithManualCookieHeader(args: {
   endpointMode: MiniMaxEndpoint
   signal: AbortSignal
 }): Promise<MiniMaxFetchResponse> {
-  const miniMaxSession = session.fromPartition(MINIMAX_SESSION_PARTITION)
+  const miniMaxSession = requireMiniMaxSession()
   const origin = getMiniMaxOrigin(args.endpointMode)
   try {
     await clearMiniMaxSessionCookieJarForSession(miniMaxSession, origin)
@@ -233,13 +248,13 @@ export async function fetchMiniMaxWithApiKey(args: {
   endpoint: string
   signal: AbortSignal
 }): Promise<MiniMaxFetchResponse> {
-  // Why: net.fetch routes through Electron's URL stack, matching the cookie
+  // Why the HTTP port: on the desktop it is Electron's URL stack, matching the cookie
   // transport's surface area and avoiding Node's TLS quirks for CN routing.
   const headers: Record<string, string> = {
     Authorization: `Bearer ${args.apiKey}`,
     Accept: 'application/json'
   }
-  const response = await net.fetch(args.endpoint, {
+  const response = await getMainHttpClient().fetch(args.endpoint, {
     method: 'GET',
     headers,
     signal: args.signal

@@ -7,8 +7,12 @@ const resolveProxyMock = vi.hoisted(() => vi.fn())
 const setProxyMock = vi.hoisted(() => vi.fn())
 const fromPartitionMock = vi.hoisted(() => vi.fn())
 
-vi.mock('electron', () => ({
-  session: { fromPartition: fromPartitionMock }
+vi.mock('../network/http-client', () => ({
+  getMainHttpClient: () => ({
+    fetch: vi.fn(),
+    proxySession: () => null,
+    partitionSession: fromPartitionMock
+  })
 }))
 
 import { fetchOpenCodeGoRateLimits, normalizeCookieInput } from './opencode-go-usage-fetcher'

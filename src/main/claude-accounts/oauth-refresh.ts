@@ -1,4 +1,4 @@
-import { net, session } from 'electron'
+import { getMainHttpClient } from '../network/http-client'
 import { ensureElectronProxyFromEnvironment } from '../network/proxy-settings'
 
 // Why: the OAuth client id and token endpoint are the public Claude Code
@@ -131,15 +131,15 @@ export async function refreshClaudeOauthCredentials(
   }
 
   await ensureElectronProxyFromEnvironment({
-    proxySession: session.defaultSession,
+    proxySession: getMainHttpClient().proxySession() ?? undefined,
     probeUrl: OAUTH_TOKEN_URL
   }).catch(() => {})
 
   try {
     // Why: the `claude` CLI posts grant_type=refresh_token as
-    // application/x-www-form-urlencoded with the public client id. net.fetch
-    // routes through Chromium's stack so the env proxy bridge above applies.
-    const res = await net.fetch(OAUTH_TOKEN_URL, {
+    // application/x-www-form-urlencoded with the public client id. The HTTP port
+    // uses Chromium's stack on the desktop so the env proxy bridge above applies.
+    const res = await getMainHttpClient().fetch(OAUTH_TOKEN_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({

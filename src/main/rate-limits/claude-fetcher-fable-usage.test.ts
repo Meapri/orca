@@ -4,6 +4,7 @@ import { primeClaudeFetcherMocks, restorePlatform } from './claude-fetcher-test-
 import { fetchViaPty } from './claude-pty'
 import { readActiveClaudeKeychainCredentialsStrict } from '../claude-accounts/keychain'
 import type { ClaudeRuntimeAuthPreparation } from '../claude-accounts/runtime-auth-service'
+import { installFakeAppEnvironment } from '../../../config/scripts/vitest-host-ports-setup'
 
 const { netFetchMock, readFileMock, resolveProxyMock, setProxyMock, appGetPathMock } = vi.hoisted(
   () => ({
@@ -19,20 +20,17 @@ vi.mock('node:fs/promises', () => ({
   readFile: readFileMock
 }))
 
-vi.mock('electron', () => ({
-  app: {
-    getPath: appGetPathMock
-  },
-  net: {
-    fetch: netFetchMock
-  },
-  session: {
-    defaultSession: {
-      resolveProxy: resolveProxyMock,
-      setProxy: setProxyMock
-    }
-  }
+vi.mock('../network/http-client', () => ({
+  getMainHttpClient: () => ({
+    fetch: netFetchMock,
+    proxySession: () => ({ resolveProxy: resolveProxyMock, setProxy: setProxyMock }),
+    partitionSession: () => null
+  })
 }))
+
+beforeEach(() => {
+  installFakeAppEnvironment({ getPath: appGetPathMock })
+})
 
 vi.mock('./claude-pty', () => ({
   fetchViaPty: vi.fn()

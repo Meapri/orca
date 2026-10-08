@@ -10,5 +10,6 @@ import type { MainHttpClient } from '../network/http-client'
  */
 export const electronHttpClient: MainHttpClient = {
   fetch: (url, init) => net.fetch(url, init),
-  proxySession: () => session.defaultSession
+  proxySession: () => session.defaultSession,
+  partitionSession: (partition) => session.fromPartition(partition)
 }

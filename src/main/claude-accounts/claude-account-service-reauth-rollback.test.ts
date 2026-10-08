@@ -11,14 +11,13 @@ import {
   restorePlatform,
   setPlatform
 } from './claude-account-service-test-harness'
+import { installFakeAppEnvironment } from '../../../config/scripts/vitest-host-ports-setup'
 
 const CLAUDE_SERVICE_TEST_ROOT = join(tmpdir(), 'orca-claude-service-reauth-test')
 
-vi.mock('electron', () => ({
-  app: {
-    getPath: () => CLAUDE_SERVICE_TEST_ROOT
-  }
-}))
+beforeEach(() => {
+  installFakeAppEnvironment({ getPath: () => CLAUDE_SERVICE_TEST_ROOT })
+})
 
 const commandMocks = vi.hoisted(() => ({
   resolveClaudeCommand: vi.fn(() => 'claude')

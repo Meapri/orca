@@ -1,12 +1,12 @@
 import { existsSync, lstatSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { join, relative, resolve, sep } from 'node:path'
-import { app } from 'electron'
+import { getAppEnvironment } from '../../shared/app-environment'
 import { writeFileAtomically } from '../codex-accounts/fs-utils'
 
 const MANAGED_AUTH_MARKER = '.orca-managed-claude-auth'
 
 export function getClaudeManagedAccountsRoot(): string {
-  return join(app.getPath('userData'), 'claude-accounts')
+  return join(getAppEnvironment().getPath('userData'), 'claude-accounts')
 }
 
 export function resolveOwnedClaudeManagedAuthPath(
