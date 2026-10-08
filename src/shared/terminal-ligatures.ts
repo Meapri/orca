@@ -1,30 +1,36 @@
 // Font families that ship with programming-ligatures out of the box. Used by
 // the `'auto'` mode of `terminalLigatures` so users who pick a ligature font
-// get the feature for free without touching settings. Matching is
-// case-insensitive and substring-based so variants like "JetBrainsMono NF"
-// still resolve.
+// get the feature for free without touching settings. Matching ignores case,
+// spaces and hyphens and is substring-based, so Nerd Font renames such as
+// "FiraCode Nerd Font" or "JetBrainsMono NF" still resolve. Fira Mono and
+// Cascadia Mono are the ligature-free cuts of Fira Code and Cascadia Code.
 const LIGATURE_FONT_TOKENS = [
-  'fira code',
-  'fira mono',
-  'jetbrains mono',
+  'firacode',
   'jetbrainsmono',
-  'cascadia code',
-  'cascadia mono',
+  'cascadiacode',
+  'caskaydiacove',
   'iosevka',
-  'victor mono',
+  'victormono',
   'hasklig',
+  'hasklug',
   'monoid',
-  'operator mono',
-  'dank mono',
+  'operatormono',
+  'dankmono',
   'mononoki',
   'pragmatapro',
   'recursive',
   'monolisa',
-  'commit mono',
-  'geist mono',
-  'maple mono',
-  'departure mono'
+  'commitmono',
+  'geistmono',
+  'maplemono',
+  'departuremono',
+  'monaspace',
+  'lilex'
 ] as const
+
+function normalizeFontName(name: string): string {
+  return name.toLowerCase().replace(/[\s_-]+/g, '')
+}
 
 /** Whether a user-facing font-family string looks like one of the well-known
  *  ligature-capable programming fonts. Matches the first declared family in
@@ -36,7 +42,7 @@ export function fontFamilyHasKnownLigatures(fontFamily: string | null | undefine
   // `terminalFontFamily` is a single family name in settings, but
   // defensively split on commas so the helper also works when fed a full
   // `font-family` stack (e.g. via `buildFontFamily`).
-  const primary = fontFamily.split(',')[0]?.replace(/"/g, '').trim().toLowerCase() ?? ''
+  const primary = normalizeFontName(fontFamily.split(',')[0]?.replace(/["']/g, '') ?? '')
   if (!primary) {
     return false
   }

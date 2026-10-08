@@ -62,6 +62,11 @@ vi.mock('react', async () => {
   }
 })
 
+// Why: this harness expands components without a React dispatcher; the progress bar subscribes to an external store.
+vi.mock('./TerminalTabProgressIndicator', () => ({
+  TerminalTabProgressIndicator: () => null
+}))
+
 vi.mock('./use-tab-strip-slot-props', () => ({
   useTabStripSlotProps: () => ({ className: '', 'data-tab-strip-slot': '' })
 }))

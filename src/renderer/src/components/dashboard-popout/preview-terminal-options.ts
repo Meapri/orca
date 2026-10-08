@@ -12,6 +12,7 @@ import {
 import { buildLocalConptyTerminalOptions } from '@/lib/pane-manager/windows-pty-compatibility'
 import { buildFontFamily } from '@/lib/monospace-font-family'
 import { resolveTerminalMinimumContrastRatio } from '@/lib/terminal-contrast-correction'
+import { resolveTerminalFitWideGlyphs } from '@/lib/pane-manager/terminal-wide-glyph-fit'
 
 /** Options a live settings change can write onto an open preview terminal. */
 export function buildPreviewAppearanceOptions(
@@ -25,7 +26,9 @@ export function buildPreviewAppearanceOptions(
   )
   return {
     fontSize: settings?.terminalFontSize ?? 14,
-    fontFamily: buildFontFamily(settings?.terminalFontFamily ?? ''),
+    fontFamily: buildFontFamily(settings?.terminalFontFamily ?? '', {
+      fallbackFamilies: settings?.terminalFontFallbackFamily
+    }),
     fontWeight: fontWeights.fontWeight,
     fontWeightBold: fontWeights.fontWeightBold,
     cursorStyle,
@@ -37,6 +40,7 @@ export function buildPreviewAppearanceOptions(
     ),
     lineHeight: normalizeTerminalLineHeight(settings?.terminalLineHeight),
     wordSeparator: settings?.terminalWordSeparator,
+    fitWideGlyphs: resolveTerminalFitWideGlyphs(settings?.terminalFitWideGlyphs),
     // Why only 'true': 'left'/'right' are handled by the keydown policy, which needs Option composable at the xterm level.
     macOptionIsMeta,
     // Why: xterm renders an alpha background opaque unless transparency is on (matches applyTerminalAppearance).

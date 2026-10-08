@@ -1,8 +1,19 @@
-import type { Terminal } from '@xterm/xterm'
+import { getTerminalPixelScrollCssOffset } from '@/lib/pane-manager/terminal-pixel-scroll'
+
+type MouseMappedTerminal = {
+  element?: {
+    querySelector(selectors: string): {
+      getBoundingClientRect(): { left: number; top: number; width: number; height: number }
+    } | null
+  }
+  cols: number
+  rows: number
+  buffer: { active: { viewportY: number } }
+}
 
 export function getTerminalBufferPositionForMouseEvent(
-  terminal: Terminal,
-  event: MouseEvent
+  terminal: MouseMappedTerminal,
+  event: { clientX: number; clientY: number }
 ): { x: number; y: number } | null {
   const screenElement = terminal.element?.querySelector('.xterm-screen')
   if (!screenElement || terminal.cols <= 0 || terminal.rows <= 0) {
@@ -22,8 +33,11 @@ export function getTerminalBufferPositionForMouseEvent(
     return null
   }
 
+  // Why: mid pixel-scroll every row is drawn above its cell; clamp like xterm's own mouse coords.
+  const drawnY = relativeY + getTerminalPixelScrollCssOffset(terminal)
+  const viewportRow = Math.min(Math.floor(drawnY / cellHeight), terminal.rows - 1)
   return {
     x: Math.floor(relativeX / cellWidth) + 1,
-    y: Math.floor(relativeY / cellHeight) + terminal.buffer.active.viewportY + 1
+    y: viewportRow + terminal.buffer.active.viewportY + 1
   }
 }

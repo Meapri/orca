@@ -112,10 +112,14 @@ export type KeybindingActionId =
   | 'terminal.expandPane'
   | 'terminal.setTitle'
   | 'terminal.clearPaneTitle'
+  | 'terminal.openComposer'
   | 'terminal.closePane'
   | 'terminal.splitRight'
   | 'terminal.splitDown'
   | 'terminal.switchInputSource'
+  | 'terminal.previousPrompt'
+  | 'terminal.nextPrompt'
+  | 'terminal.toggleBookmark'
   | PluginKeybindingActionId
 
 export type KeybindingOverrides = Partial<Record<KeybindingActionId, string[]>>

@@ -22,6 +22,8 @@ import {
 } from '@/lib/pane-manager/pane-terminal-options'
 import { getFitOverrideForPty } from '@/lib/pane-manager/mobile-fit-overrides'
 import { setTerminalCursorBlinkOption } from '@/lib/pane-manager/pane-cursor-blink-suspension'
+import { setTerminalCursorAnimationEnabled } from '@/lib/pane-manager/pane-webgl-cursor-animation'
+import { setTerminalAppCaretAdoptionEnabled } from '@/lib/pane-manager/terminal-app-caret-adoption'
 import type { PtyTransport } from './pty-transport'
 import type { EffectiveMacOptionAsAlt } from '@/lib/keyboard-layout/detect-option-as-alt'
 import { HEX_COLOR_RE } from '../../../../shared/color-validation'
@@ -31,6 +33,11 @@ import { normalizeTerminalLineHeight } from '../../../../shared/terminal-line-he
 import { maybePushMode2031Flip } from './terminal-mode-2031-replies'
 import { resolveTerminalMinimumContrastRatio } from '@/lib/terminal-contrast-correction'
 import { resolveTerminalInlineImagesEnabled } from '../../../../shared/terminal-inline-images-settings'
+import { resolveTerminalImePreeditInGrid } from '@/lib/pane-manager/terminal-ime-grid-preedit'
+import { resolveTerminalFitWideGlyphs } from '@/lib/pane-manager/terminal-wide-glyph-fit'
+import { resolveTerminalPixelScroll } from '@/lib/pane-manager/terminal-pixel-scroll'
+import { resolveTerminalCursorAnimationEnabled } from '../../../../shared/terminal-cursor-animation-settings'
+import { resolveTerminalAdoptAppCaretEnabled } from '../../../../shared/terminal-app-caret-settings'
 
 export function hexToRgba(hex: string, alpha: number): string {
   let clean = hex.replace('#', '')
@@ -160,6 +167,12 @@ export function applyTerminalAppearance(
     settings.terminalLigatures,
     settings.terminalFontFamily
   )
+  setTerminalCursorAnimationEnabled(
+    resolveTerminalCursorAnimationEnabled(settings.terminalCursorAnimation)
+  )
+  setTerminalAppCaretAdoptionEnabled(
+    resolveTerminalAdoptAppCaretEnabled(settings.terminalAdoptAppCaret)
+  )
 
   for (const pane of manager.getPanes()) {
     // Why value-gated: writing options.theme rebuilds the palette, discarding TUI OSC 4/10/11/12 mutations; skip on no-op change.
@@ -189,7 +202,9 @@ export function applyTerminalAppearance(
     const paneSize = paneFontSizes.get(pane.id)
     const metricOptions = {
       fontSize: paneSize ?? settings.terminalFontSize,
-      fontFamily: buildFontFamily(settings.terminalFontFamily),
+      fontFamily: buildFontFamily(settings.terminalFontFamily, {
+        fallbackFamilies: settings.terminalFontFallbackFamily
+      }),
       fontWeight: terminalFontWeights.fontWeight,
       fontWeightBold: terminalFontWeights.fontWeightBold,
       lineHeight: normalizeTerminalLineHeight(settings.terminalLineHeight)
@@ -210,6 +225,16 @@ export function applyTerminalAppearance(
     )
     // Why only 'true': 'left'/'right' are handled in the keydown policy, which needs Option composable at the xterm level.
     pane.terminal.options.macOptionIsMeta = effectiveMacOptionAsAlt === 'true'
+    // Read at compositionstart, so an open composition keeps the path it started on.
+    pane.terminal.options.imePreeditInGrid = resolveTerminalImePreeditInGrid(
+      settings.terminalImePreeditInGrid
+    )
+    // Why value-gated: a write clears the renderer and rebuilds the glyph atlas.
+    const fitWideGlyphs = resolveTerminalFitWideGlyphs(settings.terminalFitWideGlyphs)
+    if (pane.terminal.options.fitWideGlyphs !== fitWideGlyphs) {
+      pane.terminal.options.fitWideGlyphs = fitWideGlyphs
+    }
+    pane.terminal.options.pixelScroll = resolveTerminalPixelScroll(settings.terminalPixelScroll)
     // Why unconditional: the helper no-ops when addon state already matches, so this keeps new panes and live toggles in sync.
     manager.setPaneLigaturesEnabled(pane.id, ligaturesEnabled)
     // Why unconditional: setInlineImagesEnabled is idempotent (attach no-ops when

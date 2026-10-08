@@ -212,6 +212,106 @@
   }
 }
 
+/* ── Command marks, bookmarks, jump highlight (xterm decorations) ── */
+
+.xterm-decoration.orca-terminal-mark,
+.xterm-decoration.orca-terminal-mark-flash {
+  pointer-events: none;
+}
+
+/* Why a hairline at the cell edge: .xterm-container paints with contain: paint, so the
+   tick cannot sit in the pane padding; 2px at the edge stays clear of most glyph ink. */
+.xterm-decoration.orca-terminal-mark::before {
+  content: '';
+  position: absolute;
+  top: 15%;
+  bottom: 15%;
+  left: 0;
+  width: 2px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--muted-foreground) 55%, transparent);
+}
+
+.xterm-decoration.orca-terminal-mark[data-mark-kind='failed']::before {
+  background: var(--destructive);
+}
+
+.xterm-decoration.orca-terminal-mark[data-mark-kind='bookmark']::before {
+  background: var(--terminal-pane-locate);
+}
+
+.xterm-decoration.orca-terminal-mark-flash {
+  background: color-mix(in srgb, var(--terminal-pane-locate) 18%, transparent);
+  animation: orca-terminal-mark-flash 0.9s ease-out forwards;
+}
+
+@keyframes orca-terminal-mark-flash {
+  0% {
+    opacity: 1;
+  }
+  60% {
+    opacity: 0.6;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* ── OSC 9;4 progress (pane top edge and terminal tab top edge) ── */
+
+.orca-terminal-progress {
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  z-index: 25;
+  height: 2px;
+  overflow: hidden;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--terminal-pane-locate) 18%, transparent);
+}
+
+.orca-terminal-progress-fill {
+  height: 100%;
+  width: 0;
+  background: var(--terminal-pane-locate);
+  transition: width 200ms ease-out;
+}
+
+.orca-terminal-progress[data-state='error'] .orca-terminal-progress-fill {
+  background: var(--destructive);
+}
+
+.orca-terminal-progress[data-state='paused'] .orca-terminal-progress-fill {
+  background: var(--status-warning);
+}
+
+.orca-terminal-progress[data-state='indeterminate'] .orca-terminal-progress-fill {
+  width: 30%;
+  animation: orca-terminal-progress-indeterminate 1.2s ease-in-out infinite;
+}
+
+@keyframes orca-terminal-progress-indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(340%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .xterm-decoration.orca-terminal-mark-flash {
+    animation: none;
+  }
+  .orca-terminal-progress-fill {
+    transition: none;
+  }
+  .orca-terminal-progress[data-state='indeterminate'] .orca-terminal-progress-fill {
+    width: 100%;
+    animation: none;
+  }
+}
+
 /* Suppress pointer events on terminals during pane drag so overlay works */
 .is-pane-dragging .pane {
   pointer-events: none;

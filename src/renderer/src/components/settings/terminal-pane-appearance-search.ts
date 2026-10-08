@@ -1,4 +1,6 @@
 import { getTerminalClipboardSearchEntries } from './terminal-clipboard-search'
+import { getTerminalCommandMarksSearchEntries } from './terminal-command-marks-search'
+import { getTerminalPixelScrollSearchEntries } from './terminal-pixel-scroll-search'
 import { translate } from '@/i18n/i18n'
 import { translateSearchKeyword } from './settings-search-keywords'
 import { createLocalizedCatalog } from '@/i18n/localized-catalog'
@@ -33,6 +35,44 @@ export const getTerminalPaneAppearanceSearchEntries = createLocalizedCatalog(() 
   }
 ])
 
+export const getTerminalClickToMoveCursorSearchEntry = createLocalizedCatalog(() => ({
+  title: translate(
+    'components.settings.TerminalInteraction.clickToMoveCursor',
+    'Click to Move Cursor'
+  ),
+  description: translate(
+    'components.settings.TerminalInteraction.clickToMoveCursorDescription',
+    'Click on the line you are typing to move the cursor there. "At prompts" needs shell integration; "Any input line" also works in agent CLIs and REPLs.'
+  ),
+  keywords: [
+    ...translateSearchKeyword('components.settings.TerminalInteraction.search.click', 'click'),
+    ...translateSearchKeyword('components.settings.TerminalInteraction.search.cursor', 'cursor'),
+    ...translateSearchKeyword('components.settings.TerminalInteraction.search.caret', 'caret'),
+    ...translateSearchKeyword('auto.components.settings.terminal.search.prompt', 'prompt'),
+    ...translateSearchKeyword('auto.components.settings.terminal.search.ea364ce6e4', 'mouse')
+  ]
+}))
+
+export const getTerminalInputSelectionEditingSearchEntry = createLocalizedCatalog(() => ({
+  title: translate(
+    'components.settings.TerminalInteraction.inputSelectionEditing',
+    'Edit Input Like a Text Field'
+  ),
+  description: translate(
+    'components.settings.TerminalInteraction.inputSelectionEditingDescription',
+    'Typing, Backspace, Delete or paste replaces text selected on the line you are typing; Shift+Arrow extends the selection and Undo reverses the replacement. Apps that handle the mouse themselves keep their own editing.'
+  ),
+  keywords: [
+    ...translateSearchKeyword(
+      'components.settings.TerminalInteraction.search.selection',
+      'selection'
+    ),
+    ...translateSearchKeyword('components.settings.TerminalInteraction.search.undo', 'undo'),
+    ...translateSearchKeyword('components.settings.TerminalInteraction.search.cursor', 'cursor'),
+    ...translateSearchKeyword('auto.components.settings.terminal.search.prompt', 'prompt')
+  ]
+}))
+
 export const getTerminalPaneInteractionSearchEntries = createLocalizedCatalog(() => [
   {
     title: translate('auto.components.settings.terminal.search.scrollSpeed.title', 'Scroll Speed'),
@@ -49,6 +89,22 @@ export const getTerminalPaneInteractionSearchEntries = createLocalizedCatalog(()
       ...translateSearchKeyword('auto.components.settings.terminal.search.ea364ce6e4', 'mouse'),
       ...translateSearchKeyword('auto.components.settings.terminal.search.trackpad', 'trackpad'),
       ...translateSearchKeyword('auto.components.settings.terminal.search.tui', 'tui')
+    ]
+  },
+  {
+    title: translate(
+      'auto.components.settings.terminal.search.smoothScroll.title',
+      'Smooth Scrolling'
+    ),
+    description: translate(
+      'auto.components.settings.terminal.search.smoothScroll.description',
+      'Animate mouse-wheel, Shift+Page Up/Down and jump-to-latest scrolling in terminal scrollback.'
+    ),
+    keywords: [
+      ...translateSearchKeyword('auto.components.settings.terminal.search.scroll', 'scroll'),
+      ...translateSearchKeyword('auto.components.settings.terminal.search.smooth', 'smooth'),
+      ...translateSearchKeyword('auto.components.settings.terminal.search.animation', 'animation'),
+      ...translateSearchKeyword('auto.components.settings.terminal.search.wheel', 'wheel')
     ]
   },
   {
@@ -91,5 +147,9 @@ export const getTerminalPaneInteractionSearchEntries = createLocalizedCatalog(()
       ...translateSearchKeyword('auto.components.settings.terminal.search.f036794286', 'active')
     ]
   },
-  ...getTerminalClipboardSearchEntries()
+  getTerminalClickToMoveCursorSearchEntry(),
+  getTerminalInputSelectionEditingSearchEntry(),
+  ...getTerminalClipboardSearchEntries(),
+  ...getTerminalCommandMarksSearchEntries(),
+  ...getTerminalPixelScrollSearchEntries()
 ])

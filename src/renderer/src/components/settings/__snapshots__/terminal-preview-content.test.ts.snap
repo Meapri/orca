@@ -3,7 +3,7 @@
 exports[`PREVIEW_BUFFER > matches the locked snapshot 1`] = `
 "[34m~/orca[0m [35mmain[0m [33m*[0m $ npm test
  [42m[30m PASS [0m src/preview.test.ts
- [32m✓[0m renders sample output [2m(3ms)[0m
+ [32m✓[0m renders 한글 漢字 かな [2m(3ms)[0m
  [31m✗ ligatures: => != >= <= ===[0m
 
 [33mdef[0m [36mtotal[0m(xs: list[[36mint[0m]) -> [36mint[0m:

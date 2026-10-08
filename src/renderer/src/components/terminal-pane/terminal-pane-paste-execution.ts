@@ -21,6 +21,7 @@ import { formatTerminalPasteExecutionError } from './terminal-paste-errors'
 import { recordTerminalUserInputForLeaf } from './terminal-input-activity'
 import { scheduleImagePasteWebglAtlasRecovery } from './terminal-webgl-atlas-recovery'
 import { pasteTerminalClipboard } from './terminal-clipboard-paste'
+import { getTerminalInputSelectionEditing } from './terminal-input-selection-editing'
 import type { ReadClipboardTextOptions } from '../../../../shared/clipboard-text'
 import type { TerminalPaneCloseController } from './use-terminal-pane-close-actions'
 
@@ -63,7 +64,7 @@ export function createTerminalPanePasteExecution(
     activeElementAtDispatch: Element | null,
     text: string,
     options?: TerminalPasteTextOptions
-  ): Promise<void> => {
+  ): Promise<boolean> => {
     const connectionId = getConnectionId(worktreeId) ?? null
     const transport = paneTransportsRef.current.get(pane.id)
     const ptyId = transport?.getPtyId() ?? null
@@ -91,8 +92,11 @@ export function createTerminalPanePasteExecution(
       terminalBracketedPasteMode: pane.terminal.modes.bracketedPasteMode
     })
     const execution = await executeTerminalPastePlan(plan, {
-      pasteText: (pasteText, pasteOptions) =>
-        pasteTerminalText(pane.terminal, pasteText, pasteOptions),
+      pasteText: (pasteText, pasteOptions) => {
+        // Why: only xterm's paste shares onData with the deletion, so only it is ordered after it.
+        getTerminalInputSelectionEditing(pane.terminal)?.replaceSelectionBeforeInsert(text)
+        return pasteTerminalText(pane.terminal, pasteText, pasteOptions)
+      },
       writePty: (data) => writeTerminalPastePtyInput(transport, data, 'driving'),
       isTargetCurrent: () => {
         if (!isPanePasteTargetMounted(pane, transport, ptyId)) {
@@ -108,7 +112,7 @@ export function createTerminalPanePasteExecution(
     })
     if (execution.status !== 'pasted') {
       setTerminalError(formatTerminalPasteExecutionError(execution.reason))
-      return
+      return false
     }
     if (text) {
       recordTerminalUserInputForLeaf(tabId, pane.leafId)
@@ -116,6 +120,7 @@ export function createTerminalPanePasteExecution(
     if (options?.recoverImagePasteWebglAtlas) {
       scheduleImagePasteWebglAtlasRecovery()
     }
+    return true
   }
 
   const pasteFromClipboard = (

@@ -106,6 +106,7 @@ export type UseTerminalPaneLifecycleDeps = {
     workspaceOwner?: NotificationWorkspaceOwner
     terminalTitle?: string
     paneKey?: string
+    terminalNotification?: { title: string | null; body: string }
     agentStatusSnapshot?: ParsedAgentStatusPayload
   }) => void
   setCacheTimerStartedAt: (key: string, ts: number | null) => void
