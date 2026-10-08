@@ -17,6 +17,7 @@ vi.mock('node:child_process', () => ({
   execFile: execFileMock
 }))
 
+import { PACKAGED_MAC_COMMAND_NAME } from './cli-install-constants'
 import { CliInstaller } from './cli-installer'
 import { createPackagedMacLauncher, makeFixture } from './cli-installer-test-fixtures'
 
@@ -41,7 +42,7 @@ describe('CliInstaller', () => {
       const resourcesPath = await createPackagedMacLauncher(fixture.root)
       // Simulate arm64: point defaultMacCommandPath at a dir that does not exist
       // in the fixture so existsSync(dirname(...)) returns false.
-      const absentUsrLocalBin = join(fixture.root, 'usr', 'local', 'bin', 'orca')
+      const absentUsrLocalBin = join(fixture.root, 'usr', 'local', 'bin', PACKAGED_MAC_COMMAND_NAME)
       const installer = new CliInstaller({
         platform: 'darwin',
         isPackaged: true,
@@ -55,13 +56,13 @@ describe('CliInstaller', () => {
       })
 
       const status = await installer.getStatus()
-      expect(status.commandPath).toBe(join(homePath, '.local', 'bin', 'orca'))
+      expect(status.commandPath).toBe(join(homePath, '.local', 'bin', PACKAGED_MAC_COMMAND_NAME))
       expect(status.state).toBe('not_installed')
       expect(status.supported).toBe(true)
 
       const installed = await installer.install()
       expect(installed.state).toBe('installed')
-      expect(installed.commandPath).toBe(join(homePath, '.local', 'bin', 'orca'))
+      expect(installed.commandPath).toBe(join(homePath, '.local', 'bin', PACKAGED_MAC_COMMAND_NAME))
       expect(installed.pathConfigured).toBe(true)
     }
   )
@@ -469,7 +470,7 @@ describe('CliInstaller', () => {
       const fixture = await makeFixture()
       const homePath = join(fixture.root, 'home')
       const resourcesPath = await createPackagedMacLauncher(fixture.root)
-      const absentUsrLocalBin = join(fixture.root, 'usr', 'local', 'bin', 'orca')
+      const absentUsrLocalBin = join(fixture.root, 'usr', 'local', 'bin', PACKAGED_MAC_COMMAND_NAME)
       const installer = new CliInstaller({
         platform: 'darwin',
         isPackaged: true,
@@ -483,7 +484,7 @@ describe('CliInstaller', () => {
       })
 
       const status = await installer.getStatus()
-      expect(status.commandName).toBe('orca')
+      expect(status.commandName).toBe(PACKAGED_MAC_COMMAND_NAME)
     }
   )
 
@@ -495,7 +496,7 @@ describe('CliInstaller', () => {
       const fixture = await makeFixture()
       const homePath = join(fixture.root, 'home')
       const resourcesPath = await createPackagedMacLauncher(fixture.root)
-      const absentUsrLocalBin = join(fixture.root, 'usr', 'local', 'bin', 'orca')
+      const absentUsrLocalBin = join(fixture.root, 'usr', 'local', 'bin', PACKAGED_MAC_COMMAND_NAME)
       const installer = new CliInstaller({
         platform: 'darwin',
         isPackaged: true,
@@ -515,7 +516,7 @@ describe('CliInstaller', () => {
 
       expect(s1.commandPath).toBe(s2.commandPath)
       expect(s2.commandPath).toBe(s3.commandPath)
-      expect(s1.commandPath).toBe(join(homePath, '.local', 'bin', 'orca'))
+      expect(s1.commandPath).toBe(join(homePath, '.local', 'bin', PACKAGED_MAC_COMMAND_NAME))
     }
   )
 
@@ -525,7 +526,7 @@ describe('CliInstaller', () => {
     async () => {
       const fixture = await makeFixture()
       const homePath = join(fixture.root, 'home')
-      const absentUsrLocalBin = join(fixture.root, 'usr', 'local', 'bin', 'orca')
+      const absentUsrLocalBin = join(fixture.root, 'usr', 'local', 'bin', PACKAGED_MAC_COMMAND_NAME)
       const resourcesPath = join(fixture.root, 'resources')
       const bundledLauncher = join(resourcesPath, 'bin', 'orca')
       await mkdir(join(resourcesPath, 'bin'), { recursive: true })
@@ -547,7 +548,7 @@ describe('CliInstaller', () => {
       })
 
       const status = await installer.getStatus()
-      expect(status.commandPath).toBe(join(homePath, '.local', 'bin', 'orca'))
+      expect(status.commandPath).toBe(join(homePath, '.local', 'bin', PACKAGED_MAC_COMMAND_NAME))
       expect(status.supported).toBe(true)
     }
   )
