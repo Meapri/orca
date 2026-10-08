@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { setTerminalResourceLimitsShortfall } from '../../daemon/daemon-scope-resource-limit-status'
 import {
   OrcaRuntimeService,
   RuntimeBrowserCommands,
@@ -524,6 +525,28 @@ describe('OrcaRuntimeService', () => {
     const codes = (createRuntime().getStatus().degradations ?? []).map((entry) => entry.code)
 
     expect(codes).toEqual(['browser_unavailable', 'terminal_unavailable'])
+  })
+
+  it('reports configured terminal resource limits that are not in force, without hiding terminals', () => {
+    setTerminalResourceLimitsShortfall({
+      reason: 'systemd_scope_unavailable',
+      limits: ['MemoryMax=4G']
+    })
+    try {
+      const degradations = createRuntime().getStatus().degradations ?? []
+      expect(degradations).toContainEqual(
+        expect.objectContaining({
+          code: 'terminal_resource_limits_unavailable',
+          capability: 'terminal.resource-limits.v1',
+          reason: 'systemd_scope_unavailable'
+        })
+      )
+      expect(degradations.map((entry) => entry.code)).not.toContain('terminal_unavailable')
+    } finally {
+      setTerminalResourceLimitsShortfall(null)
+    }
+    const after = createRuntime().getStatus().degradations ?? []
+    expect(after.map((entry) => entry.code)).not.toContain('terminal_resource_limits_unavailable')
   })
 
   it('says nothing about terminals when no precondition proved them broken', () => {

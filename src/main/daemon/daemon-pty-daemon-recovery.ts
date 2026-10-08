@@ -9,6 +9,9 @@ import type { DaemonRespawnReason } from './daemon-pty-runtime-state'
 import type { ListSessionsResult } from './types'
 import type { PtyBackgroundStreamEvent } from '../providers/types'
 
+const LOST_SESSION_RECONCILE_PASSES = 3
+const LOST_SESSION_RECHECK_MS = 5_000
+
 export abstract class DaemonPtyDaemonRecovery extends DaemonPtyCheckpointPersistence {
   // Why: the token read no longer throws, so audit its absence directly after an authenticated drop.
   protected isRetiredEndpointTokenMissing(): boolean {
@@ -278,6 +281,33 @@ export abstract class DaemonPtyDaemonRecovery extends DaemonPtyCheckpointPersist
       throw new Error('Daemon adapter closed during respawn')
     }
     this.pendingRespawnAdoptionRelease = releaseAdoptionLease ?? null
+    if (reason === 'daemon_died' && this.retireSessionsLostWithDaemon) {
+      this.scheduleLostSessionReconciliation()
+    }
+  }
+
+  // Why: a killed daemon's sessions exit without an event; an inventory against its successor,
+  // plus a later pass for shells still dying from the hangup, proves which of them are gone.
+  protected scheduleLostSessionReconciliation(): void {
+    const reconcile = (retriesLeft: number): void => {
+      const timer = setTimeout(
+        () => {
+          if (this.respawnAdoptionClosed) {
+            return
+          }
+          void this.listProcesses()
+            .catch(() => [])
+            .then(() => {
+              if (retriesLeft > 0 && this.lostSessionShellPids.size > 0) {
+                reconcile(retriesLeft - 1)
+              }
+            })
+        },
+        retriesLeft === LOST_SESSION_RECONCILE_PASSES - 1 ? 0 : LOST_SESSION_RECHECK_MS
+      )
+      timer.unref?.()
+    }
+    reconcile(LOST_SESSION_RECONCILE_PASSES - 1)
   }
 
   protected releasePendingRespawnAdoptionLease(): void {
