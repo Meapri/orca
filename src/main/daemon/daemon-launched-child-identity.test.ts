@@ -2,6 +2,10 @@ import { EventEmitter } from 'node:events'
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { DAEMON_EXIT_ENDPOINT_OCCUPIED } from './daemon-endpoint-ownership'
 import { launchDaemonChild } from './daemon-launched-child'
+import {
+  setTerminalResourceLimitsShortfall,
+  terminalResourceLimitsShortfall
+} from './daemon-scope-resource-limit-status'
 import type { DaemonChildSpawnOptions } from './daemon-launched-child-spawn'
 
 const { spawnDaemonChildProcessMock, isDurableDaemonScopeSupportedMock } = vi.hoisted(() => ({
@@ -72,7 +76,9 @@ describe('launchDaemonChild identity', () => {
     })
     const launched = await launch
 
-    expect(spawnDaemonChildProcessMock).toHaveBeenCalledWith(LAUNCH_OPTIONS, true)
+    expect(spawnDaemonChildProcessMock).toHaveBeenCalledWith(LAUNCH_OPTIONS, true, [
+      '--property=OOMPolicy=continue'
+    ])
     expect(launched.identity).toEqual({
       pid: 9999,
       startedAtMs: 1_700_000_000_000,
@@ -120,14 +126,14 @@ describe('launchDaemonChild startup budget', () => {
 })
 
 describe('launchDaemonChild durable-scope fallback', () => {
-  it('retries once without cgroup isolation when the scoped attempt fails', async () => {
+  it('retries without cgroup isolation when every scoped attempt fails', async () => {
     isDurableDaemonScopeSupportedMock.mockReturnValue(true)
-    const scoped = fakeDaemonChild(4242)
     const unscoped = fakeDaemonChild(4343)
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     spawnDaemonChildProcessMock.mockImplementation((_options, useDurableScope: boolean) => {
       if (useDurableScope) {
         // Whatever the pre-flight probe promised, the real StartTransientUnit call can still fail.
+        const scoped = fakeDaemonChild(4242)
         queueMicrotask(() => {
           scoped.exitCode = 1
           scoped.emit('exit', 1)
@@ -143,7 +149,9 @@ describe('launchDaemonChild durable-scope fallback', () => {
     try {
       const launched = await launchDaemonChild(LAUNCH_OPTIONS)
 
+      // Scope with properties, then a bare scope, then no scope at all.
       expect(spawnDaemonChildProcessMock.mock.calls.map(([, scope]) => scope)).toEqual([
+        true,
         true,
         false
       ])
@@ -170,5 +178,87 @@ describe('launchDaemonChild durable-scope fallback', () => {
       'Daemon could not take the endpoint: occupied'
     )
     expect(spawnDaemonChildProcessMock).toHaveBeenCalledOnce()
+  })
+})
+
+describe('launchDaemonChild terminal resource limits', () => {
+  const LIMIT_ENV = ['ORCA_TERMINAL_MEMORY_MAX', 'ORCA_TERMINAL_TASKS_MAX']
+
+  afterEach(() => {
+    for (const name of LIMIT_ENV) {
+      delete process.env[name]
+    }
+    setTerminalResourceLimitsShortfall(null)
+  })
+
+  function readyOn(child: FakeDaemonChild, pid: number): FakeDaemonChild {
+    queueMicrotask(() => child.emit('message', { type: 'ready', pid, startedAtMs: 1 }))
+    return child
+  }
+
+  it('passes configured limits to the scope and reports nothing missing', async () => {
+    process.env.ORCA_TERMINAL_MEMORY_MAX = '4G'
+    process.env.ORCA_TERMINAL_TASKS_MAX = '2048'
+    isDurableDaemonScopeSupportedMock.mockReturnValue(true)
+    spawnDaemonChildProcessMock.mockImplementation(() => readyOn(fakeDaemonChild(1), 11))
+
+    await launchDaemonChild(LAUNCH_OPTIONS)
+
+    expect(spawnDaemonChildProcessMock).toHaveBeenCalledWith(LAUNCH_OPTIONS, true, [
+      '--property=OOMPolicy=continue',
+      '--property=MemoryMax=4G',
+      '--property=TasksMax=2048'
+    ])
+    expect(terminalResourceLimitsShortfall()).toBeNull()
+  })
+
+  it('keeps a bare scope and reports the limits when systemd rejects them', async () => {
+    process.env.ORCA_TERMINAL_MEMORY_MAX = '4G'
+    isDurableDaemonScopeSupportedMock.mockReturnValue(true)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    spawnDaemonChildProcessMock.mockImplementation(
+      (_options, _scoped: boolean, properties: string[]) => {
+        const child = fakeDaemonChild(2)
+        if (properties.length > 0) {
+          queueMicrotask(() => {
+            child.exitCode = 1
+            child.emit('exit', 1)
+          })
+          return child
+        }
+        return readyOn(child, 12)
+      }
+    )
+
+    const launched = await launchDaemonChild(LAUNCH_OPTIONS)
+
+    expect(launched.identity.pid).toBe(12)
+    expect(spawnDaemonChildProcessMock.mock.calls.map(([, scoped]) => scoped)).toEqual([true, true])
+    expect(terminalResourceLimitsShortfall()).toMatchObject({
+      reason: 'scope_properties_rejected',
+      limits: ['MemoryMax=4G']
+    })
+    warn.mockRestore()
+  })
+
+  it('reports limits as unenforced where no systemd user scope exists', async () => {
+    process.env.ORCA_TERMINAL_MEMORY_MAX = '4G'
+    isDurableDaemonScopeSupportedMock.mockReturnValue(false)
+    spawnDaemonChildProcessMock.mockImplementation(() => readyOn(fakeDaemonChild(3), 13))
+
+    await launchDaemonChild(LAUNCH_OPTIONS)
+
+    expect(terminalResourceLimitsShortfall()).toMatchObject({
+      reason: 'systemd_scope_unavailable'
+    })
+  })
+
+  it('reports nothing when no limits are configured and the scope is unavailable', async () => {
+    isDurableDaemonScopeSupportedMock.mockReturnValue(false)
+    spawnDaemonChildProcessMock.mockImplementation(() => readyOn(fakeDaemonChild(4), 14))
+
+    await launchDaemonChild(LAUNCH_OPTIONS)
+
+    expect(terminalResourceLimitsShortfall()).toBeNull()
   })
 })
