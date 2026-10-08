@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { APP_DISTRIBUTION_RELEASES_URL } from '../shared/app-distribution'
 import { loadUpdaterModule, warmUpdaterModule } from './updater-test-module-loader'
 
 const {
@@ -530,7 +531,7 @@ describe('updater', () => {
     })
     expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
       provider: 'generic',
-      url: 'https://github.com/stablyai/orca/releases/download/v1.4.36-rc.5'
+      url: `${APP_DISTRIBUTION_RELEASES_URL}/download/v1.4.36-rc.5`
     })
     expect(
       sendMock.mock.calls
