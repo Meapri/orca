@@ -97,6 +97,43 @@ const getTerminalTypographySearchEntryCatalog = createLocalizedCatalog(() => [
         'font features'
       )
     ]
+  },
+  {
+    title: translate(
+      'auto.components.settings.terminal.search.fontFallback.title',
+      'Fallback Fonts'
+    ),
+    description: translate(
+      'auto.components.settings.terminal.search.fontFallback.description',
+      'Fonts tried after the terminal font for characters it lacks, such as Korean, Chinese or Japanese.'
+    ),
+    keywords: [
+      ...translateSearchKeyword('auto.components.settings.terminal.search.f66a7cf715', 'terminal'),
+      ...translateSearchKeyword('auto.components.settings.terminal.search.b0bb76ae6b', 'font'),
+      ...translateSearchKeyword(
+        'auto.components.settings.terminal.search.fontFallback.fallback',
+        'fallback'
+      ),
+      ...translateSearchKeyword(
+        'auto.components.settings.terminal.search.fontFallback.cjk',
+        'cjk',
+        {
+          englishOnly: true
+        }
+      ),
+      ...translateSearchKeyword(
+        'auto.components.settings.terminal.search.fontFallback.korean',
+        'korean'
+      ),
+      ...translateSearchKeyword(
+        'auto.components.settings.terminal.search.fontFallback.chinese',
+        'chinese'
+      ),
+      ...translateSearchKeyword(
+        'auto.components.settings.terminal.search.fontFallback.japanese',
+        'japanese'
+      )
+    ]
   }
 ])
 
@@ -107,78 +144,6 @@ export const getTerminalTypographySearchEntries = createLocalizedCatalog(() => [
 export const getTerminalAdvancedTypographySearchEntries = createLocalizedCatalog(() =>
   getTerminalTypographySearchEntryCatalog().slice(2)
 )
-
-export const getTerminalRenderingSearchEntries = createLocalizedCatalog(() => [
-  {
-    title: translate('auto.components.settings.terminal.search.13a2502dfc', 'GPU Acceleration'),
-    description: translate(
-      'auto.components.settings.terminal.search.8f9f953de7',
-      'Controls whether the terminal uses xterm.js WebGL rendering. Auto tries WebGL when the renderer is supported, with conservative fallback for software or unknown GPU renderers.'
-    ),
-    keywords: [
-      ...translateSearchKeyword('auto.components.settings.terminal.search.f66a7cf715', 'terminal'),
-      ...translateSearchKeyword('auto.components.settings.terminal.search.db82cb13b0', 'gpu'),
-      ...translateSearchKeyword(
-        'auto.components.settings.terminal.search.4b4e80d850',
-        'acceleration'
-      ),
-      ...translateSearchKeyword('auto.components.settings.terminal.search.6cddc858ba', 'webgl'),
-      ...translateSearchKeyword('auto.components.settings.terminal.search.fffa9ab980', 'renderer'),
-      ...translateSearchKeyword('auto.components.settings.terminal.search.bc7ae1f7c0', 'rendering'),
-      ...translateSearchKeyword('auto.components.settings.terminal.search.7d924d870d', 'graphics'),
-      ...translateSearchKeyword('auto.components.settings.terminal.search.1abcf4d7de', 'linux')
-    ]
-  },
-  {
-    title: translate(
-      'auto.components.settings.terminal.search.minimumContrast.title',
-      'Color Contrast'
-    ),
-    description: translate(
-      'auto.components.settings.terminal.search.minimumContrast.description',
-      'Improve text readability or preserve the colors chosen by terminal programs.'
-    ),
-    keywords: [
-      ...translateSearchKeyword('auto.components.settings.terminal.search.f66a7cf715', 'terminal'),
-      ...translateSearchKeyword(
-        'auto.components.settings.terminal.search.minimumContrast.contrast',
-        'contrast'
-      ),
-      ...translateSearchKeyword(
-        'auto.components.settings.terminal.search.minimumContrast.minimum',
-        'minimum'
-      ),
-      ...translateSearchKeyword(
-        'auto.components.settings.terminal.search.minimumContrast.ratio',
-        'ratio'
-      ),
-      ...translateSearchKeyword(
-        'auto.components.settings.terminal.search.minimumContrast.readability',
-        'readability'
-      ),
-      ...translateSearchKeyword(
-        'auto.components.settings.terminal.search.minimumContrast.wcag',
-        'wcag'
-      ),
-      ...translateSearchKeyword(
-        'auto.components.settings.terminal.search.minimumContrast.powerline',
-        'powerline'
-      ),
-      ...translateSearchKeyword(
-        'auto.components.settings.terminal.search.minimumContrast.statusline',
-        'statusline'
-      ),
-      ...translateSearchKeyword(
-        'auto.components.settings.terminal.search.minimumContrast.dim',
-        'dim'
-      ),
-      ...translateSearchKeyword(
-        'auto.components.settings.terminal.search.minimumContrast.colors',
-        'colors'
-      )
-    ]
-  }
-])
 
 export const getTerminalCursorSearchEntries = createLocalizedCatalog(() => [
   {
@@ -205,6 +170,36 @@ export const getTerminalCursorSearchEntries = createLocalizedCatalog(() => [
       ...translateSearchKeyword('auto.components.settings.terminal.search.f66a7cf715', 'terminal'),
       ...translateSearchKeyword('auto.components.settings.terminal.search.6eaf7ee0e4', 'cursor'),
       ...translateSearchKeyword('auto.components.settings.terminal.search.25f606d9e5', 'blink')
+    ]
+  },
+  {
+    title: translate('auto.components.settings.terminal.search.9226c75396', 'Cursor Animation'),
+    description: translate(
+      'auto.components.settings.terminal.search.3ac3ea1cac',
+      'Glides the cursor as you type and fades its blink. Requires GPU rendering.'
+    ),
+    keywords: [
+      ...translateSearchKeyword('auto.components.settings.terminal.search.f66a7cf715', 'terminal'),
+      ...translateSearchKeyword('auto.components.settings.terminal.search.6eaf7ee0e4', 'cursor'),
+      ...translateSearchKeyword('auto.components.settings.terminal.search.e2b79d0578', 'animation'),
+      ...translateSearchKeyword('auto.components.settings.terminal.search.da61b65178', 'smooth'),
+      ...translateSearchKeyword('auto.components.settings.terminal.search.45087d1a4d', 'glide')
+    ]
+  },
+  {
+    title: translate(
+      'auto.components.settings.terminal.search.b2ff21a421',
+      'Terminal Cursor for App Carets'
+    ),
+    description: translate(
+      'auto.components.settings.terminal.search.c9f01528ff',
+      'When a terminal app hides the cursor and paints its own caret, draws the terminal cursor there with your shape, blink and animation.'
+    ),
+    keywords: [
+      ...translateSearchKeyword('auto.components.settings.terminal.search.f66a7cf715', 'terminal'),
+      ...translateSearchKeyword('auto.components.settings.terminal.search.6eaf7ee0e4', 'cursor'),
+      ...translateSearchKeyword('auto.components.settings.terminal.search.3d0e4adb75', 'caret'),
+      ...translateSearchKeyword('auto.components.settings.terminal.search.864e24955e', 'tui')
     ]
   },
   {

@@ -6,6 +6,10 @@ import type { Terminal } from '@xterm/xterm'
 type LigatureRange = [number, number]
 type CharacterJoiner = (text: string) => LigatureRange[]
 
+// Why both: Chromium canvas applies `calt` unasked but `liga` only when requested, so fonts that
+// ligate via `liga` rendered joined runs as separate glyphs in the WebGL atlas.
+export const TERMINAL_LIGATURE_FONT_FEATURE_SETTINGS = '"calt" on, "liga" on'
+
 const LIGATURE_CACHE_CHARACTER_BUDGET = 100_000
 // Why: short attribute segments can otherwise create tens of thousands of Map
 // entries per pane; 2K is still far beyond one visible grid's working set.
@@ -97,6 +101,10 @@ function createCachedCharacterJoiner(
  *  Active TUIs repaint mostly unchanged rows, while the upstream fallback
  *  matcher otherwise retries every known ligature at every character. */
 export class TerminalLigaturesAddon extends LigaturesAddon {
+  constructor() {
+    super({ fontFeatureSettings: TERMINAL_LIGATURE_FONT_FEATURE_SETTINGS })
+  }
+
   override activate(terminal: Terminal): void {
     const cache = new LigatureRangeCache()
     const terminalForAddon = new Proxy(terminal, {

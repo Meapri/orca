@@ -11,6 +11,10 @@ import { setPaneFitWebglAttachHook } from './pane-fit-webgl-attach-signal'
 import { repairPaneWebglCanvasDprMismatch } from './terminal-canvas-dpr-repair'
 import { recordPaneWebglContextLoss } from './pane-webgl-context-loss-policy'
 import { presentPaneViewport } from './pane-viewport-present'
+import {
+  trackWebglCursorAnimation,
+  untrackWebglCursorAnimation
+} from './pane-webgl-cursor-animation'
 
 export {
   presentPaneViewport,
@@ -134,6 +138,7 @@ export function disposeWebgl(
   if (!pane.webglAddon) {
     return
   }
+  untrackWebglCursorAnimation(pane.webglAddon)
   releaseXtermWebglContext(pane.webglAddon)
   try {
     pane.webglAddon.dispose()
@@ -314,6 +319,7 @@ export function attachWebgl(pane: ManagedPaneInternal): void {
     })
     pane.terminal.loadAddon(addon)
     pane.webglAddon = addon
+    trackWebglCursorAnimation(addon)
     refreshTerminalAfterWebglAttach(pane)
   } catch (err) {
     if (pane.terminalGpuAcceleration === 'auto') {
