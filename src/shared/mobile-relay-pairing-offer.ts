@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { readPairingAlternateEndpoints } from './pairing-endpoint-failover'
 import {
   PAIRING_DEVICE_TOKEN_MAX_CHARACTERS,
   PAIRING_ENDPOINT_MAX_CHARACTERS,
@@ -77,7 +78,11 @@ export function createPairingOfferSchema(now: () => number = () => Date.now()) {
       publicKeyB64: z.string().min(1).max(PAIRING_PUBLIC_KEY_MAX_CHARACTERS),
       pairedDeviceId: z.string().min(1).max(128).optional(),
       scope: PairingScopeSchema.optional(),
-      relay: relaySchema.optional()
+      relay: relaySchema.optional(),
+      // Why: more places the same host may be reachable (tailnet, LAN, configured addresses), in
+      // the order to try after `endpoint`. Optional and degrading: a malformed or excess entry is
+      // dropped rather than refusing the offer, and older decoders strip the key entirely.
+      alternateEndpoints: z.array(z.unknown()).transform(readPairingAlternateEndpoints).optional()
     })
     .superRefine((offer, ctx) => {
       if (offer.relay && offer.scope === 'runtime') {

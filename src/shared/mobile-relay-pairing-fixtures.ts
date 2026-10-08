@@ -54,6 +54,17 @@ export function createMobileRelayPairingFixtures(now: number): PairingFixture[] 
       expected: directOffer
     },
     {
+      name: 'alternate endpoints keep valid entries and drop malformed ones',
+      payload: {
+        ...directOffer,
+        alternateEndpoints: ['ws://100.64.1.2:6768', 7, '', 'ws://192.168.1.20:6768']
+      },
+      expected: {
+        ...directOffer,
+        alternateEndpoints: ['ws://100.64.1.2:6768', 'ws://192.168.1.20:6768']
+      }
+    },
+    {
       name: 'runtime relay is invalid',
       payload: { ...directOffer, scope: 'runtime', relay },
       expected: null
