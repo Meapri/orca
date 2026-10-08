@@ -2,6 +2,7 @@ import { setRuntimeBrowserCommandsFactory } from '../runtime/runtime-browser-com
 import { startOrcadBrowserProvider } from './orcad-browser-startup'
 import { OrcadRuntimeLifetime, type OrcadRuntimeCleanup } from './orcad-runtime-lifetime'
 import type { OrcadManagedStopInstance } from '../../shared/orcad-stop-request'
+import type { OrcadBrowserMode } from './orcad-browser-mode'
 import { acquireOrcadInstanceLock } from './orcad-instance-lock'
 import { ORCAD_BUNDLED_LAUNCHER_ENV } from './orcad-bundled-runtime'
 import { resolveOrcadExitCode } from './orcad-exit-code'
@@ -14,6 +15,11 @@ import {
 
 const bundledLauncherChannel = process.env[ORCAD_BUNDLED_LAUNCHER_ENV] === '1'
 delete process.env[ORCAD_BUNDLED_LAUNCHER_ENV]
+
+/** True when a bundled launcher forked this runtime, making the launcher systemd's main PID. */
+export function isOrcadBundledLauncherChild(): boolean {
+  return bundledLauncherChannel
+}
 
 function createIdempotentOrcadCleanup(cleanup: () => Promise<void>): () => Promise<void> {
   let completion: Promise<void> | null = null
@@ -107,7 +113,8 @@ export async function startOrcadWithLifecycle<T extends object>(
 export async function startOrcadWithHost<T extends object>(
   userDataPath: string,
   start: (registerCleanup: (cleanup: OrcadRuntimeCleanup) => void) => Promise<T>,
-  runQuitHandlers: () => void
+  runQuitHandlers: () => void,
+  browserMode: OrcadBrowserMode = 'auto'
 ): Promise<T & { stop(): Promise<void>; instance: OrcadManagedStopInstance }> {
   const instanceLock = acquireOrcadInstanceLock(userDataPath)
   const { pid, startedAtMs, nonce } = instanceLock.record
@@ -118,7 +125,7 @@ export async function startOrcadWithHost<T extends object>(
     async (registerCleanup) => {
       admission = acquireProfileStateRuntimeAdmission(userDataPath)
       // Why not awaited: a desktop sidecar's authorization UI must not hold RPC readiness hostage.
-      browserProvider = startOrcadBrowserProvider({ userDataPath })
+      browserProvider = startOrcadBrowserProvider({ userDataPath, mode: browserMode })
       return { ...(await start(registerCleanup)), instance }
     },
     async (runtimeCleanupSucceeded) => {
