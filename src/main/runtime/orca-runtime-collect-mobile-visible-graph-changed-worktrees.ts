@@ -98,6 +98,10 @@ export class OrcaRuntimeWithCollectMobileVisibleGraphChangedWorktrees extends Or
       })
     }
     this.hydrateHeadlessMobileSessionTabsFromWorkspaceSession()
+    // Why: after a restart a workspace holding only host editor tabs has no session entry.
+    for (const worktreeId of this.hostEditorTabs.worktreeIds()) {
+      this.ensureHostEditorTabsSnapshot(worktreeId)
+    }
     const ptyInventory = await this.refreshMobileSessionPtyInventory()
     this.restoreLivePairedRendererSessionOwnedMobileTerminals(null)
     const snapshots = [...this.mobileSessionTabsByWorktree.values()].map((snapshot) =>

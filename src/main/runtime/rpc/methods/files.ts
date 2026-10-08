@@ -8,6 +8,7 @@ import {
 import { limitQuickOpenSearchReplyBySerializedBytes } from '../../../../shared/quick-open-transport-budget'
 import { FileOpen, WorktreeSelector } from './files-target-schemas'
 import { FILE_TERMINAL_ARTIFACT_METHODS } from './files-terminal-artifact-methods'
+import { supportsHostEditorTabs } from '../host-editor-tabs-client-capability'
 import {
   FilePathsExist,
   DocPreviewFileRead,
@@ -65,20 +66,32 @@ export const FILE_METHODS = [
     name: 'files.open',
     permission: 'workspace',
     params: FileOpenTab,
-    handler: async (params, { runtime }) =>
-      runtime.openMobileFile(params.worktree, params.relativePath, params.navigation)
+    handler: async (params, context) =>
+      supportsHostEditorTabs(context)
+        ? context.runtime.openMobileFile(params.worktree, params.relativePath, params.navigation, {
+            hostEditorTabs: true
+          })
+        : context.runtime.openMobileFile(params.worktree, params.relativePath, params.navigation)
   }),
   defineMethod({
     name: 'files.openDiff',
     permission: 'workspace',
     params: FileOpenDiff,
-    handler: async (params, { runtime }) =>
-      runtime.openMobileDiff(
-        params.worktree,
-        params.relativePath,
-        params.staged === true,
-        params.navigation
-      )
+    handler: async (params, context) =>
+      supportsHostEditorTabs(context)
+        ? context.runtime.openMobileDiff(
+            params.worktree,
+            params.relativePath,
+            params.staged === true,
+            params.navigation,
+            { hostEditorTabs: true }
+          )
+        : context.runtime.openMobileDiff(
+            params.worktree,
+            params.relativePath,
+            params.staged === true,
+            params.navigation
+          )
   }),
   defineMethod({
     name: 'files.read',

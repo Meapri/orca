@@ -181,7 +181,7 @@ export class OrcaRuntimeWithStoredMobileSnapshotHasStalePreservedTab extends Orc
       if (!reconciled.has(worktreeId)) {
         const existing = this.mobileSessionTabsByWorktree.get(worktreeId)
         if (existing) {
-          this.reconcileHeadlessMobileSessionBrowserTabs(worktreeId, existing)
+          this.reconcileHeadlessMobileSessionLiveTabs(worktreeId, existing)
         }
       }
     }
