@@ -65,7 +65,7 @@ describe('createTerminalCommandLifecycle', () => {
 
     expect(registerOscHandler).toHaveBeenCalledWith(133, expect.any(Function))
     const handler = registerOscHandler.mock.calls[0][1]
-    expect(handler('D;0')).toBe(true)
+    expect(handler('D;0')).toBe(false)
     expect(onCommandFinished).not.toHaveBeenCalled()
 
     disposable.dispose()

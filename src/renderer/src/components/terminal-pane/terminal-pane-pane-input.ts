@@ -30,6 +30,12 @@ import {
 } from './xterm-bypass-policy'
 import { markTerminalPinnedViewport } from '@/lib/pane-manager/terminal-scroll-intent'
 import { syncTerminalScrollIntentSoon } from '@/lib/pane-manager/terminal-scroll-intent-settle'
+import {
+  installTerminalClickToMoveCursor,
+  normalizeTerminalClickToMoveCursorMode
+} from './terminal-click-to-move-cursor'
+import { installTerminalInputSelectionEditing } from './terminal-input-selection-editing'
+import { resolveTerminalInputSelectionEditingEnabled } from '../../../../shared/terminal-input-selection-editing-settings'
 
 type PaneInputContext = {
   pane: Pick<ManagedPane, 'id' | 'terminal'>
@@ -72,8 +78,24 @@ export function installTerminalPaneInputHandling(context: PaneInputContext): voi
         renderPreedit: createTerminalIosHangulPreeditRenderer(pane.terminal)
       })
     : null
+  const clickToMoveCursor = installTerminalClickToMoveCursor(pane.terminal, {
+    getMode: () =>
+      normalizeTerminalClickToMoveCursorMode(settingsRef.current?.terminalClickToMoveCursor),
+    getKittyKeyboardFlags: () => paneKittyKeyboardModesRef.current.get(pane.id)?.flags ?? 0
+  })
+  const inputSelectionEditing = installTerminalInputSelectionEditing(pane.terminal, {
+    isEnabled: () => {
+      const value = settingsRef.current?.terminalInputSelectionEditing
+      return resolveTerminalInputSelectionEditingEnabled(typeof value === 'boolean' ? value : null)
+    },
+    isMac,
+    getKittyKeyboardFlags: () => paneKittyKeyboardModesRef.current.get(pane.id)?.flags ?? 0,
+    writeClipboardText: (text) => window.api.ui.writeTerminalClipboardText(text)
+  })
   imeCompositionDisposablesRef.current.set(pane.id, {
     dispose: () => {
+      inputSelectionEditing.dispose()
+      clickToMoveCursor.dispose()
       imeComposerPlaceholderMask.dispose()
       imeCompositionTracker.dispose()
       linuxImeCandidateState?.dispose()

@@ -1,0 +1,207 @@
+{
+  "capturedAt": "2026-09-30T11:13:39.709Z",
+  "platform": "darwin",
+  "command": [
+    "codex",
+    "-c",
+    "check_for_update_on_startup=false",
+    "-c",
+    "projects={\"/private/tmp/claude-501/ge/w\"={trust_level=\"trusted\"}}"
+  ],
+  "cols": 100,
+  "rows": 30,
+  "note": "codex-cli 0.157.1 default (alternate screen, SGR mouse reporting), macOS; isolated CODEX_HOME, placeholder API key; typed Latin, then SGR mouse click, drag, double-click on the composer, Backspace, Ctrl+_, Ctrl+J second line and a click on the first row; stopped before any submit",
+  "exitCode": 0,
+  "sends": [
+    {
+      "atMs": 6000,
+      "text": "a",
+      "transcriptByteOffset": 3666
+    },
+    {
+      "atMs": 6050,
+      "text": "l",
+      "transcriptByteOffset": 3838
+    },
+    {
+      "atMs": 6100,
+      "text": "p",
+      "transcriptByteOffset": 3938
+    },
+    {
+      "atMs": 6150,
+      "text": "h",
+      "transcriptByteOffset": 4038
+    },
+    {
+      "atMs": 6200,
+      "text": "a",
+      "transcriptByteOffset": 4138
+    },
+    {
+      "atMs": 6250,
+      "text": " ",
+      "transcriptByteOffset": 4238
+    },
+    {
+      "atMs": 6300,
+      "text": "b",
+      "transcriptByteOffset": 4324
+    },
+    {
+      "atMs": 6350,
+      "text": "e",
+      "transcriptByteOffset": 4425
+    },
+    {
+      "atMs": 6400,
+      "text": "t",
+      "transcriptByteOffset": 4528
+    },
+    {
+      "atMs": 6450,
+      "text": "a",
+      "transcriptByteOffset": 4631
+    },
+    {
+      "atMs": 6500,
+      "text": " ",
+      "transcriptByteOffset": 4734
+    },
+    {
+      "atMs": 6550,
+      "text": "g",
+      "transcriptByteOffset": 4822
+    },
+    {
+      "atMs": 6600,
+      "text": "a",
+      "transcriptByteOffset": 4925
+    },
+    {
+      "atMs": 6650,
+      "text": "m",
+      "transcriptByteOffset": 5028
+    },
+    {
+      "atMs": 6700,
+      "text": "m",
+      "transcriptByteOffset": 5131
+    },
+    {
+      "atMs": 6750,
+      "text": "a",
+      "transcriptByteOffset": 5234
+    },
+    {
+      "atMs": 7500,
+      "text": "\u001b[<0;9;27M\u001b[<0;9;27m",
+      "transcriptByteOffset": 5337
+    },
+    {
+      "atMs": 8300,
+      "text": "Z",
+      "transcriptByteOffset": 5467
+    },
+    {
+      "atMs": 9100,
+      "text": "",
+      "transcriptByteOffset": 5585
+    },
+    {
+      "atMs": 9900,
+      "text": "\u001b[<0;9;27M",
+      "transcriptByteOffset": 5722
+    },
+    {
+      "atMs": 10000,
+      "text": "\u001b[<32;11;27M",
+      "transcriptByteOffset": 5808
+    },
+    {
+      "atMs": 10100,
+      "text": "\u001b[<32;13;27M",
+      "transcriptByteOffset": 5914
+    },
+    {
+      "atMs": 10200,
+      "text": "\u001b[<0;13;27m",
+      "transcriptByteOffset": 6022
+    },
+    {
+      "atMs": 11000,
+      "text": "",
+      "transcriptByteOffset": 6110
+    },
+    {
+      "atMs": 11800,
+      "text": "\u001b[<0;16;27M\u001b[<0;16;27m",
+      "transcriptByteOffset": 6236
+    },
+    {
+      "atMs": 11900,
+      "text": "\u001b[<0;16;27M\u001b[<0;16;27m",
+      "transcriptByteOffset": 6367
+    },
+    {
+      "atMs": 12700,
+      "text": "",
+      "transcriptByteOffset": 6499
+    },
+    {
+      "atMs": 13500,
+      "text": "\u001f",
+      "transcriptByteOffset": 6613
+    },
+    {
+      "atMs": 14300,
+      "text": "\u001b[F",
+      "transcriptByteOffset": 6657
+    },
+    {
+      "atMs": 14700,
+      "text": "\n",
+      "transcriptByteOffset": 6745
+    },
+    {
+      "atMs": 15100,
+      "text": "d",
+      "transcriptByteOffset": 6908
+    },
+    {
+      "atMs": 15150,
+      "text": "e",
+      "transcriptByteOffset": 7008
+    },
+    {
+      "atMs": 15200,
+      "text": "l",
+      "transcriptByteOffset": 7108
+    },
+    {
+      "atMs": 15250,
+      "text": "t",
+      "transcriptByteOffset": 7208
+    },
+    {
+      "atMs": 15300,
+      "text": "a",
+      "transcriptByteOffset": 7308
+    },
+    {
+      "atMs": 16000,
+      "text": "\u001b[<0;5;26M\u001b[<0;5;26m",
+      "transcriptByteOffset": 7408
+    },
+    {
+      "atMs": 16800,
+      "text": "Q",
+      "transcriptByteOffset": 7537
+    },
+    {
+      "atMs": 17600,
+      "text": "",
+      "transcriptByteOffset": 7660
+    }
+  ]
+}
