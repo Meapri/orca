@@ -1,0 +1,191 @@
+{
+  "capturedAt": "2026-09-30T11:11:18.717Z",
+  "platform": "darwin",
+  "command": ["/bin/bash", "--norc", "--noprofile", "-i"],
+  "cols": 100,
+  "rows": 30,
+  "note": "bash 3.2 --norc --noprofile, macOS; same keys as zsh-input-edit-keys; nothing executed",
+  "exitCode": 0,
+  "sends": [
+    {
+      "atMs": 1500,
+      "text": "a",
+      "transcriptByteOffset": 9
+    },
+    {
+      "atMs": 1550,
+      "text": "l",
+      "transcriptByteOffset": 10
+    },
+    {
+      "atMs": 1600,
+      "text": "p",
+      "transcriptByteOffset": 11
+    },
+    {
+      "atMs": 1650,
+      "text": "h",
+      "transcriptByteOffset": 12
+    },
+    {
+      "atMs": 1700,
+      "text": "a",
+      "transcriptByteOffset": 13
+    },
+    {
+      "atMs": 1750,
+      "text": " ",
+      "transcriptByteOffset": 14
+    },
+    {
+      "atMs": 1800,
+      "text": "b",
+      "transcriptByteOffset": 15
+    },
+    {
+      "atMs": 1850,
+      "text": "e",
+      "transcriptByteOffset": 16
+    },
+    {
+      "atMs": 1900,
+      "text": "t",
+      "transcriptByteOffset": 17
+    },
+    {
+      "atMs": 1950,
+      "text": "a",
+      "transcriptByteOffset": 18
+    },
+    {
+      "atMs": 2000,
+      "text": " ",
+      "transcriptByteOffset": 19
+    },
+    {
+      "atMs": 2050,
+      "text": "g",
+      "transcriptByteOffset": 20
+    },
+    {
+      "atMs": 2100,
+      "text": "a",
+      "transcriptByteOffset": 21
+    },
+    {
+      "atMs": 2150,
+      "text": "m",
+      "transcriptByteOffset": 22
+    },
+    {
+      "atMs": 2200,
+      "text": "m",
+      "transcriptByteOffset": 23
+    },
+    {
+      "atMs": 2250,
+      "text": "a",
+      "transcriptByteOffset": 24
+    },
+    {
+      "atMs": 3000,
+      "text": "\u001b[D\u001b[D\u001b[D\u001b[D\u001b[D\u001b[D",
+      "transcriptByteOffset": 25
+    },
+    {
+      "atMs": 3800,
+      "text": "",
+      "transcriptByteOffset": 31
+    },
+    {
+      "atMs": 4600,
+      "text": "B",
+      "transcriptByteOffset": 99
+    },
+    {
+      "atMs": 4650,
+      "text": "E",
+      "transcriptByteOffset": 112
+    },
+    {
+      "atMs": 4700,
+      "text": "T",
+      "transcriptByteOffset": 125
+    },
+    {
+      "atMs": 4750,
+      "text": "A",
+      "transcriptByteOffset": 138
+    },
+    {
+      "atMs": 5600,
+      "text": "beta",
+      "transcriptByteOffset": 151
+    },
+    {
+      "atMs": 6400,
+      "text": "\u001b[D\u001b[D\u001b[D\u001b[D",
+      "transcriptByteOffset": 271
+    },
+    {
+      "atMs": 7200,
+      "text": "\u001b[3~\u001b[3~\u001b[3~\u001b[3~",
+      "transcriptByteOffset": 275
+    },
+    {
+      "atMs": 8000,
+      "text": "beta",
+      "transcriptByteOffset": 303
+    },
+    {
+      "atMs": 8800,
+      "text": "\u001b[C\u001b[C\u001b[C\u001b[C\u001b[C\u001b[C\u001b[C\u001b[C\u001b[C\u001b[C",
+      "transcriptByteOffset": 355
+    },
+    {
+      "atMs": 9600,
+      "text": "\u0001",
+      "transcriptByteOffset": 377
+    },
+    {
+      "atMs": 10400,
+      "text": "\u0005",
+      "transcriptByteOffset": 381
+    },
+    {
+      "atMs": 11200,
+      "text": "\u001b[H",
+      "transcriptByteOffset": 429
+    },
+    {
+      "atMs": 12000,
+      "text": "\u001b[F",
+      "transcriptByteOffset": 433
+    },
+    {
+      "atMs": 12800,
+      "text": "\u001b[1;2D\u001b[1;2D\u001b[1;2D",
+      "transcriptByteOffset": 481
+    },
+    {
+      "atMs": 13600,
+      "text": "",
+      "transcriptByteOffset": 493
+    },
+    {
+      "atMs": 14400,
+      "text": "\u001f",
+      "transcriptByteOffset": 497
+    },
+    {
+      "atMs": 15200,
+      "text": "\u001b[1;3D",
+      "transcriptByteOffset": 498
+    },
+    {
+      "atMs": 16000,
+      "text": "\u001bb",
+      "transcriptByteOffset": 502
+    }
+  ]
+}
