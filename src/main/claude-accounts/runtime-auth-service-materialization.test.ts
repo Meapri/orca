@@ -2,7 +2,7 @@ import {
   cleanupRuntimeAuthTestState,
   createClaudeAccount,
   createClaudeCredentialsJson,
-  createElectronMock,
+  installTestUserDataEnvironment,
   createKeychainMock,
   createManagedClaudeAuth,
   createOauthRefreshMock,
@@ -30,7 +30,7 @@ import {
 import { join } from 'node:path'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 
-vi.mock('electron', () => createElectronMock())
+beforeEach(() => installTestUserDataEnvironment())
 
 vi.mock('./oauth-refresh', () => createOauthRefreshMock())
 

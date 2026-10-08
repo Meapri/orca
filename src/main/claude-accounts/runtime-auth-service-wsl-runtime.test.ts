@@ -2,7 +2,7 @@ import {
   cleanupRuntimeAuthTestState,
   createClaudeAccount,
   createClaudeCredentialsJson,
-  createElectronMock,
+  installTestUserDataEnvironment,
   createKeychainMock,
   createManagedClaudeAuth,
   createOauthRefreshMock,
@@ -17,7 +17,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type * as ClaudeProfileRouting from '../../shared/claude-profile-routing'
 
-vi.mock('electron', () => createElectronMock())
+beforeEach(() => installTestUserDataEnvironment())
 
 vi.mock('./oauth-refresh', () => createOauthRefreshMock())
 

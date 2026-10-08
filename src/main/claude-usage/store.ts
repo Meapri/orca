@@ -1,5 +1,5 @@
+import { getAppEnvironment } from '../../shared/app-environment'
 import { claudeTokenSessions } from '../usage/agent-token-usage'
-import { app } from 'electron'
 import { join } from 'node:path'
 import type {
   ClaudeUsageBreakdownKind,
@@ -63,12 +63,12 @@ function normalizePersistedState(state: ClaudeUsagePersistedState): ClaudeUsageP
 }
 
 export function initClaudeUsagePath(): void {
-  _claudeUsageFile = join(app.getPath('userData'), 'orca-claude-usage.json')
+  _claudeUsageFile = join(getAppEnvironment().getPath('userData'), 'orca-claude-usage.json')
 }
 
 function getClaudeUsageFile(): string {
   if (!_claudeUsageFile) {
-    _claudeUsageFile = join(app.getPath('userData'), 'orca-claude-usage.json')
+    _claudeUsageFile = join(getAppEnvironment().getPath('userData'), 'orca-claude-usage.json')
   }
   return _claudeUsageFile
 }

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { mkdirSync, readFileSync, statSync, utimesSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
@@ -11,6 +11,7 @@ import {
   testState
 } from './service-test-harness'
 import { createCanonicalHookTrustFixture } from './service-hook-trust-test-fixtures'
+import { installFakeAppEnvironment } from '../../../config/scripts/vitest-host-ports-setup'
 
 // Why: temp homes exceed sun_path on macOS but not on Linux; keep asserted config bytes host-independent.
 vi.mock('../codex/codex-daemon-socket-path-guard', async (importOriginal) => ({
@@ -18,11 +19,9 @@ vi.mock('../codex/codex-daemon-socket-path-guard', async (importOriginal) => ({
   applyCodexDaemonSocketGuard: (config: string) => config
 }))
 
-vi.mock('electron', () => ({
-  app: {
-    getPath: () => testState.userDataDir
-  }
-}))
+beforeEach(() => {
+  installFakeAppEnvironment({ getPath: () => testState.userDataDir })
+})
 
 vi.mock('node:os', async () => {
   const actual = await vi.importActual<typeof import('node:os')>('node:os') // eslint-disable-line @typescript-eslint/consistent-type-imports -- vi.importActual requires inline import()

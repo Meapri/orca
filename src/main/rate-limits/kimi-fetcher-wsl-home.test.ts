@@ -5,7 +5,13 @@ const netFetchMock = vi.hoisted(() => vi.fn())
 const files = vi.hoisted(() => new Map<string, string>())
 const STALLED = vi.hoisted(() => '__stalled_unc_read__')
 
-vi.mock('electron', () => ({ net: { fetch: netFetchMock } }))
+vi.mock('../network/http-client', () => ({
+  getMainHttpClient: () => ({
+    fetch: netFetchMock,
+    proxySession: () => null,
+    partitionSession: () => null
+  })
+}))
 vi.mock('node:fs/promises', () => ({
   readFile: async (path: string) => {
     const contents = files.get(path)

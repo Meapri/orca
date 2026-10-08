@@ -26,7 +26,13 @@ vi.mock('node:fs/promises', () => ({
   writeFile: vi.fn().mockResolvedValue(undefined),
   rename: vi.fn().mockResolvedValue(undefined)
 }))
-vi.mock('electron', () => ({ net: { fetch: netFetchMock } }))
+vi.mock('../network/http-client', () => ({
+  getMainHttpClient: () => ({
+    fetch: netFetchMock,
+    proxySession: () => null,
+    partitionSession: () => null
+  })
+}))
 
 import { fetchGeminiRateLimits } from './gemini-usage-fetcher'
 
