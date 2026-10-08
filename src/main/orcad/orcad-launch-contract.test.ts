@@ -52,9 +52,81 @@ describe('parseArgs', () => {
     expect(() => parseArgs(['--project-root'])).toThrow('--project-root expects a value')
   })
 
+  it('registers the CLI in ~/.local/bin only when --register-cli asks for it', () => {
+    expect(parseArgs(['--register-cli'])).toEqual({ registerCli: true })
+    expect(parseArgs([]).registerCli).toBeUndefined()
+  })
+
+  it('fails closed on a taken --port only when --require-port asks for it', () => {
+    expect(parseArgs(['--port', '6768', '--require-port'])).toEqual({
+      port: 6768,
+      requirePort: true
+    })
+    expect(() => parseArgs(['--require-port'])).toThrow('--require-port requires --port')
+  })
+
   it('rejects --bind with no value rather than silently binding the default', () => {
     expect(() => parseArgs(['--bind'])).toThrow('--bind expects a value')
     expect(() => parseArgs(['--bind', '--json'])).not.toThrow()
+  })
+
+  it('maps repeatable --limit flags onto the resource-governance env vars', () => {
+    expect(
+      parseArgs(['--limit', 'terminal-memory-max=4G', '--limit', 'browser-max-tabs=4'])
+    ).toEqual({
+      resourceLimits: { ORCA_TERMINAL_MEMORY_MAX: '4G', ORCA_BROWSER_MAX_TABS: '4' }
+    })
+  })
+
+  it('refuses an unknown or empty --limit instead of ignoring it', () => {
+    expect(() => parseArgs(['--limit', 'memory=4G'])).toThrow('--limit expects <key>=<value>')
+    expect(() => parseArgs(['--limit', 'terminal-memory-max='])).toThrow('--limit expects')
+    expect(() => parseArgs(['--limit'])).toThrow('--limit expects')
+    expect(() => parseArgs(['--limit', 'toString=1'])).toThrow('--limit expects')
+  })
+
+  it('accepts --browser and refuses an unknown provider', () => {
+    expect(parseArgs(['--browser', 'none'])).toEqual({ browser: 'none' })
+    expect(parseArgs(['--browser', 'Electron'])).toEqual({ browser: 'electron' })
+    expect(() => parseArgs(['--browser', 'webkit'])).toThrow('--browser expects one of')
+    expect(() => parseArgs(['--browser'])).toThrow('--browser expects one of')
+  })
+
+  it('accepts every orcad flag together: limits, lifetime, repeated addresses, pinned port', () => {
+    expect(
+      parseArgs([
+        '--port',
+        '6768',
+        '--bind',
+        '0.0.0.0',
+        '--limit',
+        'terminal-memory-high=3G',
+        '--pairing-expires',
+        '1h',
+        '--pairing-address',
+        '100.64.1.20',
+        '--pairing-address',
+        'wss://orca.example.com',
+        '--mobile-pairing',
+        '--json'
+      ])
+    ).toEqual({
+      port: 6768,
+      bind: '0.0.0.0',
+      resourceLimits: { ORCA_TERMINAL_MEMORY_HIGH: '3G' },
+      pairingExpiresInMs: 3_600_000,
+      pairingAddress: '100.64.1.20',
+      pairingAddresses: ['100.64.1.20', 'wss://orca.example.com'],
+      mobilePairing: true,
+      json: true
+    })
+  })
+
+  it('parses --pairing-expires and refuses a lifetime outside the supported window', () => {
+    expect(parseArgs(['--pairing-expires', '2h'])).toEqual({ pairingExpiresInMs: 7_200_000 })
+    expect(() => parseArgs(['--pairing-expires'])).toThrow('--pairing-expires')
+    expect(() => parseArgs(['--pairing-expires', '10s'])).toThrow('at least 1 minute')
+    expect(() => parseArgs(['--pairing-expires', 'never'])).toThrow('Invalid pairing lifetime')
   })
 })
 

@@ -16,6 +16,7 @@ export type OrcadPairingStartupOptions = {
   pairingAddresses?: string[]
   pairingExpiresInMs?: number
   mobilePairing?: boolean
+  grantDesktopControl?: boolean
 }
 
 export async function startOrcadPairing(
@@ -44,6 +45,7 @@ export async function startOrcadPairing(
   const runtimeOffer = createOrcadPairingOffer({
     ...shared,
     scope: 'runtime',
+    grants: options.grantDesktopControl ? ['desktop-control'] : [],
     alternateEndpoints: endpointCandidates?.alternates
   })
   // Why always constructed: `orca serve pairing --mobile` works without the startup flag. With it,
