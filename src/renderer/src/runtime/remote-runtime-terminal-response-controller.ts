@@ -12,6 +12,7 @@ import {
 } from './remote-runtime-terminal-snapshot-state'
 import type { TerminalMultiplexEvent } from './remote-runtime-terminal-multiplexer-types'
 import { unwrapRuntimeRpcResult } from './runtime-rpc-client'
+import { acceptSubscribedResume } from './remote-runtime-terminal-resume'
 
 export abstract class RemoteRuntimeTerminalResponseController extends RemoteRuntimeTerminalFlowController {
   protected handleResponse(response: RuntimeRpcResponse<unknown>): void {
@@ -60,6 +61,9 @@ export abstract class RemoteRuntimeTerminalResponseController extends RemoteRunt
       stream.supportsOutputPause = capabilities?.outputPause === 1
       if (stream.supportsOutputPause) {
         stream.callbacks.onOutputPauseCapability?.()
+      }
+      if (acceptSubscribedResume(stream, event)) {
+        stream.callbacks.onSubscribed?.({ resumed: true })
       }
     } else if (event.type === 'end') {
       discardOutputAcknowledgements(stream)

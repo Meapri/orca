@@ -23,9 +23,18 @@ export const TerminalMultiplexSubscribeFrame = TerminalHandle.extend({
       ackOutputSourceRanges: z.literal(1).optional(),
       desktopViewportClaims: z.literal(1).optional(),
       outputPause: z.literal(1).optional(),
+      outputResume: z.literal(1).optional(),
       writeUnavailable: z.literal(1).optional()
     })
+    .optional(),
+  // Why .catch: a malformed resume point must degrade to the full snapshot, never drop the subscribe.
+  resume: z
+    .object({
+      token: z.string().min(1).max(64),
+      seq: z.number().int().nonnegative()
+    })
     .optional()
+    .catch(undefined)
 })
 
 export const TerminalMultiplexLegacyAckFrame = z

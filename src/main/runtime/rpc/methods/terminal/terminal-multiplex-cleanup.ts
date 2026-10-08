@@ -36,6 +36,7 @@ export function installMultiplexCleanup(
     stream.unsubscribeFit()
     stream.unsubscribeDriver()
     stream.unregisterBinaryHandler()
+    stream.outputResume?.release()
     streams.delete(streamId)
     state.flushAllAckPendingOutput()
     // Why: release the runtime exit-waiter for this slot (see the field's note); delete before abort so its .catch no-ops instead of re-detaching.

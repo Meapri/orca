@@ -100,6 +100,10 @@ function expectSnapshotStartFieldsRemainPublished(args: {
   }
 }
 
+function capabilityMap(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null ? { ...value } : {}
+}
+
 function expectWireCompatible(record: JourneyRecord): void {
   // Rule 2 — no frame may be refused by the receiving build's decoder. An opcode
   // the peer does not know is dropped silently, so this is the only signal.
@@ -108,8 +112,20 @@ function expectWireCompatible(record: JourneyRecord): void {
 
   // The subscribe handshake still negotiates the optional output-pause opcode,
   // which is what keeps opcode 16 legal to send on this pairing.
+  const advertised = record.observed
+    .filter((frame) => frame.direction === 'client-to-host')
+    .map((frame) => capabilityMap(frame.json?.capabilities))
+    .filter((capabilities) => Object.keys(capabilities).length > 0)
+  expect(advertised.length).toBeGreaterThan(0)
   for (const event of record.subscribedEvents) {
-    expect(event.capabilities).toEqual({ outputPause: 1 })
+    expect(event.capabilities).toMatchObject({ outputPause: 1 })
+    // Rule 3: a host echoes (and then acts on) only what this client advertised.
+    for (const capability of Object.keys(capabilityMap(event.capabilities))) {
+      expect(
+        advertised.every((capabilities) => capabilities[capability] === 1),
+        `host echoed ${capability}, which the client never advertised`
+      ).toBe(true)
+    }
   }
 
   // Input reached the process, before and after the reconnect.
@@ -153,6 +169,10 @@ describe('cross-version remote terminal wire', () => {
   it('current client against current server completes the journey, and is the reference for a current host', () => {
     expectJourneyActuallyRan(currentReference)
     expectWireCompatible(currentReference)
+    // The current build's own contract: both optional stream capabilities negotiate.
+    for (const event of currentReference.subscribedEvents) {
+      expect(event.capabilities).toEqual({ outputPause: 1, outputResume: 1 })
+    }
     expect(currentReference.snapshotStarts).toEqual([
       expect.objectContaining({ alternateScreen: false, terminalOwner: 'shell' }),
       expect.objectContaining({ alternateScreen: false, terminalOwner: 'shell' }),
