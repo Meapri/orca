@@ -57,7 +57,8 @@ import {
   getRemoteRuntimeTerminalMultiplexer,
   REMOTE_TERMINAL_SNAPSHOT_TOO_LARGE,
   type RemoteRuntimeMultiplexedTerminal,
-  type RemoteRuntimeSnapshotOutcome
+  type RemoteRuntimeSnapshotOutcome,
+  type RemoteRuntimeTerminalResumePoint
 } from '../../runtime/remote-runtime-terminal-multiplexer'
 import {
   toRuntimeTerminalWorktreeSelector,
@@ -85,6 +86,8 @@ import { hostSnapshotAffirmsWorktreeContents } from '@/runtime/host-session-snap
 import { runRemoteAgentSessionLaunch } from '@/runtime/remote-agent-session-launch'
 import { useAppStore } from '@/store'
 import { recordWebAgentSessionHandoff } from '@/runtime/web-agent-session-handoff'
+import { dropHostRetiredLocalTerminalTab } from '@/runtime/host-retired-terminal-tab'
+import { isTerminalSurfaceRetiredError } from '../../../../shared/terminal-surface-retirement-refusal'
 import { refreshWebRuntimeSessionTabsSnapshot } from '@/runtime/web-runtime-session'
 import {
   bufferPtyShutdownData,
@@ -271,6 +274,12 @@ export function createRemoteRuntimePtyTransport(
   let sameHandleEndReuseAttachedAt: number | null = null
   let attachGeneration = 0
   let subscriptionGeneration = 0
+  // Why: set only by a recoverable transport close; the next same-handle subscribe may replay just the missed tail.
+  let pendingResumePoint: {
+    handle: string
+    ptyId: string | null
+    point: RemoteRuntimeTerminalResumePoint
+  } | null = null
 
   function setAttachmentReady(ready: boolean): void {
     attachmentReady = ready
@@ -2251,6 +2260,12 @@ export function createRemoteRuntimePtyTransport(
     let subscriptionSnapshotHadContent = false
     // Why: viewport handed to subscribe; a resize during the round-trip falls back to the refresh-only one-shot RPC, replayed through the stream below once current.
     const subscribedViewport = desiredViewport
+    const resumeFrom =
+      pendingResumePoint?.handle === subscribedHandle &&
+      pendingResumePoint.ptyId === subscribedPtyId
+        ? pendingResumePoint.point
+        : undefined
+    pendingResumePoint = null
     const isCurrentSubscription = (): boolean =>
       !transportClosed &&
       generation === subscriptionGeneration &&
@@ -2267,6 +2282,7 @@ export function createRemoteRuntimePtyTransport(
       client: { id: clientId, type: 'desktop' },
       viewport: subscribedViewport ?? undefined,
       inputSessionId: inputJournal.sessionId,
+      ...(resumeFrom ? { resumeFrom } : {}),
       callbacks: {
         onData: (data, meta) => {
           if (isCurrentSubscription()) {
@@ -2322,10 +2338,12 @@ export function createRemoteRuntimePtyTransport(
             )
           }
         },
-        onSubscribed: () => {
+        onSubscribed: (info) => {
           if (!isCurrentSubscription()) {
             return
           }
+          // A resumed stream kept the view's contents, so there is nothing to restore.
+          subscriptionSnapshotHadContent ||= info?.resumed === true
           storedCallbacks.onOutputPauseChanged?.(
             desiredOutputPaused,
             nextStream.setOutputPaused(desiredOutputPaused)
@@ -2408,7 +2426,7 @@ export function createRemoteRuntimePtyTransport(
             inputJournal.acknowledge(appliedSeq, kind)
           }
         },
-        onTransportClose: ({ recoverable, retryWithBackoff }) => {
+        onTransportClose: ({ recoverable, retryWithBackoff, resumePoint }) => {
           transportClosed = true
           if (generation !== subscriptionGeneration) {
             return
@@ -2419,6 +2437,10 @@ export function createRemoteRuntimePtyTransport(
               return
             }
           }
+          pendingResumePoint =
+            recoverable && resumePoint
+              ? { handle: subscribedHandle, ptyId: subscribedPtyId, point: resumePoint }
+              : null
           multiplexedStream = null
           multiplexedStreamHandle = null
           setAttachmentReady(false)
@@ -2862,6 +2884,9 @@ export function createRemoteRuntimePtyTransport(
           if (isRemoteTerminalGoneMessage(message)) {
             recovery.cancel()
             handleRemoteTerminalError(error)
+            if (tabId && isTerminalSurfaceRetiredError(message)) {
+              dropHostRetiredLocalTerminalTab(tabId)
+            }
           } else if (isRecoverablePaneBindingError(error)) {
             scheduleConnectRetryAfterRecoverableFailure()
           } else {

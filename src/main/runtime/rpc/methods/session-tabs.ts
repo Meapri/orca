@@ -2,6 +2,11 @@ import { resolveRuntimeNavigationTarget } from '../../../../shared/runtime-navig
 import { getExplicitWorktreeIdSelector } from '../../runtime-worktree-selection'
 import { defineMethod, defineStreamingMethod } from '../core'
 import {
+  createBackpressuredLatestStatePublisher,
+  type BackpressuredLatestStatePublisher
+} from '../backpressured-latest-state-publisher'
+import type { RuntimeMobileSessionTabsResult } from '../../../../shared/runtime-types'
+import {
   CreateTerminalTab,
   SessionTabsUnsubscribe,
   WorktreeTabSelector
@@ -100,13 +105,25 @@ export const SESSION_TAB_METHODS = [
     params: WorktreeTabSelector,
     handler: async (
       params,
-      { runtime, connectionId, requestId, pairedDeviceId, clientKind, clientCapabilities, signal },
+      {
+        runtime,
+        connectionId,
+        requestId,
+        pairedDeviceId,
+        clientKind,
+        clientCapabilities,
+        signal,
+        outboundBacklogBytes,
+        awaitOutboundDelivery
+      },
       emit
     ) => {
       let subscriptionId: string | null = null
       let released = false
       let endOnRelease = true
       let stopListening = (): void => {}
+      let updatePublisher: BackpressuredLatestStatePublisher<RuntimeMobileSessionTabsResult> | null =
+        null
       // Safe without a version check: any other release of this key runs our cleanup first, which latches `released`.
       const release = (): void => {
         if (!released && subscriptionId) {
@@ -127,6 +144,7 @@ export const SESSION_TAB_METHODS = [
             released = true
             signal?.removeEventListener('abort', release)
             stopListening()
+            updatePublisher?.dispose()
             if (endOnRelease) {
               emit({ type: 'end' })
             }
@@ -169,15 +187,29 @@ export const SESSION_TAB_METHODS = [
         if (released) {
           return
         }
+        // Why: the proof delta is stateful, so it runs for sent frames only, never superseded ones.
+        const sendUpdated = (snapshot: RuntimeMobileSessionTabsResult): void =>
+          emit({
+            type: 'updated',
+            ...withProofDelta(projectSessionTabsForClient(snapshot, clientKind, clientCapabilities))
+          })
+        const publisher = createBackpressuredLatestStatePublisher<RuntimeMobileSessionTabsResult>({
+          send: sendUpdated,
+          backlogBytes: outboundBacklogBytes,
+          awaitDelivery: awaitOutboundDelivery
+        })
+        updatePublisher = publisher
         stopListening = runtime.onMobileSessionTabsChanged((snapshot) => {
-          if (snapshot.worktree === subscribedWorktree) {
-            emit({
-              type: 'updated',
-              ...withProofDelta(
-                projectSessionTabsForClient(snapshot, clientKind, clientCapabilities)
-              )
-            })
+          if (snapshot.worktree !== subscribedWorktree) {
+            return
           }
+          if (snapshot.navigationIntent !== undefined) {
+            // Why: a follow intent is one-shot, so it must never be superseded while parked.
+            publisher.discard(snapshot.worktree)
+            sendUpdated(snapshot)
+            return
+          }
+          publisher.offer(snapshot.worktree, snapshot)
         }, pairedDeviceId)
       } catch (error) {
         // A stream already ended by its release must not also report an error.

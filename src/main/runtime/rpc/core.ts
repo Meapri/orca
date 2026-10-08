@@ -13,6 +13,7 @@ import type { OrchestrationCompatibilityEvidence } from '../../../shared/orchest
 import type { OrchestrationSessionCaller } from '../orchestration/orchestration-caller-identity'
 import type { RpcCallerIdentity } from './rpc-caller-identity'
 import type { RpcMethodPermission } from './rpc-method-permission'
+import type { DeviceAdministrationRpcContext } from './device-administration-context'
 
 export type PairingRpcContext = {
   getEndpoints(params: PairingGetEndpointsParams): Promise<PairingGetEndpointsResult>
@@ -112,8 +113,14 @@ export type RpcContext = {
   // Why: federation pins the authenticated saved-environment caller without exposing its token to handlers or storage.
   authenticatedCallerFingerprint?: string
   pairing?: PairingRpcContext
+  // Why: host-only credential administration; set by the local-socket transport alone.
+  deviceAdministration?: DeviceAdministrationRpcContext
   // Why: mobile terminal traffic bypasses JSON streaming; undefined on Unix/socket and non-E2EE WebSocket paths.
   sendBinary?: (bytes: Uint8Array<ArrayBufferLike>) => boolean | void
+  // Why: state streams send only their latest frame while this connection's writes are backlogged.
+  outboundBacklogBytes?: () => number
+  // Why: resolves once the peer has received everything sent before the call, kernel queues included.
+  awaitOutboundDelivery?: (onDelivered: () => void) => () => void
   // Why: binary terminal frames arrive outside JSON-RPC once a stream is established; handlers register only the stream IDs they created.
   registerBinaryStreamHandler?: (
     streamId: number,

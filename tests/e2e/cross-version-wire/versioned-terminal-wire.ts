@@ -51,12 +51,19 @@ export type HostWire = {
 export type ClientTerminalCallbacks = {
   onData: (data: string, meta?: { seq?: number; rawLength?: number }) => void
   onSnapshot: (data: string, meta?: { pendingEscapeTailAnsi?: string }) => void
-  onSubscribed?: () => void
+  onSubscribed?: (info?: { resumed?: boolean }) => void
   onOutputPauseCapability?: () => void
   onEnd?: () => void
   onError?: (message: string) => void
-  onTransportClose?: (event: { recoverable: boolean; retryWithBackoff?: boolean }) => void
+  onTransportClose?: (event: {
+    recoverable: boolean
+    retryWithBackoff?: boolean
+    /** Only from builds that negotiate stream resumption; absent means "take a snapshot". */
+    resumePoint?: TerminalResumePoint
+  }) => void
 }
+
+export type TerminalResumePoint = { token: string; seq: number }
 
 export type ClientTerminal = {
   streamId: number
@@ -80,6 +87,8 @@ export type ClientWire = {
       client: { id: string; type: 'desktop' | 'mobile' }
       viewport?: { cols: number; rows: number }
       callbacks: ClientTerminalCallbacks
+      /** Ignored by builds that predate stream resumption. */
+      resumeFrom?: TerminalResumePoint
     }) => Promise<ClientTerminal>
   }
   resetRemoteRuntimeTerminalMultiplexersForTests: () => void

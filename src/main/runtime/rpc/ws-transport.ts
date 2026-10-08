@@ -1,9 +1,10 @@
 // WebSocket transport letting mobile clients reach the Orca runtime over LAN (wss:// with TLS, else ws://); auth is per-device tokens, independent of transport encryption.
-import { createServer as createHttpsServer, type Server as HttpsServer } from 'node:https'
-import { createServer as createHttpServer, type Server as HttpServer } from 'node:http'
+import type { Server as HttpsServer } from 'node:https'
+import type { Server as HttpServer } from 'node:http'
 import { WebSocketServer, type WebSocket } from 'ws'
+import { remoteRuntimePerMessageDeflateOptions } from './ws-transport-compression'
+import { WebSocketDeliveryReceiptRegistry } from './ws-delivery-receipts'
 import type { RpcTransport } from './transport'
-import { createStaticWebClientHandler } from './static-web-client-handler'
 import {
   attachNodeWebSocketLifecycle,
   clearNodeWebSocketPreAuthTimer,
@@ -12,7 +13,14 @@ import {
   type WebSocketConnectionCloseHandler,
   type WebSocketMessageHandler
 } from './node-websocket-lifecycle'
+import {
+  createWebSocketHttpServer,
+  type WebSocketProbeRequestHandler
+} from './ws-transport-http-server'
 import { RemoteRuntimeServerHeartbeat } from './remote-runtime-server-heartbeat'
+import { listenOnPlannedPorts, planWebSocketListenPorts } from './ws-transport-port-binding'
+
+export type { WebSocketProbeRequestHandler } from './ws-transport-http-server'
 
 const WEBSOCKET_TRANSPORT_MAX_MESSAGE_BYTES = 1024 * 1024
 // Why: one desktop remote-host client can hold many concurrent streams, so keep the cap high enough that stale streams don't starve control RPCs.
@@ -42,6 +50,9 @@ export type WebSocketTransportOptions = {
   fallbackPort?: number
   // Why: serve --port clients dial the pinned port; prefer it first so a stale fallback can't steal the pin (issue #8535). Default keeps fallback-first (STA-1511).
   preferPinnedPort?: boolean
+  // Why: an unattended host's clients dial exactly the pinned port, so it must fail closed instead of falling back.
+  requirePinnedPort?: boolean
+  probeRequestHandler?: WebSocketProbeRequestHandler
 }
 
 export class WebSocketTransport implements RpcTransport {
@@ -54,6 +65,8 @@ export class WebSocketTransport implements RpcTransport {
   private readonly staticRoot: string | undefined
   private readonly fallbackPort: number | undefined
   private readonly preferPinnedPort: boolean
+  private readonly requirePinnedPort: boolean
+  private readonly probeRequestHandler: WebSocketProbeRequestHandler | undefined
   private httpServer: HttpsServer | HttpServer | null = null
   private wss: WebSocketServer | null = null
   private messageHandler: WebSocketMessageHandler | null = null
@@ -62,6 +75,7 @@ export class WebSocketTransport implements RpcTransport {
   private wsClientIds = new Map<WebSocket, string>()
   private heartbeatConnections = new Set<WebSocket>()
   private preAuthTimers = new WeakMap<WebSocket, ReturnType<typeof setTimeout>>()
+  private readonly deliveryReceipts = new WebSocketDeliveryReceiptRegistry()
 
   constructor({
     host,
@@ -73,7 +87,9 @@ export class WebSocketTransport implements RpcTransport {
     preAuthTimeoutMs,
     staticRoot,
     fallbackPort,
-    preferPinnedPort
+    preferPinnedPort,
+    requirePinnedPort,
+    probeRequestHandler
   }: WebSocketTransportOptions) {
     this.host = host
     this.port = port
@@ -88,6 +104,8 @@ export class WebSocketTransport implements RpcTransport {
     this.staticRoot = staticRoot
     this.fallbackPort = fallbackPort
     this.preferPinnedPort = preferPinnedPort === true
+    this.requirePinnedPort = requirePinnedPort === true
+    this.probeRequestHandler = probeRequestHandler
   }
 
   onMessage(handler: WebSocketMessageHandler): void {
@@ -102,6 +120,11 @@ export class WebSocketTransport implements RpcTransport {
   setClientId(ws: WebSocket, clientId: string): void {
     this.wsClientIds.set(ws, clientId)
     clearNodeWebSocketPreAuthTimer(ws, this.preAuthTimers)
+  }
+
+  // Why: lets a state stream pace itself on end-to-end delivery rather than local buffering.
+  requestDeliveryReceipt(ws: WebSocket, onDelivered: () => void): () => void {
+    return this.deliveryReceipts.request(ws, onDelivered)
   }
 
   terminateClientConnections(clientId: string): number {
@@ -135,49 +158,25 @@ export class WebSocketTransport implements RpcTransport {
       return
     }
     // Why: bind a persisted fallback first so devices paired to it aren't stranded (STA-1511); serve --port flips to pinned-first (issue #8535); on failure each candidate falls through to OS-assigned port 0.
-    const persistedFallbackPort =
-      this.fallbackPort !== undefined && this.fallbackPort !== 0 && this.fallbackPort !== this.port
-        ? this.fallbackPort
-        : undefined
-    const candidatePorts =
-      persistedFallbackPort === undefined
-        ? [this.port]
-        : this.preferPinnedPort
-          ? [this.port, persistedFallbackPort]
-          : [persistedFallbackPort, this.port]
-    for (const port of candidatePorts) {
-      try {
-        await this.tryListen(port)
-        return
-      } catch (error: unknown) {
-        // Why: a persisted fallback may fail for any reason, while configured ports fall through only when their listen is occupied or denied.
-        if (
-          port !== persistedFallbackPort &&
-          (!isPortListenFallbackError(error, port) || port === 0)
-        ) {
-          throw error
-        }
-        console.warn(
-          `[ws-transport] Failed to bind port ${port} (${error instanceof Error ? error.message : String(error)}), trying next candidate`
-        )
-      }
-    }
-    console.warn('[ws-transport] All configured ports failed to bind, using an OS-assigned port')
-    await this.tryListen(0)
-  }
-
-  private createHttpServer(): HttpServer | HttpsServer {
-    const requestListener = this.staticRoot
-      ? createStaticWebClientHandler(this.staticRoot)
-      : undefined
-    return this.tlsCert && this.tlsKey
-      ? createHttpsServer({ cert: this.tlsCert, key: this.tlsKey }, requestListener)
-      : createHttpServer(requestListener)
+    const plan = planWebSocketListenPorts({
+      port: this.port,
+      fallbackPort: this.fallbackPort,
+      preferPinnedPort: this.preferPinnedPort,
+      requirePinnedPort: this.requirePinnedPort
+    })
+    await listenOnPlannedPorts(plan, { host: this.host, port: this.port }, (port) =>
+      this.tryListen(port)
+    )
   }
 
   // Why: attach the WSS only after listen succeeds; earlier it re-emits httpServer's EADDRINUSE as an uncatchable exception and breaks the fallback.
   private async tryListen(port: number): Promise<void> {
-    const httpServer = this.createHttpServer()
+    const httpServer = createWebSocketHttpServer({
+      tlsCert: this.tlsCert,
+      tlsKey: this.tlsKey,
+      staticRoot: this.staticRoot,
+      probeRequestHandler: this.probeRequestHandler
+    })
 
     await new Promise<void>((resolve, reject) => {
       httpServer.once('error', reject)
@@ -192,7 +191,8 @@ export class WebSocketTransport implements RpcTransport {
 
     const wss = new WebSocketServer({
       server: httpServer,
-      maxPayload: WEBSOCKET_TRANSPORT_MAX_MESSAGE_BYTES
+      maxPayload: WEBSOCKET_TRANSPORT_MAX_MESSAGE_BYTES,
+      perMessageDeflate: remoteRuntimePerMessageDeflateOptions()
     })
 
     wss.on('connection', (ws) => {
@@ -229,23 +229,9 @@ export class WebSocketTransport implements RpcTransport {
       clientIds: this.wsClientIds,
       heartbeatConnections: this.heartbeatConnections,
       getMessageHandler: () => this.messageHandler,
-      getConnectionCloseHandler: () => this.connectionCloseHandler
+      getConnectionCloseHandler: () => this.connectionCloseHandler,
+      onPong: (payload) => this.deliveryReceipts.notePong(ws, payload),
+      onFinalize: () => this.deliveryReceipts.release(ws)
     })
   }
-}
-
-function isPortListenFallbackError(error: unknown, port: number): boolean {
-  if (!(error instanceof Error) || !('code' in error)) {
-    return false
-  }
-  if (error.code === 'EADDRINUSE') {
-    return true
-  }
-  return (
-    error.code === 'EACCES' &&
-    'syscall' in error &&
-    error.syscall === 'listen' &&
-    'port' in error &&
-    error.port === port
-  )
 }

@@ -24,7 +24,8 @@ export type {
   RemoteRuntimeSnapshotLocalRetryCause,
   RemoteRuntimeSnapshotOutcome,
   RemoteRuntimeSnapshotPermanentReason,
-  RemoteRuntimeSnapshotRetryCause
+  RemoteRuntimeSnapshotRetryCause,
+  RemoteRuntimeTerminalResumePoint
 } from './remote-runtime-terminal-multiplexer-types'
 
 const multiplexers = new Map<string, RemoteRuntimeTerminalMultiplexer>()
