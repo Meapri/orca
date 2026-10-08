@@ -113,12 +113,14 @@ export class OrcaRuntimeWithCloseMobileSessionTab extends OrcaRuntimeWithRefuseU
       }
     }
     let closedSelectionTabIds = [tab.id]
-    const finishCommittedClose = (): MobileSessionTabCloseOutcome =>
-      committedMobileSessionTabClose(
+    const finishCommittedClose = (): MobileSessionTabCloseOutcome => {
+      this.closedTerminalSurfaceLedger.recordSessionTabClose(worktreeId, tab, closedSelectionTabIds)
+      return committedMobileSessionTabClose(
         this.clientSessionTabSelections,
         worktreeId,
         closedSelectionTabIds
       )
+    }
     if (tab.type === 'terminal') {
       // Why: the wire id carries the intent — `parent::leaf` names a pane, `parent` its tab.
       const resolution = this.resolveTerminalCloseTarget(
@@ -307,8 +309,12 @@ export class OrcaRuntimeWithCloseMobileSessionTab extends OrcaRuntimeWithRefuseU
         structuredAgentSessionTabCloseCause(options.reason)
       )
     } else if (!this.notifier?.closeSessionTab) {
-      // Why: a headless host listed this editor from its own session, so it retires it there.
-      if (!retireHeadlessMobileSessionEditorTab(this, worktreeId, tab, options.force)) {
+      // Why: a headless host retires editors its session persisted, then the ones files.open made
+      // here (host-editor-tabs, whose ledger tombstones the id in close()).
+      if (
+        !retireHeadlessMobileSessionEditorTab(this, worktreeId, tab, options.force) &&
+        !this.hostEditorTabs.close(worktreeId, tab.id)
+      ) {
         throw new Error('runtime_unavailable')
       }
     } else {

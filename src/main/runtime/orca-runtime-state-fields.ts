@@ -43,6 +43,13 @@ import { createEphemeralAgentSessionClaimSigner } from './agent-session-claim-id
 import { registerConptyDa1OverrideInstaller } from './terminal-model-query-authority'
 import { registerTerminalViewAttributesApplier } from './terminal-view-attribute-store'
 import { RuntimeMachineName } from './runtime-machine-name'
+import {
+  ClosedTerminalSurfaceLedger,
+  type ClosedTerminalSurfaceLedgerStorage
+} from './closed-terminal-surface-ledger'
+import type { DurableTextFileStorage } from './durable-text-file-storage'
+import { createRuntimeHostEditorTabs } from './runtime-host-editor-tabs-wiring'
+import { HEADLESS_RUNTIME_WINDOW_ID } from '../../shared/runtime-types'
 
 export class OrcaRuntimeWithStateFields extends OrcaRuntimeWithLinearCommands {
   protected readonly prepareClaudeAuth?: PrepareClaudeAuth
@@ -50,6 +57,26 @@ export class OrcaRuntimeWithStateFields extends OrcaRuntimeWithLinearCommands {
   protected readonly getAgentStatusSnapshotForPaneFn:
     | ((paneKey: string) => AgentStatusIpcPayload[])
     | null
+
+  // Why: the host, not any client's restored copy, decides whether a closed tab id may return.
+  // In-memory until the constructor installs the durable file (production hosts only).
+  protected closedTerminalSurfaceLedger = new ClosedTerminalSurfaceLedger(null)
+
+  // Why: editor tabs on a host with no renderer; in-memory until the constructor installs the file.
+  protected hostEditorTabs = this.createHostEditorTabs(null)
+
+  protected createHostEditorTabs(storage) {
+    return createRuntimeHostEditorTabs(storage, {
+      isRetired: (tabId) => this.closedTerminalSurfaceLedger.findRetiredSurface(tabId) !== null,
+      ownsEditorTabs: () =>
+        this.authoritativeWindowId === HEADLESS_RUNTIME_WINDOW_ID && !this.notifier?.openFile,
+      resolveFileTarget: (worktreeId) => this.resolveRuntimeFileTarget(`id:${worktreeId}`),
+      requireStore: () => this.requireStore(),
+      publish: (worktreeId) => this.publishHostEditorTabs(worktreeId),
+      retire: (worktreeId, tabIds) =>
+        this.closedTerminalSurfaceLedger.recordClosedTabs(worktreeId, tabIds)
+    })
+  }
 
   protected readonly machineName = new RuntimeMachineName(
     () => this.store?.getSettings?.().machineName
@@ -127,9 +154,21 @@ export class OrcaRuntimeWithStateFields extends OrcaRuntimeWithLinearCommands {
       // it is installed after construction, so the closure has to resolve it at call time.
       applySessionSearchSettings?: SessionSearchSettingsApply
       orchestrationEnvironmentTransport?: OrchestrationEnvironmentTransport
+      /** Durable storage for closed-surface tombstones; absent keeps them in memory (tests). */
+      closedTerminalSurfaceLedgerStorage?: ClosedTerminalSurfaceLedgerStorage
+      /** Durable host-owned editor tabs; absent keeps them in memory (tests). */
+      hostEditorTabStorage?: DurableTextFileStorage
     }
   ) {
     super()
+    if (deps?.closedTerminalSurfaceLedgerStorage) {
+      this.closedTerminalSurfaceLedger = new ClosedTerminalSurfaceLedger(
+        deps.closedTerminalSurfaceLedgerStorage
+      )
+    }
+    if (deps?.hostEditorTabStorage) {
+      this.hostEditorTabs = this.createHostEditorTabs(deps.hostEditorTabStorage)
+    }
     this.store = store
     this.machineName.start()
     this.prepareClaudeAuth = deps?.prepareClaudeAuth

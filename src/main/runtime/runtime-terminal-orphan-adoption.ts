@@ -27,6 +27,8 @@ type RuntimeTerminalOrphanAdoptionPorts = {
   /** Names a pane this adoption just wrote, ahead of the graph statement that will carry it. */
   recordAdoptedSurface: (pty: RuntimePtyWorktreeRecord, tabId: string, paneKey: string) => void
   getMobileSnapshots: () => Iterable<RuntimeMobileSessionTabsSnapshot>
+  /** Host tombstones outlive the one-shot session ones; a closed pane is never re-adoptable. */
+  isSurfaceRetired?: (tabId: string, leafId: string) => boolean
   getSession: (worktreeId: string) => WorkspaceSessionState | null
   setSession: (worktreeId: string, session: WorkspaceSessionState) => void
   flushSession: () => Promise<void>
@@ -191,7 +193,8 @@ export async function adoptRuntimeTerminalOrphansFromInventory(args: {
     // Why the close record too: it outlives a host restart, which the client's retirement proofs do not.
     if (
       session.terminalSurfaceTombstonesByPaneKey?.[paneKey] ||
-      hasClosedTerminalTabRecord(session.closedTerminalTabTombstonesByTabId, claim.tabId)
+      hasClosedTerminalTabRecord(session.closedTerminalTabTombstonesByTabId, claim.tabId) ||
+      ports.isSurfaceRetired?.(claim.tabId, claim.leafId)
     ) {
       throw new Error('terminal_orphan_surface_retired')
     }

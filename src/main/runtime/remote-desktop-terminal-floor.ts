@@ -11,7 +11,13 @@ export type RemoteDesktopTerminalFloorDependencies = {
   getTerminalSize: (ptyId: string) => Viewport | null
   resolveHostTarget: (ptyId: string) => Viewport
   applyLayout: (ptyId: string, target: LayoutTarget) => Promise<{ ok: boolean }>
+  now?: () => number
 }
+
+// Why: typing is a weaker claim than an explicit focus; while the owner typed this recently a second
+// typist shares control at the owner's grid instead of flipping it on every keystroke.
+export const REMOTE_DESKTOP_INPUT_CLAIM_QUIET_MS = 1_500
+const HOST_INPUT_KEY = '\0host'
 
 export class RemoteDesktopTerminalFloor {
   // Why: subscriptions, not clients, own floors so duplicate streams release independently.
@@ -21,6 +27,7 @@ export class RemoteDesktopTerminalFloor {
   // Why: an in-flight host reclaim must not consume a target after a newer viewer mutation.
   private readonly viewerRevisions = new Map<string, number>()
   private activity = 0
+  private readonly lastInputByPty = new Map<string, { subscriptionKey: string; at: number }>()
 
   constructor(private readonly dependencies: RemoteDesktopTerminalFloorDependencies) {}
 
@@ -79,6 +86,7 @@ export class RemoteDesktopTerminalFloor {
   }
 
   clearPty(ptyId: string): void {
+    this.lastInputByPty.delete(ptyId)
     this.viewers.delete(ptyId)
     this.owners.delete(ptyId)
     this.hostReclaimTargets.delete(ptyId)
@@ -173,7 +181,33 @@ export class RemoteDesktopTerminalFloor {
     return this.applyLayout(ptyId)
   }
 
+  /**
+   * tmux `window-size latest`: input moves the grid to the typist. False only when this stream has
+   * no recorded geometry to claim with; a damped claim is true because input may proceed as shared.
+   */
+  claimViewerForInput(ptyId: string, subscriptionKey: string): Promise<boolean> {
+    if (!this.viewers.get(ptyId)?.has(subscriptionKey)) {
+      return Promise.resolve(false)
+    }
+    const now = (this.dependencies.now ?? Date.now)()
+    const ownerKey = this.owners.get(ptyId) ?? HOST_INPUT_KEY
+    const last = this.lastInputByPty.get(ptyId)
+    if (
+      ownerKey !== subscriptionKey &&
+      last?.subscriptionKey === ownerKey &&
+      now - last.at < REMOTE_DESKTOP_INPUT_CLAIM_QUIET_MS
+    ) {
+      return Promise.resolve(true)
+    }
+    this.lastInputByPty.set(ptyId, { subscriptionKey, at: now })
+    return this.claimViewer(ptyId, subscriptionKey)
+  }
+
   claimHost(ptyId: string, cols: number, rows: number): Promise<boolean> {
+    this.lastInputByPty.set(ptyId, {
+      subscriptionKey: HOST_INPUT_KEY,
+      at: (this.dependencies.now ?? Date.now)()
+    })
     if (!this.owners.has(ptyId)) {
       // Why: host input during an in-flight reclaim must join it, not pass it.
       return this.hostReclaimTargets.has(ptyId) ? this.applyLayout(ptyId) : Promise.resolve(true)
