@@ -47,10 +47,95 @@ built on.
 `stack/<topic>` and `stack/<topic>/<anything>` cannot both exist (git stores refs as paths),
 which is why re-stacked topics live under the separate `stack-sync/` prefix.
 
-## What the Daily Workflow Does
+## Where the Sync Runs
 
-`.github/workflows/fork-upstream-sync.yml` runs daily at 03:17 UTC and on demand
-(`dry_run` re-stacks and reports, but pushes nothing). It only runs on the fork.
+The daily sync runs on the fork owner's server (rizi: Linux arm64, 4 cores, 23 GB), not in
+GitHub Actions. The fork has no `FORK_SYNC_TOKEN`, and Actions' default `GITHUB_TOKEN` cannot
+push a commit that changes `.github/workflows/`, which most upstream syncs do. The server pushes
+with the owner's own `gh` login (scopes `repo` and `workflow`), so no repository secret exists.
+`.github/workflows/fork-upstream-sync.yml` stays as a manual fallback (`workflow_dispatch`
+only); it has no schedule, so it never races the server.
+
+## Server Sync
+
+`config/scripts/fork-stack-server-sync.mjs` does what the workflow does, on one machine:
+
+1. **Self-update.** It fetches `origin` and runs the newest copy of itself: from `origin/main`
+   once main carries the script, otherwise from `origin/stack/sync-automation`. The tools
+   checkout must be a dedicated worktree (`<clone>-wt/_sync-tools`) so this never moves a
+   checkout someone works in.
+2. **Lock** (`<logs>/.sync.lock`). A second run exits as an environment error; a lock left by a
+   dead process is taken over.
+3. **Environment.** `pnpm`, `bun` (`config/.bun-version`, which the unit test runner needs) and
+   a logged-in `gh` must be on `PATH`.
+4. **Re-stack and integrate** in the dedicated worktree `<clone>-wt/_sync`, through the same
+   `runStackSync` the workflow uses: upstream PR lookup, dropping commits upstream accepted,
+   rerere, the integration merges and the main-update commit. The manifest comes from
+   `origin/main`; until main adopts the stacks it comes from the newest
+   `main-update/fork-*` branch.
+5. **No-change shortcut.** When the main-update tree equals the head tree of an open
+   main-update PR, the run reports "no change" and stops.
+6. **Checks** on the integration commit, after `pnpm install --frozen-lockfile` (root and
+   `mobile/`; the shared pnpm store keeps this to seconds): `pnpm tc`; every `pnpm lint` step
+   separately, so a known failure in one step does not hide the others;
+   `regenerate-xterm-patches.mjs --check`; the unit tests the fork's diff reaches (tests it
+   changed plus the sibling tests of every source file it changed) together with the terminal
+   suites (`terminal-pane/`, `pane-manager/`); and mobile `tsc` plus its tests. On Sundays (UTC)
+   the whole unit suite runs too (`--full-tests=auto`; `always`/`never` override). About 35–50
+   minutes on rizi, the full suite adds about 95.
+7. **Flaky tests and baseline.** A failed test file first runs again alone on the integration;
+   tests that pass then are reported as flaky (usually a timeout on the loaded 4-core machine)
+   and not counted. When a check still fails, the failed items (type errors without positions, lint
+   steps, test files, unhandled-error titles) are rerun on upstream main in
+   `<clone>-wt/_sync-baseline`. Failures upstream shares are reported as known, not as
+   regressions. A failure that names nothing (a crash, a timeout) always counts as a regression;
+   the xterm check has no upstream baseline.
+8. **Publish** (skipped by `--dry-run`): confirm `origin/main` did not move, push every new
+   branch with one `git push --atomic` (never `--force`), open the main-update PR, and close the
+   older open main-update PRs as superseded.
+
+```sh
+env -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_CACHE_HOME PATH="$HOME/.local/bin:$PATH" \
+  node <clone>-wt/_sync-tools/config/scripts/fork-stack-server-sync.mjs [--dry-run] \
+  [--full-tests=auto|always|never] [--date=YYYY-MM-DD] [--logs=<dir>]
+```
+
+The `env -u` clears XDG paths a service account may point elsewhere, so `gh` finds the owner's
+login.
+
+| Exit code | Outcome                                                                                  |
+| --------- | ---------------------------------------------------------------------------------------- |
+| 0         | success: checks passed and the PR is open (or `--dry-run` would have opened it)          |
+| 10        | no change: upstream did not move, or an open PR already has this tree                    |
+| 20        | conflict: a topic or the integration merge stopped on a conflict rerere could not settle |
+| 30        | checks failed: at least one regression against upstream main                             |
+| 40        | environment error: lock held, missing tool or login, git or `gh` failure, `main` moved   |
+
+Every run writes to `<clone>-sync-logs/` (on rizi `/home/naen/work/orca-sync-logs/`):
+
+- `latest.md`: a few lines in Korean for the notifier (outcome, stacks, the blocked commit and
+  files, check results, PR, duration);
+- `latest.json`: the same, machine-readable, with every check's regressions and known failures;
+- `latest-detail.md`: the full English report (the workflow's summary plus a checks table);
+- `runs/<date>T<time>/`: copies of the three, `report.json`, and one log per check and per
+  baseline rerun.
+
+One-time setup on the server:
+
+```sh
+git -C <clone> worktree add --detach <clone>-wt/_sync-tools origin/stack/sync-automation
+ln -s <clone>-wt/_deps/node_modules <clone>-wt/_sync-tools/node_modules   # esbuild for the script
+git -C <clone> config rerere.enabled true && git -C <clone> config rerere.autoupdate true
+```
+
+`_sync` and `_sync-baseline` are created on the first run. Leave all three worktrees to the
+script; do manual work in other worktrees.
+
+## What the Sync Does (Actions Fallback)
+
+`.github/workflows/fork-upstream-sync.yml` runs only on demand (`dry_run` re-stacks and
+reports, but pushes nothing), and only on the fork. Without `FORK_SYNC_TOKEN`, its push fails
+whenever the integration changes `.github/workflows/`; prefer the server sync.
 
 1. **restack** (holds no secrets: it may run upstream xterm's npm toolchain). It fetches
    upstream `main`, reads the manifest from fork `main`, and looks up every `Upstream-PR:`
@@ -149,8 +234,10 @@ records their resolutions, the way `contrib/rerere-train.sh` does. A conflict be
 a human resolved once is therefore resolved again automatically. Replayed resolutions are listed
 under "Conflicts settled automatically" in the report: review them.
 
-A resolution recorded on your machine stays in your `.git/rr-cache`. CI does not need it: the
-manifest records the stack you rebuilt by hand, so the next run starts from it.
+On the server, `.git/rr-cache` is the clone's own and is shared by every worktree, so a
+resolution recorded in any of them (by the script or by hand) is replayed by the next run. CI
+does not need a resolution recorded elsewhere: the manifest records the stack you rebuilt by
+hand, so the next run starts from it.
 
 ## Manual Sync
 
@@ -262,12 +349,12 @@ upstream API use is one read-only GraphQL query per run.
 
 ## Repository Setup
 
-- **Settings → Actions → General → Workflow permissions:** read and write, and allow GitHub
-  Actions to create pull requests (the fallback when `FORK_SYNC_TOKEN` is absent).
-- **`FORK_SYNC_TOKEN` secret.** A fine-grained token scoped to this repository only, with
-  **Contents: read and write**, **Workflows: read and write**, and **Pull requests: read and
-  write**. The default token cannot push commits that change `.github/workflows/`, and a PR
-  it opens does not trigger the fork's PR checks.
+- **No secret is needed for the daily sync**: the server pushes and opens PRs with the
+  owner's `gh` login. A PR opened that way also triggers the fork's PR checks.
+- **Actions fallback only:** Settings → Actions → General → Workflow permissions read and
+  write, allow GitHub Actions to create pull requests, and (optionally) a `FORK_SYNC_TOKEN`
+  fine-grained token with Contents, Workflows and Pull requests read and write. Without it the
+  fallback cannot push workflow-file changes, and a PR it opens does not trigger PR checks.
 - **Branch protection on `main`:** require a pull request, allow the maintainer who merges
   main-update PRs to push a fast-forward (or allow merge commits), and keep force-pushes and
   deletions blocked. Do not require linear history if you use the merge button.

@@ -1,12 +1,13 @@
 name: Fork upstream sync
 
-# Daily: re-stacks every fork topic stack in config/fork-stacks.json onto upstream main, merges
-# them into a dated integration branch, checks it, and proposes main's update as a PR whose head
-# commit has exactly the integration tree. Never force-pushes and never pushes main.
+# Manual fallback only. The daily sync runs on the fork owner's server
+# (config/scripts/fork-stack-server-sync.mjs): without a FORK_SYNC_TOKEN, GITHUB_TOKEN cannot push
+# the workflow-file changes most upstream syncs carry, and a schedule here would race the server.
+# Re-stacks every fork topic stack in config/fork-stacks.json onto upstream main, merges them into
+# a dated integration branch, checks it, and proposes main's update as a PR whose head commit has
+# exactly the integration tree. Never force-pushes and never pushes main.
 # See docs/reference/fork-upstream-sync.md.
 on:
-  schedule:
-    - cron: '17 3 * * *'
   workflow_dispatch:
     inputs:
       dry_run:
