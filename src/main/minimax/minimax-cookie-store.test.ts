@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { APP_DISTRIBUTION } from '../../shared/app-distribution'
 import type * as MiniMaxCookieStore from './minimax-cookie-store'
 
 const safeStorageMock = vi.hoisted(() => ({
@@ -39,7 +40,7 @@ vi.mock('../../shared/secure-file', () => ({
   writeSecureFile: writeSecureFileMock
 }))
 
-const storePath = '/home/test/.orca/minimax-session-cookie.enc'
+const storePath = `/home/test/${APP_DISTRIBUTION.homeStateDirName}/minimax-session-cookie.enc`
 const envelope = (kind: 'encrypted' | 'plaintext', value: string): string =>
   `orca-minimax-cookie:v1:${kind}:${Buffer.from(value, 'utf8').toString('base64')}`
 

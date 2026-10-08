@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { APP_DISTRIBUTION } from '../../shared/app-distribution'
 import { SkillShareDeepLinkState } from './skill-share-deep-link-state'
 
 describe('SkillShareDeepLinkState', () => {
@@ -19,6 +20,15 @@ describe('SkillShareDeepLinkState', () => {
 
     expect(publish).toHaveBeenCalledWith('share_second')
     expect(state.consume()).toBe('share_second')
+  })
+
+  it("captures an argv deep link in this distribution's scheme", () => {
+    const state = new SkillShareDeepLinkState()
+
+    expect(state.capture(['orca', `${APP_DISTRIBUTION.urlScheme}://skills/share/share_next`])).toBe(
+      true
+    )
+    expect(state.consume()).toBe('share_next')
   })
 
   it('ignores untrusted URLs without replacing a pending intent', () => {

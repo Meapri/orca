@@ -1,9 +1,9 @@
 import { safeStorage } from 'electron'
 import { existsSync, readFileSync, rmSync } from 'node:fs'
-import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { hardenExistingSecureFile, writeSecureFile } from '../../shared/secure-file'
 import type { SecretAtRestProtection } from '../../shared/secret-at-rest-protection'
+import { getAppSecretHomeDir } from '../app-secret-home-dir'
 
 const ZCODE_PLAN_API_KEY_FILE = 'zcode-plan-api-key.enc'
 const API_KEY_ENVELOPE_PREFIX = 'orca-zcode-plan-api-key:v1:'
@@ -16,7 +16,7 @@ type ZcodePlanApiKeyEnvelope = {
 }
 
 function getZcodePlanApiKeyPath(): string {
-  return join(homedir(), '.orca', ZCODE_PLAN_API_KEY_FILE)
+  return join(getAppSecretHomeDir(), ZCODE_PLAN_API_KEY_FILE)
 }
 
 function encodeApiKeyEnvelope(kind: ZcodePlanApiKeyEnvelope['kind'], payload: Buffer): string {

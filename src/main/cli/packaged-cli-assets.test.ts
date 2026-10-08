@@ -5,6 +5,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  realpath,
   rm,
   stat,
   symlink,
@@ -393,6 +394,41 @@ node -e 'console.log(JSON.stringify({
       await rm(root, { recursive: true, force: true })
     }
   })
+
+  // Why: a renamed distribution's executable is `MacOS/<productName>`, not `MacOS/Orca`.
+  it.runIf(process.platform === 'darwin')(
+    'runs the macOS executable Info.plist names, not a hardcoded Orca',
+    async () => {
+      // Why realpath: the launcher resolves /var to /private/var on macOS.
+      const root = await realpath(await mkdtemp(join(tmpdir(), 'orca-mac-cli-renamed-')))
+      try {
+        const contents = join(root, 'Orca Next.app', 'Contents')
+        const launcherPath = join(contents, 'Resources', 'bin', 'orca')
+        const cliPath = join(contents, 'Resources', 'app.asar.unpacked', 'out', 'cli', 'index.js')
+        await mkdir(dirname(launcherPath), { recursive: true })
+        await mkdir(dirname(cliPath), { recursive: true })
+        await mkdir(join(contents, 'MacOS'), { recursive: true })
+        await copyFile(darwinLauncherAsset, launcherPath)
+        await writeFile(cliPath, '', 'utf8')
+        await writeFile(
+          join(contents, 'Info.plist'),
+          '<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0"><dict><key>CFBundleExecutable</key><string>Orca Next</string></dict></plist>\n',
+          'utf8'
+        )
+        await writeFile(
+          join(contents, 'MacOS', 'Orca Next'),
+          '#!/usr/bin/env bash\necho "renamed:$1"\n',
+          { encoding: 'utf8', mode: 0o755 }
+        )
+
+        const result = await execFileAsync(launcherPath, ['status'])
+
+        expect(result.stdout.trim()).toBe(`renamed:${cliPath}`)
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    }
+  )
 
   itRunsUnixShell('keeps Linux serve on the CLI entrypoint in node mode', async () => {
     const root = await mkdtemp(join(tmpdir(), 'orca-linux-cli-serve-'))

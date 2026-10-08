@@ -13,7 +13,11 @@ import {
   type AppImageExtractionOptions
 } from './appimage-extracted-root'
 import { getBundledLauncherPath, LINUX_CLI_COMMAND_NAME } from './bundled-cli-launcher-path'
-import { DEFAULT_MAC_COMMAND_PATH, DEV_COMMAND_NAME } from './cli-install-constants'
+import {
+  DEFAULT_MAC_COMMAND_PATH,
+  DEV_COMMAND_NAME,
+  PACKAGED_MAC_COMMAND_NAME
+} from './cli-install-constants'
 import { ensureDevLauncher } from './cli-dev-launcher'
 import type { CliInstallerOptions, InstallSpec } from './cli-installer-contracts'
 import {
@@ -65,7 +69,10 @@ export abstract class CliInstallLocation {
       return DEV_COMMAND_NAME
     }
     // Why: packaged Linux uses `orca-ide` to avoid shadowing GNOME Orca's /usr/bin/orca.
-    return this.platform === 'linux' ? LINUX_CLI_COMMAND_NAME : 'orca'
+    if (this.platform === 'linux') {
+      return LINUX_CLI_COMMAND_NAME
+    }
+    return this.platform === 'darwin' ? PACKAGED_MAC_COMMAND_NAME : 'orca'
   }
 
   constructor(options: CliInstallerOptions = {}) {
@@ -87,7 +94,7 @@ export abstract class CliInstallLocation {
     const candidateMacPath = options.defaultMacCommandPath ?? DEFAULT_MAC_COMMAND_PATH
     this.macCommandPath = existsSync(dirname(candidateMacPath))
       ? candidateMacPath
-      : join(this.homePath, '.local', 'bin', 'orca')
+      : join(this.homePath, '.local', 'bin', basename(candidateMacPath))
     this.privilegedRunner = options.privilegedRunner ?? runMacPrivilegedCommand
     this.userPathReader = options.userPathReader ?? readWindowsUserPathRegistry
     this.userPathMutationReader =

@@ -1,5 +1,9 @@
+import { APP_DISTRIBUTION } from './app-distribution'
+
 const SHARE_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/
 const PRODUCTION_HOSTS = new Set(['app.orca.dev', 'share.onorca.dev'])
+// Why both: pasted `orca://` links still parse; the OS only routes this app's own scheme here.
+const DEEP_LINK_PROTOCOLS = new Set(['orca:', `${APP_DISTRIBUTION.urlScheme}:`])
 
 export function parseSkillShareId(value: string): string | null {
   const trimmed = value.trim()
@@ -12,7 +16,7 @@ export function parseSkillShareId(value: string): string | null {
   } catch {
     return null
   }
-  if (url.protocol === 'orca:') {
+  if (DEEP_LINK_PROTOCOLS.has(url.protocol)) {
     const match = `${url.host}${url.pathname}`.match(/^skills\/share\/([A-Za-z0-9_-]{1,128})\/?$/)
     return match?.[1] ?? null
   }
@@ -30,7 +34,11 @@ export function parseSkillShareId(value: string): string | null {
 export function skillShareIdFromArguments(argv: readonly string[]): string | null {
   for (const value of argv) {
     const id = parseSkillShareId(value)
-    if (id && (value.includes('/skills/share/') || value.startsWith('orca:'))) {
+    if (
+      id &&
+      (value.includes('/skills/share/') ||
+        [...DEEP_LINK_PROTOCOLS].some((protocol) => value.startsWith(protocol)))
+    ) {
       return id
     }
   }

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { APP_DISTRIBUTION } from '../../shared/app-distribution'
 import type * as ZcodePlanApiKeyStore from './zcode-plan-api-key-store'
 
 const safeStorageMock = vi.hoisted(() => ({
@@ -39,7 +40,7 @@ vi.mock('../../shared/secure-file', () => ({
   writeSecureFile: writeSecureFileMock
 }))
 
-const storePath = '/home/test/.orca/zcode-plan-api-key.enc'
+const storePath = `/home/test/${APP_DISTRIBUTION.homeStateDirName}/zcode-plan-api-key.enc`
 const envelope = (kind: 'encrypted' | 'plaintext', value: string): string =>
   `orca-zcode-plan-api-key:v1:${kind}:${Buffer.from(value, 'utf8').toString('base64')}`
 
