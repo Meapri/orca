@@ -25,6 +25,7 @@ import { useTabStripSlotProps } from './use-tab-strip-slot-props'
 import { useTabStripPointerActivation } from './tab-strip-pointer-activation'
 import { TabCloseTooltip } from './TabCloseTooltip'
 import { TerminalTabLeadingIcon } from './TerminalTabLeadingIcon'
+import { TerminalTabProgressIndicator } from './TerminalTabProgressIndicator'
 import {
   isTerminalTabActivityLive,
   resolveTerminalTabActivityStatus,
@@ -224,6 +225,7 @@ export default function SortableTab({
       }}
     >
       {isActive && <span className={ACTIVE_TAB_INDICATOR_CLASSES} aria-hidden />}
+      <TerminalTabProgressIndicator tabId={tab.id} />
       {showUnreadActivity && (
         // Why: a real DOM child keeps both drop-indicator pseudo-elements free and pointer events reaching the tab.
         <span aria-hidden className="pointer-events-none absolute inset-0 bg-amber-500/10" />
