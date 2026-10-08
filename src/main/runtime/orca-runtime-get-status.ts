@@ -29,6 +29,7 @@ import {
 import { MOBILE_WEB_BUNDLE_CAPABILITY } from '../../shared/mobile-web-bundle/mobile-web-bundle-capability'
 import { loadBundledMobileWebBundle } from './bundled-mobile-web-bundle'
 import { runtimeTerminalDegradation } from './native-terminal-availability'
+import { terminalResourceLimitsDegradation } from '../daemon/daemon-scope-resource-limit-status'
 import { isWindowsProcessStartTimeAvailable } from '../windows/windows-process-table'
 import type { RuntimeWorktreeLifecycleEvent } from './orca-runtime-core'
 import { WORKTREE_CREATE_RESULT_TTL_MS } from './orca-runtime-core'
@@ -146,6 +147,10 @@ export class OrcaRuntimeWithGetStatus extends OrcaRuntimeWithGetRuntimeId {
     const terminalDegradation = runtimeTerminalDegradation()
     if (terminalDegradation) {
       degradations.push(terminalDegradation)
+    }
+    const resourceLimitsDegradation = terminalResourceLimitsDegradation()
+    if (resourceLimitsDegradation) {
+      degradations.push(resourceLimitsDegradation)
     }
     return {
       runtimeId: this.runtimeId,

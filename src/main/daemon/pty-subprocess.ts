@@ -4,6 +4,7 @@ import { TerminalAttachCanceledError } from './daemon-errors'
 import { createDaemonPtyEnvironment } from './pty-subprocess/spawn-environment'
 import { createPtyShellLaunchPlan } from './pty-subprocess/shell-launch-plan'
 import { spawnNativeDaemonPty, type SpawnedDaemonPty } from './pty-subprocess/native-pty-spawn'
+import { applyPtyChildSchedulingPolicy } from './pty-subprocess/pty-child-scheduling-policy'
 import {
   formatPtySpawnError,
   preflightPtySpawn,
@@ -100,6 +101,8 @@ export async function createPtySubprocess(opts: PtySubprocessOptions): Promise<S
     }
     throw error
   }
+
+  applyPtyChildSchedulingPolicy(spawned.process.pid)
 
   return createDaemonPtySubprocessHandle({
     process: spawned.process,

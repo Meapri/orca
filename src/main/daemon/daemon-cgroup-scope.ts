@@ -128,7 +128,18 @@ function resolveCanonicalRuntimeDir(deps: ScopeProbeDeps): string | null {
     : CANONICAL_USER_RUNTIME_DIR
 }
 
-export function isDurableDaemonScopeSupported(deps: ScopeProbeDeps = {}): boolean {
+/** Why the durable scope is or is not available; `orca serve doctor` turns each into a fix. */
+export type DurableDaemonScopeSupport =
+  | 'supported'
+  | 'not_linux'
+  | 'no_systemd'
+  | 'no_user_bus'
+  | 'user_manager_ends_with_session'
+  | 'systemd_run_unavailable'
+
+export function describeDurableDaemonScopeSupport(
+  deps: ScopeProbeDeps = {}
+): DurableDaemonScopeSupport {
   const {
     env = process.env,
     platform = process.platform,
@@ -138,31 +149,35 @@ export function isDurableDaemonScopeSupported(deps: ScopeProbeDeps = {}): boolea
   } = deps
   const canonicalRuntimeDir = resolveCanonicalRuntimeDir(deps)
   if (platform !== 'linux') {
-    return false
+    return 'not_linux'
   }
   if (!existsSync(systemdBootPath)) {
     // Not booted under systemd (e.g. a plain container without systemd as PID 1) — a unit
     // restart isn't the failure mode there, and systemd-run has nothing to talk to anyway.
-    return false
+    return 'no_systemd'
   }
   if (!resolveUserRuntimeDir(env, canonicalRuntimeDir)) {
     // No reachable user bus/session at the real per-UID path or the process's own env var —
     // systemd-run --user would just fail to connect.
-    return false
+    return 'no_user_bus'
   }
   if (!outlivesCaller()) {
     // A bus only proves a login session is open now; without linger the scope dies at logout.
-    return false
+    return 'user_manager_ends_with_session'
   }
   try {
     const probe = runVersionProbe(SYSTEMD_RUN_BINARY, SYSTEMD_RUN_PROBE_TIMEOUT_MS)
     // A non-zero exit is data here rather than a throw, and a timeout kill leaves an exit behind
     // that answers nothing — both mean "cannot be trusted to place the daemon in a scope".
-    return probe.code === 0 && !probe.timedOut
+    return probe.code === 0 && !probe.timedOut ? 'supported' : 'systemd_run_unavailable'
   } catch {
     // Throws only when the binary could not be started at all.
-    return false
+    return 'systemd_run_unavailable'
   }
+}
+
+export function isDurableDaemonScopeSupported(deps: ScopeProbeDeps = {}): boolean {
+  return describeDurableDaemonScopeSupport(deps) === 'supported'
 }
 
 export type DurableDaemonScopeCommand = {
@@ -261,6 +276,30 @@ export function buildLegacyScopeMigrationCommand(
   }
 }
 
+/** `systemctl --user set-property --runtime` against the daemon's own scope, dialed on the same
+ *  user bus the launch resolved (see `buildLegacyScopeMigrationCommand` for the env handling). */
+export function buildDaemonScopeSetPropertyCommand(
+  unit: string,
+  limits: readonly string[],
+  env: NodeJS.ProcessEnv,
+  canonicalRuntimeDir: string | null = CANONICAL_USER_RUNTIME_DIR
+): DurableDaemonScopeCommand {
+  const runtimeDir = resolveUserRuntimeDir(env, canonicalRuntimeDir)
+  const commandEnv: NodeJS.ProcessEnv = runtimeDir
+    ? { ...env, XDG_RUNTIME_DIR: runtimeDir }
+    : { ...env }
+  delete commandEnv.DBUS_SESSION_BUS_ADDRESS
+  return {
+    command: 'systemctl',
+    args: ['--user', 'set-property', '--runtime', unit, ...limits],
+    env: commandEnv
+  }
+}
+
+export function isOwnDaemonScopeUnit(unit: string | null): unit is string {
+  return unit?.startsWith(UNIT_NAME_PREFIX) === true && unit.endsWith('.scope')
+}
+
 export function migrateLegacyDaemonScope(
   pid: number,
   launchNonce: string,
@@ -315,7 +354,8 @@ export function buildDurableDaemonScopeCommand(
   scriptArgs: string[],
   launchNonce: string,
   env: NodeJS.ProcessEnv,
-  canonicalRuntimeDir: string | null = CANONICAL_USER_RUNTIME_DIR
+  canonicalRuntimeDir: string | null = CANONICAL_USER_RUNTIME_DIR,
+  scopePropertyArgs: readonly string[] = []
 ): DurableDaemonScopeCommand {
   const runtimeDir = resolveUserRuntimeDir(env, canonicalRuntimeDir)
   const scopeEnv: NodeJS.ProcessEnv = runtimeDir
@@ -330,6 +370,7 @@ export function buildDurableDaemonScopeCommand(
       '--scope',
       `--unit=${daemonScopeUnitName(launchNonce)}`,
       '--property=TimeoutStopSec=5s',
+      ...scopePropertyArgs,
       '--collect',
       '--quiet',
       '--',

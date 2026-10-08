@@ -24,6 +24,11 @@ vi.mock('../daemon/daemon-init', () => ({
   readDaemonPidRecord: readDaemonPidRecordMock
 }))
 
+vi.mock('../daemon/terminal-history-exited-retention-schedule', () => ({
+  scheduleExitedTerminalHistoryRetention: vi.fn(),
+  cancelExitedTerminalHistoryRetention: vi.fn()
+}))
+
 const { startOrcadDaemon, stopOrcadDaemon } = await import('./orcad-daemon-supervision')
 
 beforeEach(() => {
@@ -51,15 +56,25 @@ describe('startOrcadDaemon', () => {
     // That watch retires the daemon when the spawning GUI login session dies. An orcad
     // daemon must survive its SSH session ending — arming it would kill every terminal the
     // moment the operator logged out, which is the opposite of the property being bought.
-    expect(initDaemonPtyProviderMock).toHaveBeenCalledWith(undefined, {
-      macosLoginSessionWatch: false
-    })
+    expect(initDaemonPtyProviderMock).toHaveBeenCalledWith(
+      undefined,
+      expect.objectContaining({ macosLoginSessionWatch: false })
+    )
+  })
+
+  it('asks the adapter to exit sessions verifiably lost with a killed daemon', async () => {
+    await startOrcadDaemon()
+    expect(initDaemonPtyProviderMock).toHaveBeenCalledWith(
+      undefined,
+      expect.objectContaining({ retireSessionsLostWithDaemon: true })
+    )
   })
 
   it('gives a cold Windows daemon a longer startup budget', async () => {
     await startOrcadDaemon('win32')
     expect(initDaemonPtyProviderMock).toHaveBeenCalledWith(undefined, {
       macosLoginSessionWatch: false,
+      retireSessionsLostWithDaemon: true,
       startupTimeoutMs: 30_000
     })
   })

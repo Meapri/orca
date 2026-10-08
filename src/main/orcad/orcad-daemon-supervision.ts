@@ -17,6 +17,11 @@ import {
   initDaemonPtyProvider,
   readDaemonPidRecord
 } from '../daemon/daemon-init'
+import { applyTerminalResourceLimitsToLiveDaemon } from './orcad-terminal-resource-limits'
+import {
+  cancelExitedTerminalHistoryRetention,
+  scheduleExitedTerminalHistoryRetention
+} from '../daemon/terminal-history-exited-retention-schedule'
 
 const WINDOWS_DAEMON_STARTUP_TIMEOUT_MS = 30_000
 
@@ -44,6 +49,9 @@ export async function startOrcadDaemon(
   // session dies. An orcad daemon must survive its SSH session ending — that is the point.
   const policy = {
     macosLoginSessionWatch: false,
+    // Why retire: no pane remounts here to cold-restore, so a shell verifiably gone with a killed
+    // daemon must read `exited`, not a stale `running` (ssh-execution-boundary.md).
+    retireSessionsLostWithDaemon: true,
     // A freshly uploaded node.exe plus conpty can take well over 10 s on its first, AV-scanned exec.
     ...(platform === 'win32' ? { startupTimeoutMs: WINDOWS_DAEMON_STARTUP_TIMEOUT_MS } : {})
   }
@@ -62,6 +70,11 @@ export async function startOrcadDaemon(
     )
     return { state: 'unavailable', reason }
   }
+  // Why only with a daemon: its adapters are the writers the sweep must never race.
+  scheduleExitedTerminalHistoryRetention()
+  await applyTerminalResourceLimitsToLiveDaemon({
+    readCgroupUnit: () => readDaemonPidRecord()?.cgroupUnit ?? null
+  })
   if (!daemonOwnsFreshPersistentPtys()) {
     const reason = 'daemon adopted in degraded mode; fresh terminals run on the local provider'
     console.warn(
@@ -81,5 +94,6 @@ export async function startOrcadDaemon(
  * the exact property this whole item exists to buy.
  */
 export async function stopOrcadDaemon(): Promise<void> {
+  cancelExitedTerminalHistoryRetention()
   await disconnectDaemon()
 }
