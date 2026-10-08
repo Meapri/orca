@@ -14,8 +14,10 @@ export type TerminalMultiplexEvent =
       type: 'subscribed'
       streamId: number
       streamGeneration?: string
-      capabilities?: { ackOutputSourceRanges?: 1; outputPause?: 1; inputAck?: 1 }
+      capabilities?: { ackOutputSourceRanges?: 1; outputPause?: 1; inputAck?: 1; outputResume?: 1 }
       inputLedgerId?: string
+      resumeToken?: string
+      resumed?: { fromSeq?: number }
     }
   | { type: 'end'; streamId: number; verdict?: TerminalStreamEndVerdict }
   | { type: 'error'; streamId: number; message?: string }
@@ -32,6 +34,9 @@ export type TerminalMultiplexEvent =
       driver: { kind: 'idle' } | { kind: 'desktop' } | { kind: 'mobile'; clientId: string }
     }
   | { type: string; streamId?: number; [key: string]: unknown }
+
+/** Where a view's applied output ends, as the host named it; presented on resubscribe. */
+export type RemoteRuntimeTerminalResumePoint = { token: string; seq: number }
 
 export type RemoteRuntimeMultiplexedTerminalCallbacks = {
   onData: (data: string, meta?: { seq?: number; rawLength?: number; transformed?: boolean }) => void
@@ -51,7 +56,8 @@ export type RemoteRuntimeMultiplexedTerminalCallbacks = {
       carriesHistory?: boolean
     }
   ) => void
-  onSubscribed?: () => void
+  // `resumed`: the host replayed only the missed tail, so the view kept its own contents.
+  onSubscribed?: (info?: { resumed: boolean }) => void
   onOutputPauseCapability?: () => void
   onEnd?: (verdict: TerminalStreamEndVerdict) => void
   onError?: (message: string) => void
@@ -66,7 +72,11 @@ export type RemoteRuntimeMultiplexedTerminalCallbacks = {
   onWriteUnavailable?: () => void
   /** Cumulative host ack of sequenced input through `appliedSeq` (negotiated streams only). */
   onInputAck?: (appliedSeq: number, kind: TerminalInputAckKind) => void
-  onTransportClose?: (event: { recoverable: boolean; retryWithBackoff?: boolean }) => void
+  onTransportClose?: (event: {
+    recoverable: boolean
+    retryWithBackoff?: boolean
+    resumePoint?: RemoteRuntimeTerminalResumePoint
+  }) => void
 }
 
 export type RemoteRuntimeSnapshotImage = {
@@ -168,6 +178,9 @@ export type RemoteRuntimeMultiplexedTerminalState = {
   inputLedgerId: string | null
   outputPaused: boolean
   streamGeneration: string | null
+  // Set only when the host echoed outputResume; names the host's sequence run for this view.
+  resumeToken: string | null
+  requestedResume: RemoteRuntimeTerminalResumePoint | null
   sourceAckedEndByte: number
   heldAckBytes: number
   pendingAckBytes: number

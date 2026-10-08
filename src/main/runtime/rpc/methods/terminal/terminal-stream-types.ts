@@ -7,6 +7,7 @@ import type {
   TerminalOutputMeta
 } from '../../terminal-output-frame-chunks'
 import type { TerminalOutputBatcher } from './terminal-output-batcher'
+import type { TerminalOutputResumeLease } from './terminal-output-resume-registry'
 
 export type SnapshotFrameOptions = {
   kind: 'scrollback' | 'resized'
@@ -73,6 +74,8 @@ export type TerminalMultiplexStream = {
   supportsWriteUnavailable: boolean
   // Set only when the client negotiated `inputAck`; sequenced Input frames are then deduped and acked.
   inputSessionId: string | null
+  // Held while the client negotiated resume, so a reconnect can replay only what it missed.
+  outputResume: TerminalOutputResumeLease | null
   outputPaused: boolean
   supportsDesktopViewportClaims: boolean
   desktopClaimTail: Promise<boolean>

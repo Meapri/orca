@@ -1,4 +1,5 @@
-import { decrypt, encrypt } from './e2ee-crypto'
+import { encrypt } from './e2ee-crypto'
+import { decryptE2EEText } from './e2ee-text-compression'
 import {
   classifyRemoteRuntimeReadyFrame,
   parseRemoteRuntimeAuthenticatedFrame,
@@ -50,7 +51,7 @@ export class RemoteRuntimeRequestResponseRouter<TResult> {
       this.handleReadyFrame(frame)
       return
     }
-    const plaintext = decrypt(frame, this.options.sharedKey)
+    const plaintext = decryptE2EEText(frame, this.options.sharedKey)
     if (plaintext === null) {
       this.options.finishError(
         new RemoteRuntimeClientError(

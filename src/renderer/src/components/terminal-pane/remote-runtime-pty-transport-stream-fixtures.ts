@@ -26,10 +26,12 @@ type SubscribePayload = {
     ackOutputSourceRanges?: 1
     desktopViewportClaims?: 1
     outputPause?: 1
+    outputResume?: 1
     writeUnavailable?: 1
     inputAck?: 1
   }
   inputSessionId?: string
+  resume?: { token: string; seq: number }
 }
 
 /** Frame-level emitters/readers for the multiplex stream a remote PTY transport talks to. */
