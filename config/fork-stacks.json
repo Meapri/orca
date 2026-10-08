@@ -34,6 +34,12 @@
       "name": "distribution",
       "ref": "stack/distribution",
       "base": "7c50009ca4946cf7384495f542d0b5856308b70c"
+    },
+    {
+      "name": "integration-fixups",
+      "ref": "stack/integration-fixups",
+      "base": "def9793735a666480e93eac79cc233656e124670",
+      "onto": "integration"
     }
   ]
 }
