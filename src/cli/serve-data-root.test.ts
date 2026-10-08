@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { APP_DISTRIBUTION } from '../shared/app-distribution'
 import { getRuntimeMetadataPath } from '../shared/runtime-bootstrap'
 import { resolveServeDataRoot } from './serve-data-root'
 
@@ -51,7 +52,7 @@ describe('resolveServeDataRoot', () => {
 
 describe('resolveServeDataRoot discovery', () => {
   const HOME = '/home/orca'
-  const DESKTOP_ROOT = join(HOME, '.config', 'orca')
+  const DESKTOP_ROOT = join(HOME, '.config', APP_DISTRIBUTION.packageName)
   const ORCAD_ROOT = join(HOME, '.orca')
 
   function resolve(env: Record<string, string>, live: string[]): string {
