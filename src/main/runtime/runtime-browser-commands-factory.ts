@@ -30,6 +30,8 @@ export type RuntimeBrowserCommandsFactoryOptions = {
   headless?: boolean
   /** Live health probe; failure must remove advertised capability. */
   isAvailable?: () => boolean
+  /** Why a lazily started provider is not available yet; null falls back to provider_unhealthy. */
+  unavailableCause?: () => RuntimeBrowserUnavailableCause | null
 }
 
 let currentFactory: RuntimeBrowserCommandsFactory | null = null
@@ -74,6 +76,11 @@ export function setRuntimeBrowserUnavailableCause(
   unavailableCause = cause
 }
 
+/** The note the last resolution attempt left, ignoring any installed factory. */
+export function recordedRuntimeBrowserUnavailableCause(): RuntimeBrowserUnavailableCause | null {
+  return unavailableCause
+}
+
 /**
  * The cause this process can prove. An installed factory outranks any recorded note: it
  * means resolution succeeded, so the failure is later and elsewhere — a dead provider, or
@@ -81,9 +88,10 @@ export function setRuntimeBrowserUnavailableCause(
  */
 export function runtimeBrowserUnavailableCause(): RuntimeBrowserUnavailableCause {
   if (currentFactory) {
-    return runtimeBrowserCommandsFactoryIsAvailable()
-      ? { reason: 'desktop_window_unavailable' }
-      : { reason: 'provider_unhealthy' }
+    if (runtimeBrowserCommandsFactoryIsAvailable()) {
+      return { reason: 'desktop_window_unavailable' }
+    }
+    return currentOptions.unavailableCause?.() ?? { reason: 'provider_unhealthy' }
   }
   return unavailableCause ?? { reason: 'unknown' }
 }

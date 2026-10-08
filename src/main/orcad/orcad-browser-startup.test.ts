@@ -41,11 +41,13 @@ it('returns before discovery and keeps already-created commands usable after rea
   const { pending, provider, command, startup } = delayedProvider()
   const commands = createRuntimeBrowserCommands(host)
   expect(runtimeBrowserCommandsFactoryIsHeadless()).toBe(false)
-  expect(() => commands.browserTabList({})).toThrow(/unavailable/)
+  expect(runtimeBrowserUnavailableCause()).toEqual({ reason: 'starting' })
+  // A command during discovery joins it rather than failing.
+  const early = commands.browserTabList({})
   pending.resolve(provider)
   await startup.ready
+  await expect(early).resolves.toEqual({ tabs: [] })
   expect(runtimeBrowserCommandsFactoryIsHeadless()).toBe(true)
-  commands.browserTabList({})
   commands.browserTabList({})
   expect(provider.factory).toHaveBeenCalledTimes(1)
   expect(command).toHaveBeenCalledTimes(2)
@@ -90,6 +92,23 @@ it('propagates ready-provider cleanup failures', async () => {
   pending.resolve(provider)
   await startup.ready
   await expect(startup.stop()).rejects.toThrow('stop failed')
+})
+
+it('installs no factory and reports disabled for --browser none', async () => {
+  vi.mocked(resolveOrcadBrowserProvider).mockClear()
+  const startup = startOrcadBrowserProvider({ userDataPath: '/private-fixture', mode: 'none' })
+  await startup.ready
+  expect(resolveOrcadBrowserProvider).not.toHaveBeenCalled()
+  expect(runtimeBrowserUnavailableCause()).toEqual({ reason: 'disabled' })
+  await startup.stop()
+})
+
+it('passes the browser mode to discovery', async () => {
+  vi.mocked(resolveOrcadBrowserProvider).mockResolvedValueOnce(null)
+  const startup = startOrcadBrowserProvider({ userDataPath: '/private-fixture', mode: 'chromium' })
+  await startup.ready
+  expect(vi.mocked(resolveOrcadBrowserProvider).mock.calls.at(-1)![0].mode).toBe('chromium')
+  await startup.stop()
 })
 
 it('refuses a member the provider does not implement instead of invoking it', async () => {

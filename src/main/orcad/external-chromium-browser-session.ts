@@ -5,6 +5,10 @@ import { z } from 'zod'
 import { BrowserError } from '../browser/browser-error'
 import { BROWSER_UNAVAILABLE_ERROR_CODE } from '../../shared/runtime-types'
 import { runProcess } from '../../shared/child-process/run-process'
+import {
+  reapExternalChromiumProfileProcesses,
+  type ExternalChromiumReapOutcome
+} from './external-chromium-orphan-reaper'
 
 const COMMAND_TIMEOUT_MS = 90_000
 const MAX_OUTPUT_BYTES = 50 * 1024 * 1024
@@ -31,6 +35,14 @@ const AgentBrowserEnvelope = z.object({
 })
 
 export type AgentBrowserTab = z.infer<typeof AgentBrowserTab>
+
+/** The driver itself failed (crashed, killed, unlaunchable) rather than a command inside a live
+ *  browser. Same wire code as before; the subclass only lets the provider count them. */
+export class AgentBrowserDriverError extends BrowserError {
+  constructor(message: string) {
+    super('browser_error', message)
+  }
+}
 
 function classifyAgentBrowserError(message: string): string {
   if (/unknown ref|ref not found|element not found: @e/i.test(message)) {
@@ -77,7 +89,10 @@ export class ExternalChromiumBrowserSession {
   constructor(
     private readonly agentBrowserPath: string,
     private readonly launch: ExternalChromiumLaunch,
-    statePath: string
+    statePath: string,
+    private readonly reapProfileProcesses: (
+      profilePath: string
+    ) => Promise<ExternalChromiumReapOutcome> = reapExternalChromiumProfileProcesses
   ) {
     const identity = createHash('sha256')
       .update(`${statePath}:${launch.provider}`)
@@ -129,7 +144,16 @@ export class ExternalChromiumBrowserSession {
     try {
       await this.run(['close'], CLOSE_TIMEOUT_MS)
     } catch {
-      // Closing an already-dead browser is complete cleanup.
+      // A dead driver cannot close its browser; the reap below covers that tree.
+    }
+    // Why: a killed driver leaves its Chromium re-parented and running on this profile, and a
+    // relaunch on the same profile would hand off to it instead of starting a browser we drive.
+    const reaped = await this.reapProfileProcesses(this.profilePath).catch(() => null)
+    if (reaped && reaped.signalled.length > 0) {
+      console.warn(
+        `[orcad] Reaped ${reaped.signalled.length} orphaned browser process(es) ` +
+          `left by a lost driver (${reaped.killed.length} needed SIGKILL).`
+      )
     }
   }
 
@@ -195,7 +219,7 @@ export class ExternalChromiumBrowserSession {
       envelope = AgentBrowserEnvelope.parse(JSON.parse(result.stdout))
     } catch {
       const detail = result.stderr.trim() || `exit ${String(result.code)}`
-      throw new BrowserError('browser_error', `Browser command failed: ${detail.slice(0, 1000)}`)
+      throw new AgentBrowserDriverError(`Browser command failed: ${detail.slice(0, 1000)}`)
     }
     if (!envelope.success) {
       const message = envelope.error ?? (result.stderr.trim() || 'Unknown browser error.')

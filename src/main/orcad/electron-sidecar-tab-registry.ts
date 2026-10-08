@@ -35,6 +35,10 @@ export class ElectronSidecarTabRegistry {
   private readonly pagesBySidecarId = new Map<string, ElectronSidecarPage>()
   private readonly activePageIdByWorktree = new Map<string, string>()
 
+  listPages(): ElectronSidecarPage[] {
+    return [...this.pagesByPublicId.values()]
+  }
+
   clear(): void {
     this.pagesByPublicId.clear()
     this.pagesBySidecarId.clear()
