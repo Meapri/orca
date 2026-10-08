@@ -42,8 +42,10 @@ describe('file open RPC navigation', () => {
       })
     )
 
-    expect(runtime.openMobileFile).toHaveBeenCalledWith('id:wt-1', 'a.ts', 'all')
-    expect(runtime.openMobileDiff).toHaveBeenCalledWith('id:wt-1', 'a.ts', false, 'host')
+    // The in-process caller is this build, so it may also be answered with a host-owned tab.
+    const hostTabs = { hostEditorTabs: true }
+    expect(runtime.openMobileFile).toHaveBeenCalledWith('id:wt-1', 'a.ts', 'all', hostTabs)
+    expect(runtime.openMobileDiff).toHaveBeenCalledWith('id:wt-1', 'a.ts', false, 'host', hostTabs)
   })
 
   it('leaves navigation absent for callers that send none (phones, older CLIs)', async () => {
@@ -56,8 +58,15 @@ describe('file open RPC navigation', () => {
       makeRequest('files.openDiff', { worktree: 'id:wt-1', relativePath: 'a.ts', staged: true })
     )
 
-    expect(runtime.openMobileFile).toHaveBeenCalledWith('id:wt-1', 'a.ts', undefined)
-    expect(runtime.openMobileDiff).toHaveBeenCalledWith('id:wt-1', 'a.ts', true, undefined)
+    const hostTabs = { hostEditorTabs: true }
+    expect(runtime.openMobileFile).toHaveBeenCalledWith('id:wt-1', 'a.ts', undefined, hostTabs)
+    expect(runtime.openMobileDiff).toHaveBeenCalledWith(
+      'id:wt-1',
+      'a.ts',
+      true,
+      undefined,
+      hostTabs
+    )
   })
 
   it('rejects an unknown navigation target on file opens', async () => {

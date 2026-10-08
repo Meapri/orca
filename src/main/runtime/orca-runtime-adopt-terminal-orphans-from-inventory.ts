@@ -69,6 +69,8 @@ export class OrcaRuntimeWithAdoptTerminalOrphansFromInventory extends OrcaRuntim
         recordAdoptedSurface: (pty, tabId, paneKey) =>
           recordPtySurface(pty, tabId, paneKey, spawnSurfaceClaimSequence(this.graphSequence)),
         getMobileSnapshots: () => this.mobileSessionTabsByWorktree.values(),
+        isSurfaceRetired: (tabId, leafId) =>
+          this.closedTerminalSurfaceLedger.findRetiredSurface(tabId, leafId) !== null,
         getSession: (worktreeId) => this.getWorkspaceSessionForWorktree(worktreeId),
         setSession: (worktreeId, next) => this.setWorkspaceSessionForWorktree(worktreeId, next),
         flushSession: () => this.flushWorkspaceSessionOrThrowAsync(),

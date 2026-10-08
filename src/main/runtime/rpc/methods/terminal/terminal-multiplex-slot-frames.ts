@@ -19,6 +19,7 @@ import {
   serializeBudgetedRequestedSnapshot
 } from './terminal-snapshot-publication'
 import { updateViewportForClient } from './terminal-viewport-update'
+import { chainInputGeometryClaim } from './terminal-input-geometry-claim'
 import type {
   MultiplexSnapshotRequest,
   TerminalMultiplexCleanupStage,
@@ -67,6 +68,14 @@ export function installMultiplexSlotFrames(
       }
       if (isTerminalInputLockedForClient(runtime, stream.ptyId, stream.client)) {
         return
+      }
+      if (!stream.isMobile && stream.client?.id) {
+        stream.desktopClaimTail = chainInputGeometryClaim(
+          runtime,
+          stream.ptyId,
+          stream.remoteDesktopSubscriptionKey,
+          stream.desktopClaimTail
+        )
       }
       // Mobile already has the higher-priority floor, so a rejected desktop claim must not suppress later phone input.
       const inputClaimTail = stream.isMobile ? Promise.resolve(true) : stream.desktopClaimTail

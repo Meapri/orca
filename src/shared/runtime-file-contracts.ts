@@ -20,6 +20,8 @@ export type RuntimeFileOpenResult = {
   relativePath: string
   kind: 'markdown' | 'text' | 'binary' | 'image'
   opened: boolean
+  /** Present when a renderer-less host opened its own editor tab (optional; older hosts omit it). */
+  tabId?: string
 }
 
 export type RuntimeFileReadResult = {

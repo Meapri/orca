@@ -37,15 +37,17 @@ export const closedTerminalTabTombstoneSchema = z.object({
 export const CLOSED_TERMINAL_TAB_TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000
 export const MAX_CLOSED_TERMINAL_TAB_TOMBSTONES = 500
 
-export function pruneClosedTerminalTabTombstones(
-  map: ClosedTerminalTabTombstonesByTabId | undefined,
-  now: number
-): ClosedTerminalTabTombstonesByTabId {
+// Why generic: the host's closed-surface ledger keeps the same TTL/newest-first policy with a larger cap.
+export function pruneClosedTerminalTabTombstones<T extends { closedAt: number }>(
+  map: Record<string, T> | undefined,
+  now: number,
+  limit: number = MAX_CLOSED_TERMINAL_TAB_TOMBSTONES
+): Record<string, T> {
   const entries = Object.entries(map ?? {}).filter(
     ([, tombstone]) => now - tombstone.closedAt <= CLOSED_TERMINAL_TAB_TOMBSTONE_TTL_MS
   )
   entries.sort(([, a], [, b]) => b.closedAt - a.closedAt)
-  return Object.fromEntries(entries.slice(0, MAX_CLOSED_TERMINAL_TAB_TOMBSTONES))
+  return Object.fromEntries(entries.slice(0, limit))
 }
 
 export function recordClosedTerminalTabTombstone(

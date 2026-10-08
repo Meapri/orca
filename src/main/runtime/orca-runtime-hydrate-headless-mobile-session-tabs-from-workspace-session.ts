@@ -27,6 +27,7 @@ import {
   collectBrowserGroupAssignment
 } from './mobile-session-browser-group-projection'
 import { headlessMobileSnapshotContentUnchanged } from './mobile-session-snapshot-equality'
+import { isEditorSessionTab } from './host-editor-tab-projection'
 
 export class OrcaRuntimeWithHydrateHeadlessMobileSessionTabsFromWorkspaceSession extends OrcaRuntimeWithWaitForSessionTabsInventoryPublication {
   protected hydrateHeadlessMobileSessionTabsFromWorkspaceSession(
@@ -63,6 +64,7 @@ export class OrcaRuntimeWithHydrateHeadlessMobileSessionTabsFromWorkspaceSession
       options.onlyRuntimeOwnedTerminals === true &&
       !this.offscreenBrowserBackend &&
       getRuntimeBrowserPageRegistry(this).listPages(worktreeId ?? '').length === 0 &&
+      !this.hostEditorTabs.hasTabs(worktreeId) &&
       options.runtimeOwnedTerminalCandidateKnown !== true &&
       !(worktreeId
         ? this.workspaceSessionWorktreeHasRuntimeOwnedPtyCandidate(
@@ -115,7 +117,7 @@ export class OrcaRuntimeWithHydrateHeadlessMobileSessionTabsFromWorkspaceSession
         // offscreen browser tabs are live and may have been created/closed since.
         // Reconcile just the browser tabs against the live bridge instead of
         // leaving a stale snapshot that omits a freshly-opened browser tab.
-        this.reconcileHeadlessMobileSessionBrowserTabs(entryWorktreeId, existing)
+        this.reconcileHeadlessMobileSessionLiveTabs(entryWorktreeId, existing)
         reconciledWorktreeIds.add(entryWorktreeId)
         continue
       }
@@ -138,9 +140,17 @@ export class OrcaRuntimeWithHydrateHeadlessMobileSessionTabsFromWorkspaceSession
       // filter, which is about terminal PTY ownership and never applies to browsers.
       const browserTabs = this.buildHeadlessMobileSessionBrowserTabs(entryWorktreeId)
       // Why not in the runtime-owned pass: that merges into a renderer's publication, which owns its editors.
-      const editorTabs = runtimeOwnedOnly
+      const sessionEditorTabs = runtimeOwnedOnly
         ? []
         : buildHeadlessMobileSessionEditorTabs(entryWorktreeId, session)
+      // Editors files.open created on this renderer-less host; see runtime-host-editor-tabs.
+      const sessionEditorIds = new Set(sessionEditorTabs.map((tab) => tab.id))
+      const editorTabs = [
+        ...sessionEditorTabs,
+        ...this.hostEditorTabs
+          .sessionTabs(entryWorktreeId)
+          .filter((tab) => !sessionEditorIds.has(tab.id))
+      ]
       const tabs: RuntimeMobileSessionSnapshotTab[] = [
         ...terminalTabs,
         ...editorTabs,
@@ -171,7 +181,7 @@ export class OrcaRuntimeWithHydrateHeadlessMobileSessionTabsFromWorkspaceSession
       )
       // Editors ride with browsers: both keep their persisted group, unlike terminal parents.
       const mergedBrowserOrder = mergedTabs
-        .filter((tab) => tab.type === 'browser' || tab.type === 'markdown' || tab.type === 'file')
+        .filter((tab) => tab.type === 'browser' || isEditorSessionTab(tab))
         .map((tab) => tab.id)
       // Why: a persisted multi-group split must be restored on cold rebuild, or
       // the headless serve coalesces the user's group layout back into one group

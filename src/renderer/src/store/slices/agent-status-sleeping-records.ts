@@ -1,26 +1,19 @@
 import type { AppState } from '../types'
 import type { AgentStatusEntry } from '../../../../shared/agent-status-types'
-import {
-  agentTurnEndedUncleanly,
-  agentVerdictFields
-} from '../../../../shared/agent-main-agent-verdict'
-import {
-  getAgentResumeArgv,
-  isResumableTuiAgent,
-  type SleepingAgentLaunchConfig,
-  type SleepingAgentSessionRecord
+import { agentTurnEndedUncleanly } from '../../../../shared/agent-main-agent-verdict'
+import type {
+  SleepingAgentLaunchConfig,
+  SleepingAgentSessionRecord
 } from '../../../../shared/agent-session-resume'
+import {
+  buildSleepingAgentSessionRecord,
+  copySleepingAgentLaunchConfig,
+  hasResumableSleepingAgentIdentity
+} from '../../../../shared/sleeping-agent-session-record'
 import type { TerminalTab } from '../../../../shared/terminal-tab-types'
 import { findTabForAgentEntry } from './agent-status-pane-key-tab-binding'
 
-export function copyLaunchConfig(config: SleepingAgentLaunchConfig): SleepingAgentLaunchConfig {
-  return {
-    ...(config.agentCommand ? { agentCommand: config.agentCommand } : {}),
-    agentArgs: config.agentArgs,
-    agentEnv: { ...config.agentEnv },
-    ...(config.ompResumeFilePath ? { ompResumeFilePath: config.ompResumeFilePath } : {})
-  }
-}
+export const copyLaunchConfig = copySleepingAgentLaunchConfig
 
 export function sleepingRecordFromEntry(args: {
   state: AppState
@@ -31,39 +24,19 @@ export function sleepingRecordFromEntry(args: {
   launchConfig?: SleepingAgentLaunchConfig
   origin?: SleepingAgentSessionRecord['origin']
 }): SleepingAgentSessionRecord | null {
-  const agent = args.entry.agentType
-  if (
-    args.entry.terminalResumeEligible === false ||
-    !isResumableTuiAgent(agent) ||
-    !args.entry.providerSession
-  ) {
-    return null
-  }
-  if (!getAgentResumeArgv(agent, args.entry.providerSession)) {
+  // Why first: the tab lookup indexes the whole tab tree, and most status rows are not resumable.
+  if (!hasResumableSleepingAgentIdentity(args.entry)) {
     return null
   }
   const tab = args.tab ?? findTabForAgentEntry(args.state, args.worktreeId, args.entry)
-  return {
-    paneKey: args.entry.paneKey,
-    ...(tab ? { tabId: tab.id } : {}),
+  return buildSleepingAgentSessionRecord({
+    source: args.entry,
     worktreeId: args.worktreeId,
-    agent,
-    providerSession: args.entry.providerSession,
-    ...(args.entry.connectionId !== undefined ? { connectionId: args.entry.connectionId } : {}),
-    prompt: args.entry.prompt,
-    state: args.entry.state,
+    ...(tab ? { tabId: tab.id, tabTitle: tab.title } : {}),
     capturedAt: args.capturedAt,
-    updatedAt: args.entry.updatedAt,
-    ...((args.entry.terminalTitle ?? tab?.title)
-      ? { terminalTitle: (args.entry.terminalTitle ?? tab?.title)! }
-      : {}),
-    ...(args.entry.lastAssistantMessage
-      ? { lastAssistantMessage: args.entry.lastAssistantMessage }
-      : {}),
-    ...(args.launchConfig ? { launchConfig: copyLaunchConfig(args.launchConfig) } : {}),
-    ...agentVerdictFields(args.entry),
+    ...(args.launchConfig ? { launchConfig: args.launchConfig } : {}),
     ...(args.origin ? { origin: args.origin } : {})
-  }
+  })
 }
 
 export type CollectSleepingAgentSessionRecordsOptions = {
