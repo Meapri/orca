@@ -182,6 +182,35 @@ describe('pre-profile pairing coordinator', () => {
     expect(events).toEqual(['connect', 'save-host', 'record-descriptor'])
   })
 
+  it('saves the address that answered as preferred and keeps the rest as alternates', async () => {
+    const events: string[] = []
+    const client = fakeClient([success({ version: '1.0.0' })])
+    const deps = dependencies(client, events)
+    const offer: PairingOffer = {
+      ...directOffer,
+      alternateEndpoints: ['ws://100.64.0.5:6768', 'ws://10.0.0.5:6768']
+    }
+    deps.connectDirect = vi.fn((...args: Parameters<typeof connect>) => {
+      events.push('connect')
+      const options = args[3]
+      if (typeof options === 'object') {
+        expect(options.alternateEndpoints).toEqual(offer.alternateEndpoints)
+        options.onEndpointConnected?.('ws://100.64.0.5:6768')
+      }
+      return client
+    })
+
+    const attempt = startPreProfilePairing({ offer, timeoutMs: 5_000, dependencies: deps })
+
+    await expect(attempt.result).resolves.toEqual({ hostId: `host-${now}` })
+    expect(deps.savePairedHost).toHaveBeenCalledWith(
+      expect.objectContaining({
+        endpoint: 'ws://100.64.0.5:6768',
+        alternateEndpoints: ['ws://10.0.0.5:6768', directOffer.endpoint]
+      })
+    )
+  })
+
   it('reuses the existing host id and name when re-pairing the same desktop key (no duplicate)', async () => {
     // STA-1840: re-pairing a desktop already stored under a different id must
     // merge into that card, not mint a new host-${now} and duplicate the row.

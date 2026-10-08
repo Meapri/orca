@@ -1,5 +1,6 @@
 import type { PublicKnownRuntimeEnvironment } from '../../../shared/runtime-environments'
 import type { WebPairingOffer } from './web-pairing'
+import { listPairingDialEndpoints } from '../../../shared/pairing-endpoint-failover'
 import { createBrowserUuid } from '@/lib/browser-uuid'
 import { translate } from '@/i18n/i18n'
 
@@ -84,16 +85,23 @@ export function createStoredWebRuntimeEnvironment(args: {
     ...(args.connectionDependency ? { connectionDependency: args.connectionDependency } : {}),
     ...(compatibleEnvironmentIds.length > 0 ? { compatibleEnvironmentIds } : {}),
     preferredEndpointId: `ws-${id}`,
-    endpoints: [
-      {
-        id: `ws-${id}`,
-        kind: 'websocket',
-        label: translate('auto.web.web.runtime.environment.07f788de83', 'WebSocket'),
-        endpoint: args.offer.endpoint,
-        deviceToken: args.offer.deviceToken,
-        publicKeyB64: args.offer.publicKeyB64
-      }
-    ]
+    // Why: alternates share the offer's credential and key; the primary stays preferred until a
+    // connect to it goes unanswered (same model as the desktop store).
+    endpoints: listPairingDialEndpoints(args.offer).map((endpoint, index) => ({
+      id: index === 0 ? `ws-${id}` : `ws-${id}-alt-${index}`,
+      kind: 'websocket',
+      label:
+        index === 0
+          ? translate('auto.web.web.runtime.environment.07f788de83', 'WebSocket')
+          : translate(
+              'auto.web.web.runtime.environment.alternateWebSocket',
+              'WebSocket (alternate {{value0}})',
+              { value0: index }
+            ),
+      endpoint,
+      deviceToken: args.offer.deviceToken,
+      publicKeyB64: args.offer.publicKeyB64
+    }))
   }
 }
 
@@ -130,13 +138,50 @@ export function getPreferredWebPairingOffer(
   if (!endpoint) {
     throw new Error('No runtime endpoint is stored for this web client.')
   }
+  // Why: only entries holding the same credential and key are the same pairing's other addresses.
+  const index = environment.endpoints.indexOf(endpoint)
+  const alternateEndpoints = [
+    ...environment.endpoints.slice(index + 1),
+    ...environment.endpoints.slice(0, index)
+  ]
+    .filter(
+      (entry) =>
+        entry.deviceToken === endpoint.deviceToken &&
+        entry.publicKeyB64 === endpoint.publicKeyB64 &&
+        entry.endpoint !== endpoint.endpoint
+    )
+    .map((entry) => entry.endpoint)
   return {
     v: 2,
     endpoint: endpoint.endpoint,
     deviceToken: endpoint.deviceToken,
     publicKeyB64: endpoint.publicKeyB64,
-    ...(environment.pairedDeviceId ? { pairedDeviceId: environment.pairedDeviceId } : {})
+    ...(environment.pairedDeviceId ? { pairedDeviceId: environment.pairedDeviceId } : {}),
+    ...(alternateEndpoints.length > 0 ? { alternateEndpoints } : {})
   }
+}
+
+/**
+ * Records the endpoint that just completed a handshake as preferred, so the next page load dials
+ * the last good address first. Returns the environment unchanged when it already was preferred.
+ */
+export function preferConnectedWebEndpoint(
+  environment: StoredWebRuntimeEnvironment,
+  connectedEndpoint: string
+): StoredWebRuntimeEnvironment {
+  const preferred = environment.endpoints.find(
+    (entry) => entry.id === environment.preferredEndpointId
+  )
+  if (preferred?.endpoint === connectedEndpoint) {
+    return environment
+  }
+  const connected = environment.endpoints.find((entry) => entry.endpoint === connectedEndpoint)
+  if (!connected) {
+    return environment
+  }
+  const next = { ...environment, preferredEndpointId: connected.id }
+  saveStoredWebRuntimeEnvironment(next)
+  return next
 }
 
 export function updateStoredEnvironmentRuntimeId(

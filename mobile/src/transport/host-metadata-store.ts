@@ -32,6 +32,7 @@ export function toStoredHostProfile(host: HostProfile): StoredHostProfile {
     lastKnownMachineName,
     lastKnownHostPlatform,
     endpoint,
+    alternateEndpoints,
     publicKeyB64,
     lastConnected
   } = host
@@ -42,6 +43,7 @@ export function toStoredHostProfile(host: HostProfile): StoredHostProfile {
     ...(lastKnownMachineName !== undefined ? { lastKnownMachineName } : {}),
     ...(lastKnownHostPlatform !== undefined ? { lastKnownHostPlatform } : {}),
     endpoint,
+    ...(alternateEndpoints && alternateEndpoints.length > 0 ? { alternateEndpoints } : {}),
     publicKeyB64,
     lastConnected
   }
