@@ -1,0 +1,70 @@
+name: orcad soak
+
+# Heavy by design: installs orcad as a real systemd user service, restarts it under live
+# terminals, then runs the fault-injection soak for minutes. Manual only; never a PR gate.
+on:
+  workflow_dispatch:
+    inputs:
+      duration-seconds:
+        description: Length of the long-run sampling phase
+        default: '600'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: orcad-soak-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  soak:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    env:
+      ORCA_BACKGROUND_LAUNCH: '1'
+      SOAK_DURATION_SECONDS: ${{ inputs.duration-seconds }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/install-node-dependencies
+      - name: Start a lingering user manager
+        # The daemon's own scope needs `systemd-run --user`; without this the soak would only
+        # exercise the unscoped fallback.
+        shell: bash
+        run: |
+          sudo loginctl enable-linger "$USER"
+          runtime_dir="/run/user/$(id -u)"
+          echo "XDG_RUNTIME_DIR=$runtime_dir" >> "$GITHUB_ENV"
+          for _ in $(seq 1 30); do
+            [ -S "$runtime_dir/bus" ] && break
+            sleep 1
+          done
+          XDG_RUNTIME_DIR="$runtime_dir" systemctl --user is-system-running || true
+      - run: pnpm build:orcad
+      - run: pnpm build:cli
+      - name: Package and verify the release tarball
+        run: pnpm pack:orcad-release --from out/orcad
+      - name: Installer lifecycle and unit restart under live terminals
+        shell: bash
+        run: |
+          node tests/tools/orcad-soak/orcad-service-restart-case.mjs \
+            --tarball "$(ls out/orcad-release/*.tar.gz)" \
+            --report out/orcad-soak/service-restart-case.json
+      - name: Fault injection and soak
+        shell: bash
+        run: |
+          node tests/tools/orcad-soak/orcad-soak.mjs \
+            --duration "$SOAK_DURATION_SECONDS" \
+            --report out/orcad-soak/soak.json
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: orcad-soak-${{ matrix.os }}
+          path: out/orcad-soak/
+          if-no-files-found: warn
