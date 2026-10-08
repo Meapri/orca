@@ -1,5 +1,6 @@
 import type { PairingOfferUnavailableReason } from '../runtime/runtime-rpc'
 import type { OrcadHealth } from '../orcad/orcad-health'
+import { formatWebClientUrlLines } from '../../shared/web-client-url-lines'
 
 export type ServePairingUnavailableReason = PairingOfferUnavailableReason | 'disabled_by_operator'
 
@@ -10,8 +11,12 @@ export type ServePairingReadiness =
       endpoint: string
       deviceId: string
       webClientUrl: string | null
+      /** One browser link per alternate endpoint, each dialing that endpoint. Additive. */
+      webClientAlternateUrls?: string[]
       scope: 'runtime' | 'mobile'
       qr: string | null
+      /** Epoch ms after which the unclaimed offer stops authenticating. Additive; absent = no expiry. */
+      expiresAt?: number | null
     }
   | {
       available: false
@@ -25,6 +30,8 @@ export type ServeReadiness = {
   advertisedEndpoint: string | null
   managedWslCliReconciliation: 'pending' | 'settled' | 'failed'
   pairing: ServePairingReadiness
+  /** orcad `--mobile-pairing`: a phone offer beside the runtime one. Additive; absent = not asked. */
+  mobilePairing?: ServePairingReadiness
   /**
    * Build identity, Node ABI and the cross-process terminal-daemon self-test.
    *
@@ -87,6 +94,7 @@ export function renderServeReadiness(
       advertisedEndpoint: readiness.advertisedEndpoint,
       managedWslCliReconciliation: readiness.managedWslCliReconciliation,
       pairing: readiness.pairing,
+      ...(readiness.mobilePairing ? { mobilePairing: readiness.mobilePairing } : {}),
       ...(readiness.health ? { health: readiness.health } : {})
     })
   }
@@ -110,20 +118,35 @@ function renderHumanReadiness(readiness: ServeReadiness): string {
         ` (${daemon.selfTest.coverage}: ${daemon.selfTest.verdict})` +
         `; terminals survive an orcad restart: ${daemon.ownsFreshSessions ? 'yes' : 'NO'}`
     )
+    for (const degradation of readiness.health.degradations ?? []) {
+      lines.push(`Degraded (${degradation.severity}): ${degradation.message}`)
+    }
   }
-  if (readiness.pairing.available) {
-    if (readiness.pairing.webClientUrl) {
-      lines.push(`Web client URL: ${readiness.pairing.webClientUrl}`)
-    }
-    if (readiness.pairing.scope === 'mobile' && readiness.pairing.qr) {
-      lines.push(`Mobile pairing QR:\n${readiness.pairing.qr}`)
-    }
-    lines.push(`Pairing URL: ${readiness.pairing.url}`)
-  } else {
-    lines.push(`Pairing unavailable: ${readiness.pairing.reason}`)
-    lines.push(`Pairing guidance: ${readiness.pairing.guidance}`)
+  lines.push(...renderHumanPairing(readiness.pairing, ''))
+  if (readiness.mobilePairing) {
+    lines.push(...renderHumanPairing(readiness.mobilePairing, 'Mobile '))
   }
   return lines.join('\n')
+}
+
+function renderHumanPairing(pairing: ServePairingReadiness, label: '' | 'Mobile '): string[] {
+  if (!pairing.available) {
+    return [
+      `${label}Pairing unavailable: ${pairing.reason}`,
+      `${label}Pairing guidance: ${pairing.guidance}`
+    ]
+  }
+  const lines = formatWebClientUrlLines(pairing)
+  if (pairing.scope === 'mobile' && pairing.qr) {
+    lines.push(`Mobile pairing QR:\n${pairing.qr}`)
+  }
+  lines.push(`${label}Pairing URL: ${pairing.url}`)
+  if (typeof pairing.expiresAt === 'number') {
+    lines.push(
+      `${label}Pairing URL expires: ${new Date(pairing.expiresAt).toISOString()} (mint another with \`orca serve pairing new${label ? ' --mobile' : ''}\`)`
+    )
+  }
+  return lines
 }
 
 function writeStdout(output: string): Promise<void> {
