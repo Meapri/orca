@@ -5,6 +5,7 @@ import { RpcDispatcher } from '../rpc/dispatcher'
 import { ALL_RPC_METHODS } from '../rpc/methods'
 import type { RpcTransport } from '../rpc/transport'
 import type { WebSocket } from 'ws'
+import type { WebSocketProbeRequestHandler } from '../rpc/ws-transport-http-server'
 import type { DeviceRegistry } from '../device-registry'
 import type { E2EEKeypair } from '../e2ee-keypair'
 import type { UnpairedDeviceAuthThrottle } from '../rpc/unpaired-device-auth-throttle'
@@ -12,6 +13,7 @@ import type { MobileSocketWiring } from '../rpc/mobile-socket-wiring'
 import { RelayRevokeOutbox } from '../relay/relay-revoke-outbox'
 import { PushUnregisterOutbox } from '../push/push-unregister-outbox'
 import { RuntimeBinaryMessageRouter } from '../runtime-binary-message-router'
+import { SecurityEventLog } from '../security-event-log'
 import type { RuntimeMetadataOwnershipWatch } from '../runtime-metadata-ownership-watch'
 import { RUNTIME_METADATA_OWNERSHIP_POLL_MS } from '../runtime-metadata-ownership-watch'
 import {
@@ -38,6 +40,8 @@ export class RuntimeRpcState {
   protected readonly enableWebSocket: boolean
   protected readonly wsPort: number
   protected readonly preferPinnedWsPort: boolean
+  protected readonly requirePinnedWsPort: boolean
+  protected readonly httpProbeHandler: WebSocketProbeRequestHandler | undefined
   protected readonly exposeNetworkByDefault: boolean
   protected readonly pinnedBindHost: string | null
   protected readonly webClientRoot: string | undefined
@@ -59,6 +63,7 @@ export class RuntimeRpcState {
   protected readonly relayRevokeOutbox: RelayRevokeOutbox
   protected readonly pushUnregisterOutbox: PushUnregisterOutbox
   protected deviceRegistry: DeviceRegistry | null = null
+  protected readonly securityEvents: SecurityEventLog | null
   protected e2eeKeypair: E2EEKeypair | null = null
   protected pairingInitializationFailure: PairingOfferUnavailable | null = null
   protected tlsFingerprint: string | null = null
@@ -102,25 +107,35 @@ export class RuntimeRpcState {
     enableWebSocket = false,
     wsPort = DEFAULT_WS_PORT,
     preferPinnedWsPort = false,
+    requirePinnedWsPort = false,
+    httpProbeHandler,
     exposeNetworkByDefault = false,
     pinnedBindHost,
     webClientRoot,
+    securityLogPath,
     keepaliveIntervalMs = KEEPALIVE_INTERVAL_MS,
     longPollCap = LONG_POLL_CAP,
     metadataOwnershipPollMs = RUNTIME_METADATA_OWNERSHIP_POLL_MS,
-    methods
+    methods,
+    extraMethods
   }: OrcaRuntimeRpcServerOptions) {
     this.runtime = runtime
-    this.dispatcher = new RpcDispatcher({ runtime, methods: methods ?? ALL_RPC_METHODS })
+    this.dispatcher = new RpcDispatcher({
+      runtime,
+      methods: [...(methods ?? ALL_RPC_METHODS), ...(extraMethods ?? [])]
+    })
     this.userDataPath = userDataPath
     this.pid = pid
     this.platform = platform
     this.enableWebSocket = enableWebSocket
     this.wsPort = wsPort
     this.preferPinnedWsPort = preferPinnedWsPort
+    this.requirePinnedWsPort = requirePinnedWsPort
+    this.httpProbeHandler = httpProbeHandler
     this.exposeNetworkByDefault = exposeNetworkByDefault
     this.pinnedBindHost = pinnedBindHost ?? null
     this.webClientRoot = webClientRoot
+    this.securityEvents = securityLogPath ? new SecurityEventLog(securityLogPath) : null
     this.keepaliveIntervalMs = keepaliveIntervalMs
     this.longPollCap = longPollCap
     this.metadataOwnershipPollMs = metadataOwnershipPollMs
