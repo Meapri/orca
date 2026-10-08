@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { parsePairingCode, type PairingOffer } from './pairing'
+import { nextEndpointAfterUnreachable } from './pairing-endpoint-failover'
 import { classifyRemotePairingHostname } from './remote-pairing-address'
 import {
   createEnvironmentFromPairingOffer,
@@ -225,6 +226,44 @@ export function markEnvironmentUsed(
       : entry
   )
   writeEnvironmentStore(userDataPath, { version: 1, environments: next })
+}
+
+/**
+ * Moves the preferred endpoint to the next alternate after `failedEndpoint` could not be reached,
+ * so the next connection tries it; the one that connects stays preferred (the last good one).
+ * No-op unless the failure was against the currently preferred entry of a multi-endpoint pairing,
+ * and never for an SSH-bound environment, whose preferred endpoint is its tunnel binding.
+ */
+export function preferNextEnvironmentEndpointAfterUnreachable(
+  userDataPath: string,
+  selector: string,
+  failedEndpoint: string
+): boolean {
+  const known = resolveEnvironmentFromStore(readEnvironmentStore(userDataPath), selector)
+  if (
+    known.connectionDependency ||
+    known.sshAccess ||
+    known.pendingSshAccessOperation ||
+    known.orcadDeployment
+  ) {
+    return false
+  }
+  const next = nextEndpointAfterUnreachable(
+    known.endpoints,
+    known.preferredEndpointId,
+    failedEndpoint
+  )
+  if (!next) {
+    return false
+  }
+  const store = readPersistedEnvironmentStore(userDataPath)
+  writeEnvironmentStore(userDataPath, {
+    version: 1,
+    environments: store.environments.map((entry) =>
+      entry.id === known.id ? { ...entry, preferredEndpointId: next.id } : entry
+    )
+  })
+  return true
 }
 
 function preferredDeviceToken(environment: PersistedRuntimeEnvironment): string | undefined {

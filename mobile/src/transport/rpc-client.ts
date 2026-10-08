@@ -57,6 +57,10 @@ export type RpcClient = UnvalidatedRpcRequestPort & {
 export type ConnectOptions = {
   onStateChange?: (state: ConnectionState) => void
   onLog?: ConnectionLogSink
+  /** Other addresses of the same host, dialed in turn after an unanswered connect. */
+  alternateEndpoints?: readonly string[]
+  /** The address that just authenticated, so the caller can keep it preferred. */
+  onEndpointConnected?: (endpoint: string) => void
 }
 
 export function connect(
