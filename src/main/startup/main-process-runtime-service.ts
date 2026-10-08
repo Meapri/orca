@@ -12,23 +12,21 @@ import { agentHookServer } from '../agent-hooks/server'
 import { browserManager } from '../browser/browser-manager'
 import { loadAgentSessionClaimSigner } from '../runtime/agent-session-claim-identity'
 import { getProfileUserDataPath } from '../orca-profiles/profile-storage-paths'
-import { prepareCodexAiVaultSessionResume } from '../codex/codex-ai-vault-session-resume'
 import { prepareCodexPinnedLaunchHome } from './codex-session-resume-launch'
-import { resolveHostCodexSessionSourceHome } from '../codex/codex-session-source-home'
+import {
+  attachAccountServicesToRuntime,
+  createAccountBackedRuntimeDeps
+} from '../account-services/account-backed-runtime-deps'
 import { isAgentStatusHooksEnabled } from '../agent-hooks/managed-agent-hook-controls'
 import { getDaemonProvider } from '../daemon/daemon-init'
 import type { TerminalSideEffectBatch } from '../../shared/terminal-side-effect-facts'
 import type { OrchestrationEnvironmentTransport } from '../runtime/orchestration/environment-transport'
 import { resolveEnvironment } from '../../shared/runtime-environment-store'
-import { resolveTuiAgentLaunchEnv } from '../../shared/tui-agent-launch-defaults'
 import { getPreferredPairingOffer } from '../../shared/runtime-environments'
 import { fingerprintOrchestrationPeer } from '../runtime/orchestration/environment-transport'
 import { callRuntimeEnvironment } from '../ipc/runtime-environment-transport-routing'
 import { mainProcessState as state } from './main-process-state'
-import {
-  codexStructuredLaunchHomeResolvers,
-  prepareCodexRuntimeHomeForLaunch
-} from './codex-launch-preparation'
+import { prepareCodexRuntimeHomeForLaunch } from './codex-launch-preparation'
 import type { RuntimeDesktopWindowStatus } from '../../shared/runtime-types'
 import { ArtifactCloudService } from '../artifacts/artifact-cloud-service'
 import { SkillCloudService } from '../skills/skill-cloud-service'
@@ -81,7 +79,6 @@ export function initializeMainProcessRuntime(): OrcaRuntimeService {
   // `orca serve`, which never opens one, and the fleet path runs there too.
   const observedPaneIdentities = new AgentStatusObservedPaneIdentities()
   const runtime = new OrcaRuntimeService(store, stats, {
-    prepareClaudeAuth: (target) => state.claudeRuntimeAuth!.prepareForClaudeLaunch(target),
     agentSessionClaimSigner: loadAgentSessionClaimSigner(
       getProfileUserDataPath(),
       getProfileUserDataPath()
@@ -137,21 +134,14 @@ export function initializeMainProcessRuntime(): OrcaRuntimeService {
     // constructed with this runtime and does not exist yet at this point.
     getPairedDeviceName: (pairedDeviceId) =>
       state.runtimeRpc?.getDeviceRegistry()?.getDevice(pairedDeviceId)?.name ?? null,
-    // Why: source codex-home here (runs in window AND serve) so aiVault.listSessions includes managed-Codex sessions; registerCoreHandlers is window-only.
-    getAdditionalAiVaultCodexHomePaths: () =>
-      state.codexRuntimeHome?.getHostCodexHomePathsForSessionDiscovery() ?? [],
-    prepareAiVaultSessionResume: (args) =>
-      prepareCodexAiVaultSessionResume(args, {
-        runtimeHome: state.codexRuntimeHome,
-        systemCodexHomePath: resolveHostCodexSessionSourceHome(store.getSettings()),
-        preparePinnedLaunchHome: (home) => prepareCodexPinnedLaunchHome(home)
-      }),
-    ...codexStructuredLaunchHomeResolvers,
-    prepareCodexCatalogProbeHome: (homePath) =>
-      state.codexRuntimeHome?.prepareHostCodexHomeForReadOnlyAppServer(
-        homePath,
-        resolveTuiAgentLaunchEnv('codex', store.getSettings().agentDefaultEnv)
-      ),
+    // Why here (runs in window AND serve): registerCoreHandlers is window-only.
+    ...createAccountBackedRuntimeDeps({
+      getClaudeRuntimeAuth: () => state.claudeRuntimeAuth,
+      getCodexRuntimeHome: () => state.codexRuntimeHome,
+      getSettings: () => store.getSettings(),
+      prepareCodexRuntimeHomeForLaunch,
+      prepareCodexPinnedLaunchHome
+    }),
     buildAgentHookPtyEnv: () =>
       isAgentStatusHooksEnabled(state.store?.getSettings()) ? agentHookServer.buildPtyEnv() : {},
     orchestrationEnvironmentTransport,
@@ -192,7 +182,8 @@ export function configureRuntimeServices(runtime: OrcaRuntimeService): void {
   const claudeAccounts = state.claudeAccounts
   const codexAccounts = state.codexAccounts
   const rateLimits = state.rateLimits
-  if (!store || !claudeAccounts || !codexAccounts || !rateLimits) {
+  const claudeRuntimeAuth = state.claudeRuntimeAuth
+  if (!store || !claudeAccounts || !codexAccounts || !rateLimits || !claudeRuntimeAuth) {
     throw new Error('Account services must be initialized before runtime wiring')
   }
   runtime.setArtifactService(
@@ -201,10 +192,9 @@ export function configureRuntimeServices(runtime: OrcaRuntimeService): void {
     )
   )
   runtime.setSkillCloudService(new SkillCloudService(app.getPath('userData')))
-  runtime.setAccountServices({ claudeAccounts, codexAccounts, rateLimits })
-  runtime.setCommitMessageAgentEnvironmentResolvers({
-    // Why: Codex hooks/auth live in Orca's managed runtime home even for the default path, so every launch must resolve CODEX_HOME via runtime-home.
-    prepareForCodexLaunch: prepareCodexRuntimeHomeForLaunch,
-    prepareForClaudeLaunch: (target) => state.claudeRuntimeAuth!.prepareForClaudeLaunch(target)
-  })
+  attachAccountServicesToRuntime(
+    runtime,
+    { claudeAccounts, codexAccounts, rateLimits, claudeRuntimeAuth },
+    prepareCodexRuntimeHomeForLaunch
+  )
 }
