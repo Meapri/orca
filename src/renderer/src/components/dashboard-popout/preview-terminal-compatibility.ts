@@ -39,13 +39,10 @@ export function installPreviewTerminalCompatibility(
   // until RTL text arrives. Never shaping-active: the preview is DOM-rendered
   // and has no WebGL glyph atlas to compensate for.
   const disposeArabicShapingJoiner = configureLazyArabicShapingJoiner(terminal, () => false)
-  const imeAnchorHandler = installTerminalImeCandidateAnchor(terminal)
+  const disposeImeAnchor = installTerminalImeCandidateAnchor(terminal)
 
   return () => {
-    if (imeAnchorHandler && terminal.element) {
-      terminal.element.removeEventListener('compositionstart', imeAnchorHandler)
-      terminal.element.removeEventListener('compositionupdate', imeAnchorHandler)
-    }
+    disposeImeAnchor?.()
     disposeArabicShapingJoiner()
   }
 }
