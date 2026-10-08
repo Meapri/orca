@@ -75,6 +75,8 @@ export const NODE_RUNTIME_INCLUDE = [
   'src/main/runtime/rpc/ws-transport.test.ts',
   // Bun resolves 'ws' to its built-in client, which bypasses the patched package.
   'src/main/runtime/rpc/ws-empty-payload-frame-write.test.ts',
+  // Bun's built-in 'ws' client pongs even with autoPong: false, so a silent peer is never reaped.
+  'src/main/runtime/rpc/ws-transport-heartbeat-ping-payload.test.ts',
   'src/shared/remote-runtime-client.test.ts',
   'src/shared/remote-runtime-connect-bound.test.ts',
   'src/shared/remote-runtime-subscription-connect-bound.test.ts',
