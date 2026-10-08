@@ -13,7 +13,15 @@
  * it says nothing about the daemon, which is what makes a non-destructive restart possible.
  */
 import { randomUUID } from 'node:crypto'
-import { linkSync, mkdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  linkSync,
+  mkdirSync,
+  renameSync,
+  statSync,
+  unlinkSync,
+  writeFileSync
+} from 'node:fs'
 import { userInfo } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
@@ -251,6 +259,35 @@ function reclaimAndPublish(
     )
   }
   return makeLock(lockPath, record)
+}
+
+export type OrcadInstanceLockInspection =
+  | { state: 'free' }
+  | { state: 'held'; record: OrcadLockRecord }
+  | { state: 'stale'; record: OrcadLockRecord | null }
+  | { state: 'foreign'; record: OrcadLockRecord }
+
+/** Read-only: what the next `acquireOrcadInstanceLock` would find, without taking or reclaiming. */
+export function inspectOrcadInstanceLock(
+  dataRoot: string,
+  hooks: OrcadInstanceLockHooks = {}
+): OrcadInstanceLockInspection {
+  const lockPath = join(dataRoot, ORCAD_LOCK_FILE_NAME)
+  const content = readBoundedLockFile(lockPath)
+  if (content === null) {
+    return existsSync(lockPath) ? { state: 'stale', record: null } : { state: 'free' }
+  }
+  const record = parseOrcadInstanceLockRecord(content)
+  if (!record) {
+    return { state: 'stale', record: null }
+  }
+  if (record.identity !== (hooks.identity ?? defaultIdentity)()) {
+    return { state: 'foreign', record }
+  }
+  const alive =
+    (hooks.processIsAlive ?? isProcessAlive)(record.pid) &&
+    (hooks.startTimeMatches ?? orcadProcessStartTimeMatches)(record.pid, record.startedAtMs)
+  return alive ? { state: 'held', record } : { state: 'stale', record }
 }
 
 function garbledLockIsAbandoned(lockPath: string): boolean {

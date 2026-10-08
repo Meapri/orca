@@ -7,6 +7,7 @@ import {
   buildLegacyScopeMigrationCommand,
   buildDurableDaemonScopeCommand,
   daemonScopeUnitName,
+  describeDurableDaemonScopeSupport,
   detectOwnCgroupScopeUnit,
   isDurableDaemonScopeSupported,
   migrateLegacyDaemonScope,
@@ -67,6 +68,58 @@ afterEach(() => {
   for (const dir of fakeSystemdBootDirs.splice(0)) {
     rmSync(dir, { recursive: true, force: true })
   }
+})
+
+describe('describeDurableDaemonScopeSupport', () => {
+  const working = () => ({ code: 0, timedOut: false })
+
+  it('names the first missing prerequisite so doctor can print its fix', () => {
+    const systemdBootPath = fakeSystemdBootPath()
+    const base = { env: {}, platform: 'linux' as const, outlivesCaller: () => true }
+    expect(describeDurableDaemonScopeSupport({ env: {}, platform: 'darwin' })).toBe('not_linux')
+    expect(
+      describeDurableDaemonScopeSupport({
+        ...base,
+        canonicalRuntimeDir: null,
+        systemdBootPath: '/definitely/not/systemd-boot',
+        runVersionProbe: working
+      })
+    ).toBe('no_systemd')
+    expect(
+      describeDurableDaemonScopeSupport({
+        ...base,
+        canonicalRuntimeDir: fakeRuntimeDirWithoutBus(),
+        systemdBootPath,
+        runVersionProbe: working
+      })
+    ).toBe('no_user_bus')
+    const canonicalRuntimeDir = fakeRuntimeDirWithBus()
+    expect(
+      describeDurableDaemonScopeSupport({
+        ...base,
+        canonicalRuntimeDir,
+        systemdBootPath,
+        runVersionProbe: working,
+        outlivesCaller: () => false
+      })
+    ).toBe('user_manager_ends_with_session')
+    expect(
+      describeDurableDaemonScopeSupport({
+        ...base,
+        canonicalRuntimeDir,
+        systemdBootPath,
+        runVersionProbe: () => ({ code: 1, timedOut: false })
+      })
+    ).toBe('systemd_run_unavailable')
+    expect(
+      describeDurableDaemonScopeSupport({
+        ...base,
+        canonicalRuntimeDir,
+        systemdBootPath,
+        runVersionProbe: working
+      })
+    ).toBe('supported')
+  })
 })
 
 describe('isDurableDaemonScopeSupported', () => {

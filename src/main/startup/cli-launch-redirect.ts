@@ -3,7 +3,7 @@ import { posix, win32 } from 'node:path'
 import { runProcessSync } from '../../shared/child-process/run-process'
 import { CLI_BOOLEAN_FLAGS, findCliCommandIndex } from '../../shared/cli-argument-boundary'
 import { CLI_COMMAND_NAMES } from './cli-command-names'
-import { VALUE_TAKING_FLAGS } from './serve-mode-argv'
+import { namesServeAdministration, VALUE_TAKING_FLAGS } from './serve-mode-argv'
 
 export type CliLaunchRedirectResult = { redirected: false } | { redirected: true; status: number }
 
@@ -118,8 +118,8 @@ function getCommandLaunchArgs(
   const commandIndex = findCommandIndex(args, options.commandNames)
   const cliArgs = stripDesktopFlags(args, commandIndex)
   const command = commandIndex === -1 ? null : args[commandIndex]
-  // Keep direct serve in-process so signals reach its full child tree.
-  if (command && command !== 'serve') {
+  // Keep direct serve in-process so signals reach its full child tree; its admin subcommands are CLI.
+  if (command && (command !== 'serve' || namesServeAdministration(args, commandIndex))) {
     return cliArgs
   }
   return hasCliEarlyExitArg(args, commandIndex) ? cliArgs : null

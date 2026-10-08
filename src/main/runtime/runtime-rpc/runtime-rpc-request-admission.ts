@@ -2,6 +2,7 @@ import type { RuntimeMetadata } from '../../../shared/runtime-bootstrap'
 import { writeRuntimeMetadata } from '../runtime-metadata'
 import type { RpcMessageContext } from '../rpc/transport'
 import type { RpcRequest, RpcResponse } from '../rpc/core'
+import type { DeviceAdministrationRpcContext } from '../rpc/device-administration-context'
 import { errorResponse } from '../rpc/errors'
 import { RuntimeRpcBinaryRouting } from './runtime-rpc-binary-routing'
 import { classifyRuntimeLongPoll, type RuntimeLongPollClass } from './runtime-rpc-long-poll'
@@ -39,7 +40,10 @@ export class RuntimeRpcRequestAdmission extends RuntimeRpcBinaryRouting {
     try {
       return await this.dispatcher.dispatch(request, {
         signal: longPoll ? context?.signal : undefined,
-        callerScope
+        callerScope,
+        // Why: only the owner metadata token proves host-local administration; a bridged SSH CLI never gets it.
+        deviceAdministration:
+          callerScope.kind === 'owner' ? this.getDeviceAdministrationContext() : undefined
       })
     } finally {
       this.releaseLongPoll(longPoll)
@@ -141,7 +145,17 @@ export class RuntimeRpcRequestAdmission extends RuntimeRpcBinaryRouting {
     if (bridgeScope) {
       return { request, callerScope: bridgeScope }
     }
+    this.securityEvents?.record({
+      event: 'auth.failed',
+      transport: 'local-socket',
+      reason: 'Invalid auth token'
+    })
     return { error: this.buildError(request.id, 'unauthorized', 'Invalid auth token') }
+  }
+
+  // Why: the administration layer overrides this; without it host-only admin RPCs stay unreachable.
+  protected getDeviceAdministrationContext(): DeviceAdministrationRpcContext | undefined {
+    return undefined
   }
 
   protected buildError(id: string, code: string, message: string): RpcResponse {
