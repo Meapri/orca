@@ -2,6 +2,8 @@ import type { ITerminalOptions } from '@xterm/xterm'
 import { DESKTOP_TERMINAL_SCROLLBACK_ROWS_DEFAULT } from '../../../../shared/terminal-scrollback-policy'
 import { LIGHT_BG_MIN_CONTRAST } from '@/lib/terminal-contrast-correction'
 import { buildFontFamily } from '@/lib/monospace-font-family'
+import { DEFAULT_TERMINAL_IME_PREEDIT_IN_GRID } from './terminal-ime-grid-preedit'
+import { DEFAULT_TERMINAL_FIT_WIDE_GLYPHS } from './terminal-wide-glyph-fit'
 
 type TerminalCursorStyle = NonNullable<ITerminalOptions['cursorStyle']>
 type TerminalCursorInactiveStyle = NonNullable<ITerminalOptions['cursorInactiveStyle']>
@@ -42,6 +44,7 @@ export function buildDefaultTerminalOptions(): ITerminalOptions {
     // Why: one-cell glyphs drawn from a CJK/symbol fallback face (①, ※, Ⅻ) otherwise spill
     // into the next cell under WebGL; wide, ASCII, emoji and Nerd glyphs are never rescaled.
     rescaleOverlappingGlyphs: true,
+    fitWideGlyphs: DEFAULT_TERMINAL_FIT_WIDE_GLYPHS,
     fontWeight: '300',
     fontWeightBold: '500',
     scrollback: DESKTOP_TERMINAL_SCROLLBACK_ROWS_DEFAULT,
@@ -56,6 +59,8 @@ export function buildDefaultTerminalOptions(): ITerminalOptions {
     macOptionIsMeta: false,
     macOptionClickForcesSelection: true,
     drawBoldTextInBrightColors: true,
+    // Why: the renderer draws the preedit as cells, so it cannot cover or misalign the row under it.
+    imePreeditInGrid: DEFAULT_TERMINAL_IME_PREEDIT_IN_GRID,
     scrollbar: {
       // Why: slim VS Code-style scrollbar (VS Code uses 14). FitAddon reserves
       // this as a gutter, costing ~1 column per pane — accepted tradeoff so the

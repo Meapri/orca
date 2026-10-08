@@ -8937,11 +8937,19 @@
           "e90afcc44f": "off",
           "16c471ee03": "on",
           "typographyAdvanced": "Typography",
-          "dimUnfocusedPanes": "Dim unfocused panes."
+          "dimUnfocusedPanes": "Dim unfocused panes.",
+          "0739c1f2b6": "Cursor Animation",
+          "ebde1c981e": "Glides the cursor as you type and fades its blink. Requires GPU rendering.",
+          "b2ff21a421": "Terminal Cursor for App Carets",
+          "c9f01528ff": "When a terminal app hides the cursor and paints its own caret, draws the terminal cursor there with your shape, blink and animation."
         },
         "TerminalAdvancedTypographyControls": {
           "f5fa1a08f1": "Bold Font Weight",
           "0e0d1ee15a": "Adjust independently from Font Weight. Some fonts map several values to one face, so lower Font Weight or choose another font if bold looks unchanged."
+        },
+        "TerminalFontFallbackSetting": {
+          "title": "Fallback Fonts",
+          "description": "Comma-separated fonts tried after Font Family for characters it lacks, such as Korean, Chinese, Japanese or symbols. Orca already falls back to your system’s CJK fonts."
         },
         "TerminalFontSizeSetting": {
           "9b5252c85a": "px",
@@ -9044,6 +9052,10 @@
             "fastDescription": "Extra multiplier while scrolling with a modifier key.",
             "tui": "TUI",
             "tuiDescription": "Discrete wheel reports for full-screen terminal apps."
+          },
+          "smoothScroll": {
+            "description": "Animate mouse-wheel, Shift+Page Up/Down and jump-to-latest scrolling. Trackpads already scroll continuously; reduced motion turns this off.",
+            "title": "Smooth Scrolling"
           },
           "8dbe0bc942": "Shell arguments, one per line",
           "f58cb71f53": "--rcfile\n/path/to/rcfile",
@@ -11041,6 +11053,30 @@
               "dim": "dim",
               "colors": "colors"
             },
+            "fontFallback": {
+              "title": "Fallback Fonts",
+              "description": "Fonts tried after the terminal font for characters it lacks, such as Korean, Chinese or Japanese.",
+              "fallback": "fallback",
+              "cjk": "cjk",
+              "korean": "korean",
+              "chinese": "chinese",
+              "japanese": "japanese"
+            },
+            "9226c75396": "Cursor Animation",
+            "3ac3ea1cac": "Glides the cursor as you type and fades its blink. Requires GPU rendering.",
+            "e2b79d0578": "animation",
+            "da61b65178": "smooth",
+            "45087d1a4d": "glide",
+            "smoothScroll": {
+              "title": "Smooth Scrolling",
+              "description": "Animate mouse-wheel, Shift+Page Up/Down and jump-to-latest scrolling in terminal scrollback."
+            },
+            "smooth": "smooth",
+            "animation": "animation",
+            "b2ff21a421": "Terminal Cursor for App Carets",
+            "c9f01528ff": "When a terminal app hides the cursor and paints its own caret, draws the terminal cursor there with your shape, blink and animation.",
+            "3d0e4adb75": "caret",
+            "864e24955e": "tui",
             "d31ed1ac1c": "rcfile",
             "d9e29543a1": "wrapper",
             "50ba80b6dd": "login",
@@ -19001,13 +19037,46 @@
       "TerminalContextMenu": {
         "copySessionId": "Copy Session ID",
         "copySessionIdSuccess": "Session ID copied",
-        "copySessionIdError": "Unable to copy session ID"
+        "copySessionIdError": "Unable to copy session ID",
+        "copyRaw": "Copy Raw"
+      },
+      "mouseCaptureSelectionHint": {
+        "mac": "This app captures the mouse. Hold ⌥ Option while dragging to select text.",
+        "other": "This app captures the mouse. Hold Shift while dragging to select text."
+      },
+      "copyFeedback": {
+        "copied": "Copied to clipboard"
+      },
+      "marks": {
+        "commandOutputCopied": "Command output copied",
+        "commandOutputCopyFailed": "Unable to copy command output",
+        "copyCommandOutput": "Copy Command Output",
+        "selectCommandOutput": "Select Command Output",
+        "removeBookmark": "Remove Bookmark",
+        "bookmarkLine": "Bookmark Line",
+        "bookmarks": "Bookmarks",
+        "blankLine": "Blank line",
+        "lineNumber": "Line {{value0}}"
       }
     },
     "settings": {
       "TerminalInteraction": {
         "copyTrimsGutter": "Trim Gutter on Copy",
-        "copyTrimsGutterDescription": "Drop the left gutter agent output is painted behind, so copied text is not indented. Only the indent every selected line shares is removed."
+        "copyTrimsGutterDescription": "Drop the gutter, box borders, line numbers and trailing padding agent and TUI output is painted with, and rejoin lines a boxed TUI wrapped. Only the indent every selected line shares is removed; right-click › Copy Raw keeps the screen cells as-is.",
+        "clickToMoveCursor": "Click to Move Cursor",
+        "clickToMoveCursorDescription": "Click on the line you are typing to move the cursor there. \"At prompts\" needs shell integration; \"Any input line\" also works in agent CLIs and REPLs.",
+        "clickToMoveOff": "Off",
+        "clickToMoveShellPrompt": "At prompts",
+        "clickToMoveInputLine": "Any input line",
+        "inputSelectionEditing": "Edit Input Like a Text Field",
+        "inputSelectionEditingDescription": "Typing, Backspace, Delete or paste replaces text selected on the line you are typing; Shift+Arrow extends the selection and Undo reverses the replacement. Apps that handle the mouse themselves keep their own editing.",
+        "search": {
+          "click": "click",
+          "selection": "selection",
+          "undo": "undo",
+          "cursor": "cursor",
+          "caret": "caret"
+        }
       },
       "terminal": {
         "clipboard": {
@@ -19028,10 +19097,75 @@
         "inlineVisualsToggleLabel": "Toggle inline visuals",
         "queueFollowUpsCopy": "Messages you send while the agent is working wait as cards you can steer, edit, or delete. Messages with images send right away.",
         "queueFollowUpsToggleLabel": "Toggle queue follow-ups"
+      },
+      "TerminalCommandMarks": {
+        "title": "Show Command Marks",
+        "description": "Mark each prompt and submitted line in the terminal gutter and scrollbar, with failed commands in red. Jumping between prompts works either way.",
+        "search": {
+          "prompt": "prompt",
+          "marks": "marks",
+          "command": "command",
+          "jump": "jump",
+          "gutter": "gutter",
+          "scrollbar": "scrollbar",
+          "osc133": "osc 133",
+          "shellIntegration": "shell integration"
+        }
+      },
+      "TerminalRendering": {
+        "imePreeditInGrid": "Draw IME Composition in Terminal Cells",
+        "imePreeditInGridDescription": "Render text being composed with an input method (Korean, Japanese, Chinese) as terminal cells at the cursor. Turn off to use the floating overlay instead.",
+        "search": {
+          "ime": "ime",
+          "inputMethod": "input method",
+          "composition": "composition",
+          "preedit": "preedit",
+          "korean": "korean",
+          "japanese": "japanese",
+          "chinese": "chinese",
+          "overlay": "overlay"
+        },
+        "fitWideGlyphs": "Fit and Center Wide Characters",
+        "fitWideGlyphsDescription": "Enlarge Korean, Chinese and Japanese characters drawn from a fallback font toward their two-cell width, never taller than the line, and center them so text does not look spaced out.",
+        "fitWideGlyphsSearch": {
+          "wide": "wide",
+          "cjk": "cjk",
+          "korean": "korean",
+          "hangul": "hangul",
+          "chinese": "chinese",
+          "japanese": "japanese",
+          "fallback": "fallback",
+          "spacing": "spacing",
+          "center": "center"
+        }
+      },
+      "TerminalPixelScroll": {
+        "title": "Pixel Scrolling",
+        "description": "Trackpad and wheel scrolling in the scrollback moves by pixels, then settles on a whole row. Requires GPU rendering; mouse-aware terminal apps and reduced motion keep row-by-row scrolling.",
+        "search": {
+          "scroll": "scroll",
+          "pixel": "pixel",
+          "smooth": "smooth",
+          "trackpad": "trackpad",
+          "wheel": "wheel"
+        }
       }
     },
     "agentChildRow": {
       "ended": "Ended"
+    },
+    "terminalComposer": {
+      "send": "Send",
+      "label": "Terminal composer",
+      "placeholder": "Compose input for the terminal. Enter adds a line.",
+      "submitOnSend": "Press Enter after sending",
+      "cancel": "Cancel"
+    },
+    "terminal-pane": {
+      "jumpToLatest": {
+        "newOutput": "New output",
+        "label": "Jump to latest"
+      }
     },
     "markdown-callout": {
       "note": "Note",

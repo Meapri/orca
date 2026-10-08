@@ -18772,7 +18772,21 @@
       },
       "TerminalInteraction": {
         "copyTrimsGutter": "Recortar margen al copiar",
-        "copyTrimsGutterDescription": "Elimina el margen izquierdo tras el que se dibuja la salida del agente, para que el texto copiado no quede indentado. Solo se quita la indentación que comparten todas las líneas seleccionadas."
+        "copyTrimsGutterDescription": "Elimina el margen izquierdo tras el que se dibuja la salida del agente, para que el texto copiado no quede indentado. Solo se quita la indentación que comparten todas las líneas seleccionadas.",
+        "clickToMoveCursor": "Clic para mover el cursor",
+        "clickToMoveCursorDescription": "Haz clic en la línea que estás escribiendo para mover el cursor allí. \"En prompts\" requiere integración con el shell; \"Cualquier línea de entrada\" también funciona en CLI de agentes y REPL.",
+        "clickToMoveOff": "Desactivado",
+        "clickToMoveShellPrompt": "En prompts",
+        "clickToMoveInputLine": "Cualquier línea de entrada",
+        "inputSelectionEditing": "Editar la entrada como un campo de texto",
+        "inputSelectionEditingDescription": "Escribir, Retroceso, Suprimir o pegar reemplaza el texto seleccionado en la línea que estás escribiendo; Mayús+flecha amplía la selección y Deshacer revierte el reemplazo. Las apps que gestionan el ratón conservan su propia edición.",
+        "search": {
+          "click": "clic",
+          "selection": "selección",
+          "undo": "deshacer",
+          "cursor": "cursor",
+          "caret": "cursor de texto"
+        }
       },
       "terminal": {
         "clipboard": {
@@ -18786,6 +18800,13 @@
           }
         }
       }
+    },
+    "terminalComposer": {
+      "send": "Enviar",
+      "label": "Compositor de terminal",
+      "placeholder": "Escribe la entrada para la terminal. Enter añade una línea.",
+      "submitOnSend": "Pulsar Enter después de enviar",
+      "cancel": "Cancelar"
     },
     "onboarding": {
       "flow": {
