@@ -218,6 +218,7 @@ Works with **any CLI agent** — if it runs in a terminal, it runs in Orca.
 
 - **[Download from onOrca.dev](https://onorca.dev/download)**
 - Or grab a build directly: [macOS Apple Silicon](https://github.com/stablyai/orca/releases/latest/download/orca-macos-arm64.dmg) · [macOS Intel](https://github.com/stablyai/orca/releases/latest/download/orca-macos-x64.dmg) · [Windows (.exe)](https://github.com/stablyai/orca/releases/latest/download/orca-windows-setup.exe) · [Linux AppImage](https://github.com/stablyai/orca/releases/latest/download/orca-linux.AppImage) · [All builds](https://github.com/stablyai/orca/releases/latest)
+- Running Orca headless on a Linux server or VPS? See the [headless Linux server guide](docs/reference/headless-linux-server.md), which covers the standalone `orcad` runtime (no Xvfb) and the legacy `orca serve` AppImage path.
 
 _Or via a package manager:_
 
