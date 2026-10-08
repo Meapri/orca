@@ -1,4 +1,5 @@
 import type { WebSocket } from 'ws'
+import { REMOTE_RUNTIME_SOCKET_PING_PAYLOAD } from '../../../shared/remote-runtime-socket-liveness'
 
 // Why: one unanswered probe is UNKNOWN, not death — a cellular/Tailscale blackhole or a stalled TCP
 // retransmit routinely swallows a single pong from a peer that is still there (STA-3320). Only a run of
@@ -73,7 +74,7 @@ export class RemoteRuntimeServerHeartbeat {
       try {
         // Why: re-probe every sweep, including missed ones, so a path that just recovered can prove
         // itself on the next tick instead of waiting out the rest of the budget.
-        socket.ping()
+        socket.ping(REMOTE_RUNTIME_SOCKET_PING_PAYLOAD)
       } catch {
         // Why: a mid-teardown socket is finalized by its close/error listener.
       }
