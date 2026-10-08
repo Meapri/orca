@@ -6,6 +6,7 @@ import type {
 } from './runtime-file-command-target'
 import type { ExecutionHostId } from '../../shared/execution-host'
 import type { RuntimeNativeChatFileContext } from '../../shared/runtime-types'
+import type { RuntimeNavigationTarget } from '../../shared/runtime-navigation'
 import type { FsChangeEvent } from '../../shared/filesystem-entry-types'
 import { PhysicalExitTracker } from '../../shared/physical-exit-tracker'
 import {
@@ -54,6 +55,7 @@ export type RuntimeFileCommandHost = {
     filePath: string,
     relativePath: string,
     runtimeEnvironmentId?: string | null,
+    navigation?: RuntimeNavigationTarget,
     hostEditorTab?: RuntimeHostEditorTabOpenOptions
   ): { tabId: string } | void
   openDiff(
@@ -62,6 +64,7 @@ export type RuntimeFileCommandHost = {
     relativePath: string,
     staged: boolean,
     runtimeEnvironmentId?: string | null,
+    navigation?: RuntimeNavigationTarget,
     hostEditorTab?: RuntimeHostEditorTabOpenOptions
   ): { tabId: string } | void
 }

@@ -6,10 +6,11 @@
 #   $ORCAD_BASE/orcad-current          symlink the service starts through
 #   $ORCAD_BASE/orcad-active.json      activation record (active / previous / snapshot)
 #   $ORCAD_BASE/orcad-state-snapshots/ pre-activation copies of the data root
+#   $ORCAD_BASE/runtimes/node-<sha256>/ the pinned Node a version names in its .runtime-node
 #
 # Every decision about live terminals, activation health, snapshots and rollback is made by
 # orcad-host-install.js (bundled from the SSH deploy's own policy code) running under the
-# install's bundled Bun. This script only moves files and drives the service manager.
+# pinned Node the install references. This script only moves files and drives the service manager.
 # Reference: docs/reference/headless-linux-server.md
 set -eu
 
@@ -139,11 +140,20 @@ make_work_dir() {
   WORK_DIR=$(mktemp -d "$ORCAD_BASE/.orcad-work.XXXXXX")
 }
 
-# Run a policy verb from an installed version's bundled runtime. Prints its JSON line.
+# The pinned Node a version dir references: `<dir>/../runtimes/node-<sha256>/bin/node`.
+slot_runtime() {
+  runtime_sha=$(cat "$1/.runtime-node" 2>/dev/null) || return 1
+  case "$runtime_sha" in "" | *[!0-9a-f]*) return 1 ;; esac
+  [ "${#runtime_sha}" -eq 64 ] || return 1
+  printf '%s/runtimes/node-%s/bin/node\n' "$(dirname "$1")" "$runtime_sha"
+}
+
+# Run a policy verb from an installed version under its pinned runtime. Prints its JSON line.
 policy() {
   policy_dir=$1
   shift
-  "$policy_dir/bun-runtime" "$policy_dir/orcad-host-install.js" "$@"
+  policy_runtime=$(slot_runtime "$policy_dir") || die "$policy_dir names no pinned runtime"
+  "$policy_runtime" "$policy_dir/orcad-host-install.js" "$@"
 }
 
 json_field() {
@@ -295,8 +305,8 @@ install_verified_tarball() {
   version=${top#orcad-}
   { [ "$top" != "$version" ] && is_full_version "$version"; } ||
     die "$tarball does not contain an orcad-<version>/ install directory"
-  if awk -v t="$top" '{ sub(/^\.\//, "") } $0 != t && $0 != t "/" && index($0, t "/") != 1 { bad = 1 } END { exit !bad }' "$listing"; then
-    die "$tarball contains entries outside $top/"
+  if awk -v t="$top" '{ sub(/^\.\//, "") } $0 != t && $0 != t "/" && index($0, t "/") != 1 && $0 !~ /^runtimes\/?$/ && $0 !~ /^runtimes\/node-[0-9a-f]+(\/.*)?$/ { bad = 1 } END { exit !bad }' "$listing"; then
+    die "$tarball contains entries outside $top/ and runtimes/"
   fi
   if grep -Eq '(^/|(^|/)\.\.(/|$))' "$listing"; then
     die "$tarball contains absolute or parent-relative paths"
@@ -304,9 +314,11 @@ install_verified_tarball() {
   tar -xzf "$tarball" -C "$WORK_DIR" --no-same-owner
   staged="$WORK_DIR/$top"
   [ -z "$(find "$staged" -type l)" ] || die "$tarball contains symlinks; refusing"
-  built_for=$(cat "$staged/.build-target")
+  built_for=$(cat "$staged/.server-target")
   [ "$built_for" = "$(host_target)" ] || die "$top was built for $built_for, but this host is $(host_target)"
+  # verify-bundle also hashes the referenced runtime against the digest in its name.
   verify_out=$(policy "$staged" verify-bundle --dir "$staged") || die "bundle verification failed: $verify_out"
+  install_slot_runtime "$staged"
   final=$(version_dir "$version")
   INSTALLED_VERSION=$version
   if [ -f "$final/.install-complete" ]; then
@@ -324,6 +336,16 @@ install_verified_tarball() {
   : >"$staged/.install-complete"
   mv "$staged" "$final"
   say "installed orcad $version at $final"
+}
+
+# Moves the verified runtime beside the versions; one digest-named copy serves every version.
+install_slot_runtime() {
+  staged_runtime_dir=$(dirname "$(dirname "$(slot_runtime "$1")")")
+  final_runtime_dir="$ORCAD_BASE/runtimes/${staged_runtime_dir##*/}"
+  [ ! -d "$final_runtime_dir" ] || return 0
+  mkdir -p "$ORCAD_BASE/runtimes"
+  if [ "$ORCAD_SERVICE" = system ]; then chmod -R go-w,a+rX "$staged_runtime_dir"; fi
+  mv "$staged_runtime_dir" "$final_runtime_dir"
 }
 
 # ---- release download -----------------------------------------------------------------------
@@ -603,9 +625,15 @@ cmd_rollback() {
   census="$WORK_DIR/census.json"
   : >"$census"
   if [ "$running" = 1 ]; then take_census "$census"; fi
+  # The target's own bundle reports the daemon protocol it speaks; absent, rollback plans it as unknown.
+  set -- --census-file "$census"
+  previous=$(json_field previous "$(policy "$dir" record --base "$ORCAD_BASE")")
+  if [ -n "$previous" ] && [ -f "$(version_dir "$previous")/.install-complete" ] &&
+    target_protocol=$(policy "$(version_dir "$previous")" daemon-protocol 2>/dev/null); then
+    set -- "$@" --target-protocol "$target_protocol"
+  fi
   set +e
-  plan=$(policy "$dir" preflight-rollback --base "$ORCAD_BASE" --data-root "$ORCA_USER_DATA" \
-    --census-file "$census")
+  plan=$(policy "$dir" preflight-rollback --base "$ORCAD_BASE" --data-root "$ORCA_USER_DATA" "$@")
   plan_status=$?
   set -e
   if [ "$plan_status" != 0 ]; then
@@ -763,7 +791,7 @@ cmd_uninstall() {
   make_work_dir
   target=$(current_target)
   daemon_pids=
-  if [ -n "$target" ] && [ -x "$ORCAD_BASE/$target/bun-runtime" ]; then
+  if [ -n "$target" ] && runtime=$(slot_runtime "$ORCAD_BASE/$target") && [ -x "$runtime" ]; then
     dir="$ORCAD_BASE/$target"
     census="$WORK_DIR/census.json"
     take_census "$census"
@@ -794,6 +822,7 @@ cmd_uninstall() {
       orcad-current | orcad-active.json | orcad-state-snapshots | orcad-[0-9]*) rm -rf "$entry" ;;
     esac
   done
+  rm -rf "$ORCAD_BASE/runtimes"
   rm -f "$ORCAD_BASE/.orcad-pending-activation.json" "$(readiness_file)"
   if [ "$purge" = 1 ]; then
     [ -e "$ORCA_USER_DATA/orcad.lock" ] || [ -e "$ORCA_USER_DATA/orca-profile-index.json" ] ||
@@ -813,8 +842,12 @@ cmd_run() {
   # Real versioned paths (not the link) so the daemon records which version it was forked from.
   ORCA_VERSION=$(cat "$dir/.version")
   export ORCA_VERSION ORCA_USER_DATA
-  set -- "$dir/bun-runtime" "$dir/orcad.js" --json --bind "${ORCAD_BIND:-127.0.0.1}" --port "${ORCAD_PORT:-6768}"
+  runtime=$(slot_runtime "$dir") || die "$dir names no pinned runtime"
+  # --require-port: a supervised host's clients dial exactly this port, so never fall back.
+  set -- "$runtime" "$dir/orcad.js" --json --bind "${ORCAD_BIND:-127.0.0.1}" --port "${ORCAD_PORT:-6768}" --require-port
   if [ -n "${ORCAD_PAIRING_ADDRESS:-}" ]; then set -- "$@" --pairing-address "$ORCAD_PAIRING_ADDRESS"; fi
+  # The readiness line lands in the journal, so its unclaimed offer must not stay a live credential.
+  set -- "$@" --pairing-expires "${ORCAD_PAIRING_EXPIRES:-15m}"
   # Further orcad flags, split on whitespace: `--limit k=v`, `--pairing-expires 1h`, more
   # `--pairing-address` values. Globbing is off so a value is never expanded against the cwd.
   if [ -n "${ORCAD_EXTRA_ARGS:-}" ]; then

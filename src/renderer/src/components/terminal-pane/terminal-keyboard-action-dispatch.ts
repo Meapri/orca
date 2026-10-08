@@ -100,6 +100,8 @@ export function dispatchTerminalShortcutAction(
     event.preventDefault()
     event.stopImmediatePropagation()
     if (!event.repeat) {
+      // Why: under kitty release reporting xterm would encode this key's keyup
+      // as user input and scroll to the bottom mid-copy (#17606).
       armNativeOnlyShortcut(event)
       void copyTerminalSelection({
         terminal: pane.terminal,

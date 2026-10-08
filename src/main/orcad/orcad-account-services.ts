@@ -2,7 +2,7 @@
  * The Claude/Codex account services orcad serves, from the composition the desktop and
  * `orca serve` use. Managed credentials land where the desktop puts them on this platform:
  * files under the data root (`claude-accounts/`, `codex-accounts/`) on Linux, the login
- * keychain for Claude on macOS. See docs/reference/orcad-feature-parity.md.
+ * keychain for Claude on macOS.
  */
 import type { Store } from '../persistence'
 import type { OrcaRuntimeService } from '../runtime/orca-runtime'
@@ -22,7 +22,10 @@ import {
   createCodexRuntimeHomeLaunchPreparation,
   type CodexRuntimeHomeLaunchPreparation
 } from '../codex/codex-runtime-home-launch-preparation'
-import { createCodexSessionResumeLaunchPreparation } from '../codex/codex-session-resume-launch-preparation'
+import {
+  createCodexPinnedLaunchHomePreparation,
+  createCodexSessionResumeLaunchPreparation
+} from '../codex/codex-session-resume-launch-preparation'
 import { createCodexPaneSessionMigrationHooks } from '../codex/codex-pane-session-migration-hooks'
 
 export type OrcadAccountServices = AccountServices & {
@@ -37,10 +40,12 @@ export type OrcadAccountServices = AccountServices & {
 export function createOrcadAccountServices(store: Store): OrcadAccountServices {
   let quitting = false
   const services = createAccountServices({ store, isQuitting: () => quitting })
-  const prepareCodexRuntimeHomeForLaunch = createCodexRuntimeHomeLaunchPreparation({
+  const launchPreparationDeps = {
     getRuntimeHome: () => services.codexRuntimeHome,
     getSettings: () => store.getSettings()
-  })
+  }
+  const prepareCodexRuntimeHomeForLaunch =
+    createCodexRuntimeHomeLaunchPreparation(launchPreparationDeps)
   return {
     ...services,
     // Why here: automation runs read their token/cost figures from these, as on serve.
@@ -51,7 +56,8 @@ export function createOrcadAccountServices(store: Store): OrcadAccountServices {
       getClaudeRuntimeAuth: () => services.claudeRuntimeAuth,
       getCodexRuntimeHome: () => services.codexRuntimeHome,
       getSettings: () => store.getSettings(),
-      prepareCodexRuntimeHomeForLaunch
+      prepareCodexRuntimeHomeForLaunch,
+      prepareCodexPinnedLaunchHome: createCodexPinnedLaunchHomePreparation(launchPreparationDeps)
     }),
     stop: () => {
       quitting = true
@@ -67,16 +73,17 @@ export async function registerAccountBackedPtyRuntime(
   accounts: OrcadAccountServices
 ): Promise<void> {
   attachAccountServicesToRuntime(runtime, accounts, accounts.prepareCodexRuntimeHomeForLaunch)
+  const launchPreparationDeps = {
+    getRuntimeHome: () => accounts.codexRuntimeHome,
+    getSettings: () => store.getSettings()
+  }
   await registerHeadlessPtyRuntime(
     runtime,
     accounts.prepareCodexRuntimeHomeForLaunch,
     () => store.getSettings(),
     (target) => accounts.claudeRuntimeAuth.prepareForClaudeLaunch(target),
     store,
-    createCodexSessionResumeLaunchPreparation({
-      getRuntimeHome: () => accounts.codexRuntimeHome,
-      getSettings: () => store.getSettings()
-    }),
+    createCodexSessionResumeLaunchPreparation(launchPreparationDeps),
     createCodexPaneSessionMigrationHooks({
       getRuntimeHome: () => accounts.codexRuntimeHome,
       getSessionMigration: () => accounts.codexSessionMigration

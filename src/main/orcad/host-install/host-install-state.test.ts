@@ -24,12 +24,14 @@ import {
 } from './host-install-state'
 import { planHostRollback, pruneHostInstall } from './host-install-rollback'
 import type { DaemonIsolation } from './host-install-census'
+import { CURRENT_ORCAD_DAEMON_PROTOCOL } from '../../ssh/orcad-daemon-protocol-crossing'
 
 const NO_DAEMON: DaemonIsolation = {
   state: 'no-daemon',
   pids: [],
   cgroupUnits: [],
   versions: [],
+  protocolVersions: [],
   reason: ''
 }
 
@@ -112,13 +114,24 @@ describe.skipIf(process.platform === 'win32')('host install state', () => {
       activatedAt: new Date().toISOString(),
       snapshot: pending.snapshot
     }
-    const plan = (census: Parameters<typeof planHostRollback>[0]['census'], rec = record) =>
+    const plan = (
+      census: Parameters<typeof planHostRollback>[0]['census'],
+      rec = record,
+      targetDaemonProtocol: Parameters<
+        typeof planHostRollback
+      >[0]['targetDaemonProtocol'] = CURRENT_ORCAD_DAEMON_PROTOCOL
+    ) =>
       planHostRollback({
         base,
         dataRoot,
         record: rec,
-        isolation: { ...NO_DAEMON, state: 'isolated' },
-        census
+        isolation: {
+          ...NO_DAEMON,
+          state: 'isolated',
+          protocolVersions: [CURRENT_ORCAD_DAEMON_PROTOCOL.protocolVersion]
+        },
+        census,
+        targetDaemonProtocol
       })
     expect(plan({ verdict: 'empty', liveSessions: 0 }).safety).not.toBe('unsafe')
     expect(plan({ verdict: 'live', liveSessions: 1 })).toMatchObject({
@@ -132,6 +145,8 @@ describe.skipIf(process.platform === 'win32')('host install state', () => {
     ).toMatchObject({
       code: 'orcad_rollback_no_target'
     })
+    // A target that could not report its daemon protocol is planned as unable to attach.
+    expect(plan({ verdict: 'live', liveSessions: 1 }, record, null).safety).toBe('unsafe')
   })
 
   it('prunes only unpinned, complete orcad versions', () => {

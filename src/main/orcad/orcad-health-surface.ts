@@ -26,6 +26,7 @@ import {
   type SystemdNotifyEnvironment
 } from './orcad-systemd-notify'
 import type { OrcadProfileStateAuthoritySelection } from './orcad-profile-state-telemetry'
+import type { OrcadIdleStopRecord } from '../../shared/orcad-idle-exit'
 
 const LOCAL_TERMINAL_LIST_TIMEOUT_MS = 3_000
 
@@ -57,6 +58,8 @@ export function createOrcadHealthSurface(options: {
   userDataPath: string
   buildVersion: string
   profileStateAuthority: OrcadProfileStateAuthoritySelection | undefined
+  /** Managed launches only; see OrcadHealth.previousIdleStop. */
+  previousIdleStop?: OrcadIdleStopRecord | null
   systemdNotify: SystemdNotifyEnvironment | null
 }) {
   let host: OrcadHealthSurfaceHost | null = null
@@ -89,7 +92,11 @@ export function createOrcadHealthSurface(options: {
   })
   const monitor = new OrcadHealthMonitor({
     collectBase: (): Promise<OrcadHealth> =>
-      collectOrcadHealth(options.buildVersion, options.profileStateAuthority),
+      collectOrcadHealth(
+        options.buildVersion,
+        options.profileStateAuthority,
+        options.previousIdleStop
+      ),
     runtimeDegradations: () => {
       try {
         return host?.runtimeDegradations() ?? []

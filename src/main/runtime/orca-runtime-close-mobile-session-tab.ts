@@ -20,6 +20,8 @@ import { getRuntimeBrowserPageRegistry } from './runtime-browser-page-registry'
 import type { RuntimeCommandSurfaceHost } from './orca-runtime-core'
 import { SESSION_TAB_NOT_FOUND_ERROR } from '../../shared/session-tab-close'
 import { rendererPublicationThrottle } from '../window/renderer-publication-throttle'
+import { structuredAgentSessionTabCloseCause } from './structured-agent-session-tab-close-cause'
+import { retireHeadlessMobileSessionEditorTab } from './mobile-session-editor-projection'
 
 export class OrcaRuntimeWithCloseMobileSessionTab extends OrcaRuntimeWithRefuseUnattributedMobileSessionTabClose {
   async closeMobileSessionTab(
@@ -302,10 +304,17 @@ export class OrcaRuntimeWithCloseMobileSessionTab extends OrcaRuntimeWithRefuseU
           }
         }
       }
-      await this.closeStructuredAgentSessionTab(tab)
+      await this.closeStructuredAgentSessionTab(
+        tab,
+        structuredAgentSessionTabCloseCause(options.reason)
+      )
     } else if (!this.notifier?.closeSessionTab) {
-      // Why: with no renderer the host owns editor tabs; the ledger tombstones the id in close().
-      if (!this.hostEditorTabs.close(worktreeId, tab.id)) {
+      // Why: a headless host retires editors its session persisted, then the ones files.open made
+      // here (host-editor-tabs, whose ledger tombstones the id in close()).
+      if (
+        !retireHeadlessMobileSessionEditorTab(this, worktreeId, tab, options.force) &&
+        !this.hostEditorTabs.close(worktreeId, tab.id)
+      ) {
         throw new Error('runtime_unavailable')
       }
     } else {

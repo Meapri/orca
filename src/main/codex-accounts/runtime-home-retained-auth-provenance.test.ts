@@ -7,11 +7,10 @@ import {
   createManagedAuth,
   createStore,
   getRuntimeCodexAuthPath,
-  getRuntimeCodexHomePath,
   getSharedRuntimeAuthProvenancePath,
   getSystemCodexAuthPath,
   getSystemCodexHomePath,
-  setShellStartupEnvProbeSupportedForTest,
+  setRealHomeRoutableForTest,
   setupRuntimeHomeTest,
   teardownRuntimeHomeTest,
   testState
@@ -69,7 +68,7 @@ describe('CodexRuntimeHomeService', () => {
     const { CodexRuntimeHomeService } = await import('./runtime-home-service')
     const service = new CodexRuntimeHomeService(store as never)
 
-    setShellStartupEnvProbeSupportedForTest(true)
+    setRealHomeRoutableForTest(true)
     settings.activeCodexManagedAccountId = 'account-1'
     settings.activeCodexManagedAccountIdsByRuntime = { host: 'account-1', wsl: {} }
     service.syncForCurrentSelection()
@@ -116,7 +115,7 @@ describe('CodexRuntimeHomeService', () => {
     const { CodexRuntimeHomeService } = await import('./runtime-home-service')
     const service = new CodexRuntimeHomeService(store as never)
 
-    setShellStartupEnvProbeSupportedForTest(true)
+    setRealHomeRoutableForTest(true)
     settings.activeCodexManagedAccountId = 'account-1'
     settings.activeCodexManagedAccountIdsByRuntime = { host: 'account-1', wsl: {} }
     service.syncForCurrentSelection()
@@ -154,14 +153,14 @@ describe('CodexRuntimeHomeService', () => {
     const { CodexRuntimeHomeService } = await import('./runtime-home-service')
     const service = new CodexRuntimeHomeService(store as never)
 
-    setShellStartupEnvProbeSupportedForTest(true)
+    setRealHomeRoutableForTest(true)
     settings.activeCodexManagedAccountId = 'account-1'
     settings.activeCodexManagedAccountIdsByRuntime = { host: 'account-1', wsl: {} }
     service.syncForCurrentSelection()
     writeFileSync(getRuntimeCodexAuthPath(), managedAuth, 'utf-8')
     settings.activeCodexManagedAccountId = null
     settings.activeCodexManagedAccountIdsByRuntime = { host: null, wsl: {} }
-    setShellStartupEnvProbeSupportedForTest(false)
+    setRealHomeRoutableForTest(false)
     service.syncForCurrentSelection()
 
     expect(readFileSync(getRuntimeCodexAuthPath(), 'utf-8')).toBe(systemAuth)
@@ -175,12 +174,12 @@ describe('CodexRuntimeHomeService', () => {
       'refreshed-token'
     )
     writeFileSync(getSystemCodexAuthPath(), systemAuth, 'utf-8')
-    const store = createStore(createSettings({ shellStartupEnvProbeSupported: false }))
+    const store = createStore(createSettings({ realHomeRoutable: false }))
     const { CodexRuntimeHomeService } = await import('./runtime-home-service')
     const service = new CodexRuntimeHomeService(store as never)
     expect(readFileSync(getRuntimeCodexAuthPath(), 'utf-8')).toBe(systemAuth)
 
-    setShellStartupEnvProbeSupportedForTest(true)
+    setRealHomeRoutableForTest(true)
     writeFileSync(getSystemCodexAuthPath(), refreshedSystemAuth, 'utf-8')
 
     expect(service.prepareForRateLimitFetch()).toEqual({
@@ -193,13 +192,13 @@ describe('CodexRuntimeHomeService', () => {
   it('does not rewrite retained-auth provenance during unchanged rate polling', async () => {
     const systemAuth = createCodexAuthJson('system@example.com', 'acct-system', 'system-token')
     writeFileSync(getSystemCodexAuthPath(), systemAuth, 'utf-8')
-    const store = createStore(createSettings({ shellStartupEnvProbeSupported: false }))
+    const store = createStore(createSettings({ realHomeRoutable: false }))
     const { CodexRuntimeHomeService } = await import('./runtime-home-service')
     const service = new CodexRuntimeHomeService(store as never)
     const provenancePath = getSharedRuntimeAuthProvenancePath()
     const originalInode = statSync(provenancePath).ino
 
-    setShellStartupEnvProbeSupportedForTest(true)
+    setRealHomeRoutableForTest(true)
     service.prepareForRateLimitFetch()
     service.prepareForRateLimitFetch()
 
@@ -209,10 +208,10 @@ describe('CodexRuntimeHomeService', () => {
   it('does not rewrite completed retained logout metadata during rate polling', async () => {
     const systemAuth = createCodexAuthJson('system@example.com', 'acct-system', 'system-token')
     writeFileSync(getSystemCodexAuthPath(), systemAuth, 'utf-8')
-    const store = createStore(createSettings({ shellStartupEnvProbeSupported: false }))
+    const store = createStore(createSettings({ realHomeRoutable: false }))
     const { CodexRuntimeHomeService } = await import('./runtime-home-service')
     const service = new CodexRuntimeHomeService(store as never)
-    setShellStartupEnvProbeSupportedForTest(true)
+    setRealHomeRoutableForTest(true)
     rmSync(getSystemCodexAuthPath())
     service.prepareForRateLimitFetch()
     const metadataPaths = [
@@ -270,7 +269,7 @@ describe('CodexRuntimeHomeService', () => {
     )
     settings.activeCodexManagedAccountId = null
     settings.activeCodexManagedAccountIdsByRuntime = { host: null, wsl: {} }
-    setShellStartupEnvProbeSupportedForTest(true)
+    setRealHomeRoutableForTest(true)
     service.syncForCurrentSelection()
     writeFileSync(getSystemCodexAuthPath(), refreshedSystemAuth, 'utf-8')
 
@@ -295,7 +294,7 @@ describe('CodexRuntimeHomeService', () => {
       'refreshed-token'
     )
     writeFileSync(getSystemCodexAuthPath(), systemAuth, 'utf-8')
-    const store = createStore(createSettings({ shellStartupEnvProbeSupported: true }))
+    const store = createStore(createSettings({ realHomeRoutable: true }))
     const { CodexRuntimeHomeService } = await import('./runtime-home-service')
     const service = new CodexRuntimeHomeService(store as never)
     writeFileSync(getRuntimeCodexAuthPath(), retainedAuth, 'utf-8')
@@ -313,11 +312,11 @@ describe('CodexRuntimeHomeService', () => {
     const systemAuth = createCodexAuthJson('system@example.com', 'acct-system', 'old-token')
     const retainedAuth = createCodexAuthJson('system@example.com', 'acct-system', 'retained-token')
     writeFileSync(getSystemCodexAuthPath(), systemAuth, 'utf-8')
-    const store = createStore(createSettings({ shellStartupEnvProbeSupported: false }))
+    const store = createStore(createSettings({ realHomeRoutable: false }))
     const { CodexRuntimeHomeService } = await import('./runtime-home-service')
     new CodexRuntimeHomeService(store as never)
 
-    setShellStartupEnvProbeSupportedForTest(true)
+    setRealHomeRoutableForTest(true)
     const service = new CodexRuntimeHomeService(store as never)
     writeFileSync(getRuntimeCodexAuthPath(), retainedAuth, 'utf-8')
     rmSync(getSystemCodexAuthPath())
@@ -337,7 +336,7 @@ describe('CodexRuntimeHomeService', () => {
       'refreshed-token'
     )
     writeFileSync(getSystemCodexAuthPath(), systemAuth, 'utf-8')
-    const store = createStore(createSettings({ shellStartupEnvProbeSupported: false }))
+    const store = createStore(createSettings({ realHomeRoutable: false }))
     const { CodexRuntimeHomeService } = await import('./runtime-home-service')
     const service = new CodexRuntimeHomeService(store as never)
     writeFileSync(
@@ -349,7 +348,7 @@ describe('CodexRuntimeHomeService', () => {
       })}\n`
     )
 
-    setShellStartupEnvProbeSupportedForTest(true)
+    setRealHomeRoutableForTest(true)
     writeFileSync(getSystemCodexAuthPath(), refreshedSystemAuth, 'utf-8')
     expect(service.prepareForRateLimitFetch()).toEqual({
       kind: 'ready',
@@ -361,14 +360,14 @@ describe('CodexRuntimeHomeService', () => {
   it('recovers runtime auth quarantined by an interrupted guarded update', async () => {
     const systemAuth = createCodexAuthJson('system@example.com', 'acct-system', 'system')
     writeFileSync(getSystemCodexAuthPath(), systemAuth, 'utf-8')
-    const store = createStore(createSettings({ shellStartupEnvProbeSupported: false }))
+    const store = createStore(createSettings({ realHomeRoutable: false }))
     const { CodexRuntimeHomeService } = await import('./runtime-home-service')
     new CodexRuntimeHomeService(store as never)
     const runtimeAuthPath = getRuntimeCodexAuthPath()
     const heldAuthPath = `${runtimeAuthPath}.orca-guarded`
     renameSync(runtimeAuthPath, heldAuthPath)
 
-    setShellStartupEnvProbeSupportedForTest(true)
+    setRealHomeRoutableForTest(true)
     new CodexRuntimeHomeService(store as never)
 
     expect(readFileSync(runtimeAuthPath, 'utf-8')).toBe(systemAuth)
@@ -379,7 +378,7 @@ describe('CodexRuntimeHomeService', () => {
     const systemAuth = createCodexAuthJson('shared@example.com', 'acct-shared', 'system')
     const retainedAuth = createCodexAuthJson('shared@example.com', 'acct-shared', 'retained')
     writeFileSync(getSystemCodexAuthPath(), systemAuth, 'utf-8')
-    const store = createStore(createSettings({ shellStartupEnvProbeSupported: false }))
+    const store = createStore(createSettings({ realHomeRoutable: false }))
     const { CodexRuntimeHomeService } = await import('./runtime-home-service')
     const service = new CodexRuntimeHomeService(store as never)
     writeFileSync(
@@ -392,7 +391,7 @@ describe('CodexRuntimeHomeService', () => {
     )
     writeFileSync(getRuntimeCodexAuthPath(), retainedAuth, 'utf-8')
 
-    setShellStartupEnvProbeSupportedForTest(true)
+    setRealHomeRoutableForTest(true)
     rmSync(getSystemCodexAuthPath())
     expect(service.prepareForRateLimitFetch()).toEqual({
       kind: 'ready',
@@ -409,12 +408,12 @@ describe('CodexRuntimeHomeService', () => {
       'refreshed-token'
     )
     writeFileSync(getSystemCodexAuthPath(), systemAuth, 'utf-8')
-    const store = createStore(createSettings({ shellStartupEnvProbeSupported: false }))
+    const store = createStore(createSettings({ realHomeRoutable: false }))
     const { CodexRuntimeHomeService } = await import('./runtime-home-service')
     const service = new CodexRuntimeHomeService(store as never)
     writeFileSync(getSharedRuntimeAuthProvenancePath(), '{"owner":"pending"}\n')
 
-    setShellStartupEnvProbeSupportedForTest(true)
+    setRealHomeRoutableForTest(true)
     writeFileSync(getSystemCodexAuthPath(), refreshedSystemAuth, 'utf-8')
     expect(service.prepareForRateLimitFetch()).toEqual({
       kind: 'ready',
@@ -427,11 +426,11 @@ describe('CodexRuntimeHomeService', () => {
     const systemAuth = createCodexAuthJson('system@example.com', 'acct-system', 'old-token')
     const reloginAuth = createCodexAuthJson('system@example.com', 'acct-system', 'relogin-token')
     writeFileSync(getSystemCodexAuthPath(), systemAuth, 'utf-8')
-    const store = createStore(createSettings({ shellStartupEnvProbeSupported: false }))
+    const store = createStore(createSettings({ realHomeRoutable: false }))
     const { CodexRuntimeHomeService } = await import('./runtime-home-service')
     new CodexRuntimeHomeService(store as never)
 
-    setShellStartupEnvProbeSupportedForTest(true)
+    setRealHomeRoutableForTest(true)
     const service = new CodexRuntimeHomeService(store as never)
     rmSync(getSystemCodexAuthPath())
     expect(service.prepareForRateLimitFetch()).toEqual({
@@ -457,11 +456,11 @@ describe('CodexRuntimeHomeService', () => {
       const systemAuth = createCodexAuthJson('system@example.com', 'acct-system', 'old-token')
       const reloginAuth = createCodexAuthJson('system@example.com', 'acct-system', 'relogin-token')
       writeFileSync(getSystemCodexAuthPath(), systemAuth, 'utf-8')
-      const store = createStore(createSettings({ shellStartupEnvProbeSupported: false }))
+      const store = createStore(createSettings({ realHomeRoutable: false }))
       const { CodexRuntimeHomeService } = await import('./runtime-home-service')
       new CodexRuntimeHomeService(store as never)
 
-      setShellStartupEnvProbeSupportedForTest(true)
+      setRealHomeRoutableForTest(true)
       rmSync(getSystemCodexAuthPath())
       rmSync(getRuntimeCodexAuthPath())
       if (removeProvenance) {
@@ -474,7 +473,6 @@ describe('CodexRuntimeHomeService', () => {
         }
       )
       const restartedService = new CodexRuntimeHomeService(store as never)
-      restartedService.setRealHomeLaneGate(() => true)
 
       expect(existsSync(getRuntimeCodexAuthPath())).toBe(false)
       writeFileSync(getSystemCodexAuthPath(), reloginAuth, 'utf-8')
@@ -495,7 +493,7 @@ describe('CodexRuntimeHomeService', () => {
       createCodexAuthJson('managed@example.com', 'acct-managed', 'managed-token')
     )
     const settings = createSettings({
-      shellStartupEnvProbeSupported: false,
+      realHomeRoutable: false,
       codexManagedAccounts: [
         {
           id: 'account-1',
@@ -515,7 +513,7 @@ describe('CodexRuntimeHomeService', () => {
     const { CodexRuntimeHomeService } = await import('./runtime-home-service')
     new CodexRuntimeHomeService(store as never)
 
-    setShellStartupEnvProbeSupportedForTest(true)
+    setRealHomeRoutableForTest(true)
     rmSync(getSystemCodexAuthPath())
     rmSync(getRuntimeCodexAuthPath())
     rmSync(
@@ -525,7 +523,6 @@ describe('CodexRuntimeHomeService', () => {
       }
     )
     const restartedService = new CodexRuntimeHomeService(store as never)
-    restartedService.setRealHomeLaneGate(() => true)
     restartedService.reconcileLegacySharedHomeForRetainedPanes()
 
     settings.activeCodexManagedAccountId = 'account-1'
@@ -539,27 +536,5 @@ describe('CodexRuntimeHomeService', () => {
     restartedService.prepareForRateLimitFetch()
     restartedService.prepareForRateLimitFetch()
     expect(readFileSync(getRuntimeCodexAuthPath(), 'utf-8')).toBe(reloginAuth)
-  })
-
-  it('preserves shared config changes when a pending real-home lane falls back', async () => {
-    const systemConfigPath = join(getSystemCodexHomePath(), 'config.toml')
-    const runtimeConfigPath = join(getRuntimeCodexHomePath(), 'config.toml')
-    writeFileSync(systemConfigPath, 'model = "baseline"\n', 'utf-8')
-    const store = createStore(createSettings({ shellStartupEnvProbeSupported: false }))
-    const { CodexRuntimeHomeService } = await import('./runtime-home-service')
-    const service = new CodexRuntimeHomeService(store as never)
-
-    expect(service.prepareForCodexLaunch()).toBe(getRuntimeCodexHomePath())
-    writeFileSync(runtimeConfigPath, 'model = "runtime-change"\n', 'utf-8')
-
-    setShellStartupEnvProbeSupportedForTest(true)
-    service.setRealHomeLaneGate(() => false)
-    service.reconcileLegacySharedHomeForRetainedPanes()
-    expect(readFileSync(systemConfigPath, 'utf-8')).toBe('model = "baseline"\n')
-    expect(readFileSync(runtimeConfigPath, 'utf-8')).toBe('model = "runtime-change"\n')
-
-    expect(service.prepareForCodexLaunch()).toBe(getRuntimeCodexHomePath())
-    expect(readFileSync(systemConfigPath, 'utf-8')).toBe('model = "runtime-change"\n')
-    expect(readFileSync(runtimeConfigPath, 'utf-8')).toBe('model = "runtime-change"\n')
   })
 })

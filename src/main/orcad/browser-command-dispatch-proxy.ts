@@ -15,6 +15,8 @@ export function createBrowserCommandDispatchProxy(
         return undefined
       }
       return (...args: unknown[]) => invoke(property, args)
-    }
+    },
+    // Why: the startup proxy refuses names a provider does not answer to with an `in` check.
+    has: (_target, property) => typeof property === 'string' && property !== 'then'
   })
 }

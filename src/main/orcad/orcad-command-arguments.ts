@@ -26,8 +26,19 @@ export function parseArgs(argv: string[]): OrcadOptions {
       options.noPairing = true
     } else if (arg === '--mobile-pairing') {
       options.mobilePairing = true
+    } else if (arg === '--recipe-json') {
+      options.recipeJson = true
+    } else if (arg === '--project-root') {
+      const value = argv[i + 1]
+      if (!value) {
+        throw new Error('--project-root expects a value')
+      }
+      options.projectRoot = value
+      i += 1
     } else if (arg === '--relay') {
       options.relay = true
+    } else if (arg === '--require-port') {
+      options.requirePort = true
     } else if (arg === '--bind') {
       const value = argv[i + 1]
       if (value === undefined) {
@@ -62,6 +73,12 @@ export function parseArgs(argv: string[]): OrcadOptions {
     } else {
       throw new Error(`Unknown argument: ${arg}`)
     }
+  }
+  if (options.requirePort && options.port === undefined) {
+    throw new Error('--require-port requires --port')
+  }
+  if (options.recipeJson && !options.projectRoot) {
+    throw new Error('--recipe-json requires --project-root')
   }
   return options
 }

@@ -29,6 +29,11 @@ const EXT_TO_LANGUAGE: Record<string, string> = {
   '.ipynb': 'notebook',
   '.md': 'markdown',
   '.mdx': 'markdown',
+  // Why: Quarto/R Markdown are Markdown plus a YAML header and executable
+  // cells; the 'markdown' grammar leaves ```{r}/```{python} cells uncolored.
+  '.qmd': 'quarto',
+  '.rmd': 'quarto',
+  '.rmarkdown': 'quarto',
   '.mmd': 'mermaid',
   '.mermaid': 'mermaid',
   '.css': 'css',
@@ -124,8 +129,23 @@ const FILENAME_TO_LANGUAGE: Record<string, string> = {
   '.env': 'ini',
   '.env.local': 'ini',
   '.env.development': 'ini',
-  '.env.production': 'ini'
+  '.env.production': 'ini',
+  '.bashrc': 'shell',
+  '.bash_profile': 'shell',
+  '.bash_login': 'shell',
+  '.bash_logout': 'shell',
+  '.profile': 'shell',
+  '.zshrc': 'shell',
+  '.zshenv': 'shell',
+  '.zprofile': 'shell',
+  '.zlogin': 'shell',
+  '.zlogout': 'shell'
 }
+
+// Exact match wins; lowercase map covers case-insensitive filesystems.
+const FILENAME_LOWER_TO_LANGUAGE: Record<string, string> = Object.fromEntries(
+  Object.entries(FILENAME_TO_LANGUAGE).map(([name, language]) => [name.toLowerCase(), language])
+)
 
 /** `detectFilenameLanguage` is the renderer's Monaco registry fallback; hosts without Monaco omit it. */
 export function detectLanguage(
@@ -137,6 +157,10 @@ export function detectLanguage(
   const filename = parts.at(-1)!
   if (Object.hasOwn(FILENAME_TO_LANGUAGE, filename)) {
     return FILENAME_TO_LANGUAGE[filename]
+  }
+  const lowerFilename = filename.toLowerCase()
+  if (Object.hasOwn(FILENAME_LOWER_TO_LANGUAGE, lowerFilename)) {
+    return FILENAME_LOWER_TO_LANGUAGE[lowerFilename]
   }
 
   // Check extension

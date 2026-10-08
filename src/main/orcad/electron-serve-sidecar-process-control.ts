@@ -28,11 +28,14 @@ export async function reserveLoopbackPort(): Promise<number> {
   }
   return address.port
 }
-export function electronServeEnvironment(): NodeJS.ProcessEnv {
+export function electronServeEnvironment(userDataPath: string): NodeJS.ProcessEnv {
   // Why ORCA_BACKGROUND_LAUNCH: the sidecar is a windowless automation host; on macOS this
   // drops its Dock tile and menu bar so it never steals focus or leaves a ghost icon.
   const environment: NodeJS.ProcessEnv = { ...process.env, ORCA_BACKGROUND_LAUNCH: '1' }
   for (const key of [
+    'ORCA_E2E_USER_DATA_DIR',
+    'ORCA_USER_DATA',
+    'ORCA_USER_DATA_PATH',
     'AGENT_BROWSER_ARGS',
     'AGENT_BROWSER_AUTO_CONNECT',
     'AGENT_BROWSER_CDP',
@@ -46,6 +49,10 @@ export function electronServeEnvironment(): NodeJS.ProcessEnv {
     'AGENT_BROWSER_STATE'
   ]) {
     delete environment[key]
+  }
+  // Keep Electron's native home override active in isolated sidecars.
+  if (process.env.ORCA_E2E_USER_DATA_DIR || process.env.ORCA_E2E_HOME_DIR) {
+    environment.ORCA_E2E_USER_DATA_DIR = userDataPath
   }
   return environment
 }

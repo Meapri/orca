@@ -43,6 +43,7 @@ lone inverse-video cell (`resolveAppDrawnImeCaret`); a run of inverse cells is a
 highlight. Within one composition the last caret found is kept through a
 repaint that briefly paints none, and xterm keeps the preedit on the last shown
 cursor while a frame hides the cursor mid-repaint.
+`terminal-ime-candidate-anchor-transcripts.test.ts` replays the transcripts.
 
 ### Commit held until echo
 

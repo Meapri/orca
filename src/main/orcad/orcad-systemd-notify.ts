@@ -2,8 +2,8 @@
  * systemd `sd_notify` for orcad: READY=1 after the readiness line, WATCHDOG=1 while the runtime
  * answers, STOPPING=1 on shutdown.
  *
- * Why the `systemd-notify` binary: the notify socket is an AF_UNIX datagram socket, which neither
- * Node's `dgram` nor Bun can open, and a native addon for one syscall is not worth a new ABI to
+ * Why the `systemd-notify` binary: the notify socket is an AF_UNIX datagram socket, which
+ * Node's `dgram` cannot open, and a native addon for one syscall is not worth a new ABI to
  * ship. The binary sends from its own PID, so the unit needs `NotifyAccess=all` — see
  * docs/reference/orcad-operations.md. The stdout readiness line stays the primary contract.
  */

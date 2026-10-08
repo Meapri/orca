@@ -84,10 +84,12 @@ nothing can reach.
 Under the shipping design a client reaches a remote orcad over an SSH local port-forward, so
 loopback is the correct default and the pairing credential travels over SSH.
 
-A `--port` is pinned too. If that port cannot be bound (in use, privileged, or an address this
-host does not own), orcad exits 78 and names the port. It never falls back to a persisted or
-OS-assigned port, because every client would then dial a port nothing listens on. Without
-`--port`, orcad tries the default `6768` and keeps the older fallback behavior.
+`--port` alone is preferred, not pinned: if it cannot be bound orcad falls back to a persisted or
+OS-assigned port and reports the real one in `boundEndpoint`. That is what managed SSH launches
+and `orca serve` rely on, since they read the bound port back. A self-managed host adds
+`--require-port` (the installer's `run` does): then a port that cannot be bound (in use,
+privileged, or an address this host does not own) makes orcad exit 78 and name the port, because
+every client would otherwise dial a port nothing listens on.
 
 ### Pairing endpoints
 
@@ -105,6 +107,8 @@ offered. The desktop, the web client and the phone store each as an address of t
 (`src/shared/pairing-endpoint-failover.ts` is the one rule they share): when a connect to the
 preferred one goes unanswered the next is dialed, and whichever completes a handshake stays
 preferred (the web client and phone persist it, so the next launch dials the last good address).
+The desktop never rotates an SSH-bound environment (SSH tunnel, SSH access or an Orca-managed
+deployment): its preferred endpoint is the tunnel binding those features own.
 Only an unanswered connect rotates; a host that answered and then refused proves the address
 works. The web client tries every address once before its backoff applies; the phone rotates on
 each redial. An address typed into the phone's Edit Host drops the paired alternates. Older
@@ -118,12 +122,13 @@ static handler (`static-web-client-handler.ts`), so only `web-index.html` and th
 WebSocket. The page itself holds no credential; everything after load is the E2EE RPC channel,
 authenticated by the pairing token. Serve and orcad set no CSP or other hardening headers.
 
-The bundle ships in the install directory as `web/`, built by `pnpm build:orcad` from
-`vite.web.config.ts`. `web/orcad-web-client.json` pins every file's size and SHA-256 and is an
-ordinary artifact, so it is part of the install identity; the packaged template and the SSH
-materializer verify each file against it. At startup orcad checks that every listed file is
-present at its size; a missing or torn bundle is logged (`browser client not served: …`) and
-offers carry `webClientUrl: null` instead of a link to a broken page.
+The bundle ships only in release tarballs (`pack-orcad-release.mjs` builds it from
+`vite.web.config.ts` into the install directory as `web/`). It is not an ORCAD_ARTIFACT, so the
+slots Orca deploys over SSH neither carry nor hash it; those hosts serve no browser client.
+`web/orcad-web-client.json` pins every file's size and SHA-256, and the tarball itself is
+checksum-verified before install. At startup orcad checks that every listed file is present at
+its size; a missing or torn bundle is logged (`browser client not served: …`) and offers carry
+`webClientUrl: null` instead of a link to a broken page.
 
 A runtime offer's `webClientUrl` is `http(s)://<endpoint>/web-index.html#pairing=<url>`; the
 credential rides in the fragment, which browsers never send to a server or proxy. The browser
@@ -301,8 +306,8 @@ An external supervisor (systemd, launchd, a process manager). orcad conforms to 
   right after the readiness line, `WATCHDOG=1` every `WATCHDOG_USEC / 2` while its
   [self-watchdog](#self-watchdog) reports the runtime live, a `STATUS=` line on every verdict
   change, and `STOPPING=1` when a graceful stop begins. It sends them through the
-  `systemd-notify` binary (the notify socket is a Unix datagram socket, which neither Node nor
-  Bun can open), so the unit needs `NotifyAccess=all`. orcad removes `NOTIFY_SOCKET` and
+  `systemd-notify` binary (the notify socket is a Unix datagram socket, which Node cannot
+  open), so the unit needs `NotifyAccess=all`. orcad removes `NOTIFY_SOCKET` and
   `WATCHDOG_*` from its environment before launching the daemon, so no PTY can signal the unit.
   A wedged runtime stops pinging, and systemd restarts the unit after `WatchdogSec`:
 
@@ -708,10 +713,13 @@ treat it like a password.
 
 ### Offers expire unclaimed
 
-The offer orcad prints in its readiness payload, and every offer minted with `orca serve pairing
-new`, is a standalone pending entry that stops authenticating after its lifetime (default 15
-minutes; `--pairing-expires <dur>` on orcad, `--expires <dur>` on the CLI, 1m to 7d). Readiness
-reports it as `pairing.expiresAt` (additive). The first client that authenticates with an offer
+Every offer minted with `orca serve pairing new` is a standalone pending entry that stops
+authenticating after its lifetime (default 15 minutes; `--expires <dur>`, 1m to 7d). The offer
+orcad prints in its readiness payload expires only when orcad runs with `--pairing-expires <dur>`;
+the installer's `run` passes `15m` (`ORCAD_PAIRING_EXPIRES`), because that line lands in the
+journal. Without the flag it is the coalescing credential `orca serve` prints, valid until
+claimed, which managed SSH hosts and `--recipe-json` launches re-read from the readiness file
+later. Readiness reports the lifetime as `pairing.expiresAt` (additive; `null` = no expiry). The first client that authenticates with an offer
 claims it: the entry becomes a paired device and no longer expires. Expired offers are dropped on
 startup, on `devices list` and on the next mint.
 
@@ -740,7 +748,7 @@ scope is refused, and `--environment` / `--pairing-code` are rejected rather tha
 the exact offer the readiness line printed — same device id, same `expiresAt`, same
 `alternateEndpoints` — while it is unclaimed and unexpired, so reprinting it never mints a
 credential. Once a client claims it or it expires, the next call mints a fresh one with the same
-`--pairing-expires` lifetime. `--rotate` revokes the unused offer first (a `pairing.superseded`
+lifetime. `--rotate` revokes the unused offer first (a `pairing.superseded`
 security event) and refuses to mint a replacement if that revocation could not be persisted; a
 device that already claimed an offer is never touched by a rotation.
 
@@ -753,15 +761,13 @@ loopback-pinned orcad the address vouches for a reverse proxy or tunnel; the bin
 widened. Mobile pairings cannot be rotated in place because the token also keys the
 phone's Relay and push identity: revoke and pair again.
 
-**The startup phone offer.** `orcad --mobile-pairing` adds a mobile offer beside the runtime one:
-the human readiness block prints its QR and URL after the runtime offer, and the JSON line carries
-it as `mobilePairing` (additive; `pairing` is unchanged). It is minted by the same host-only path
-as `orca serve pairing new --mobile`, with the first `--pairing-address` and the
-`--pairing-expires` lifetime. Without a non-loopback `--pairing-address` it is reported
-unavailable (`invalid_advertised_endpoint`) and startup continues. `orca serve pairing --mobile`
-reprints or `--rotate`s it exactly as the runtime offer, with or without the startup flag; an
-orcad older than the flag ignores the scope, and the CLI refuses its runtime reply rather than
-printing it as a phone offer.
+**The startup phone offer.** `orcad --mobile-pairing` means what it means on `orca serve`: the
+readiness offer itself is phone-scoped (`pairing.scope: "mobile"`, with a QR), minted the way
+`orca serve --mobile-pairing` mints it. `orca serve pairing --mobile` reprints or `--rotate`s that
+offer. Without the startup flag it mints through the host-only path of
+`orca serve pairing new --mobile`, which needs a non-loopback `--pairing-address` and reports
+`invalid_advertised_endpoint` otherwise; an orcad older than the scope ignores it, and the CLI
+refuses its runtime reply rather than printing it as a phone offer.
 
 ### Orca Relay (`--relay`)
 
@@ -846,9 +852,11 @@ is down. It exits 1 on any failure.
 
 ### The `orca` CLI on orcad hosts
 
-The artifact ships the CLI as `orca-cli.js`. On macOS and Linux, every orcad start (re)writes a
-launcher under the data root — `cli/bin/orca-ide` on Linux, `cli/bin/orca` on macOS — that runs
-that bundle on orcad's own runtime (the bundled Bun, or whatever `node` launched orcad) and pins
+Release tarballs ship the CLI as `orca-cli.js` beside the slot (it is not an ORCAD_ARTIFACT, so
+slots Orca deploys over SSH do not carry it and keep their own remote-CLI path). When the bundle is
+present, on macOS and Linux every orcad start (re)writes a launcher under the data root —
+`cli/bin/orca-ide` on Linux, `cli/bin/orca` on macOS — that runs that bundle on orcad's own
+runtime (the pinned Node the slot references) and pins
 `ORCA_USER_DATA_PATH` to this data root, so it always dials this orcad. Because the data root
 does not move between versions, links to the launcher survive upgrades and rollbacks.
 
@@ -944,8 +952,8 @@ Named here so nothing reads as implemented that is not:
   flow.
 - **Relay on `orca serve`.** The Electron serve mode does not start the relay either; only the
   desktop app window and orcad `--relay` do.
-- **Relay in the startup offers.** The readiness block's offers — the runtime one and the
-  `--mobile-pairing` phone one — are direct only; mint relay offers with
+- **Relay in the startup offers.** The readiness offer, runtime or `--mobile-pairing` phone, is
+  direct only; mint relay offers with
   `orca serve pairing new --mobile --relay`.
 - **Host editor tab color, pin and split-group placement across a restart.** They live in the
   published snapshot only; `host-editor-tabs.json` keeps the tabs and their order.

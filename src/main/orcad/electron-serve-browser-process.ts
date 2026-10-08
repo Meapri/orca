@@ -97,10 +97,12 @@ export class ElectronServeBrowserProcess {
   }
 
   private async startSidecar(signal?: AbortSignal): Promise<void> {
+    signal?.throwIfAborted()
     const temporaryRoot = process.platform === 'win32' ? tmpdir() : '/tmp'
     const userDataPath = await mkdtemp(join(temporaryRoot, 'orcad-browser-'))
     this.sidecarDataPath = userDataPath
     const port = await reserveLoopbackPort()
+    signal?.throwIfAborted()
     const child = spawnProcess({
       program: this.executablePath,
       args: [
@@ -109,9 +111,12 @@ export class ElectronServeBrowserProcess {
         String(port),
         '--serve-json',
         '--serve-no-pairing',
+        ...(process.env.ORCA_E2E_USER_DATA_DIR || process.env.ORCA_E2E_HOME_DIR
+          ? ['--password-store=basic', '--use-mock-keychain']
+          : []),
         `--user-data-dir=${userDataPath}`
       ],
-      env: electronServeEnvironment(),
+      env: electronServeEnvironment(userDataPath),
       // Why its own group: stop and the lifeline must reach Electron's helper processes too.
       detached: process.platform !== 'win32'
     })

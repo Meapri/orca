@@ -12,6 +12,12 @@ import { writeCodexStateDbBackfillStatus } from '../codex/codex-state-db-test-fi
 const testState = { userData: '', home: '' }
 const previousEnv: Record<string, string | undefined> = {}
 
+// Why: stands in for asking a real Codex for its hook hashes.
+vi.mock('../codex/codex-hook-trust-derivation', async (importOriginal) =>
+  (await import('../codex/codex-hook-trust-derivation.test-fixture')).answeringCodexForTests(
+    await importOriginal()
+  )
+)
 beforeEach(() => {
   installFakeAppEnvironment({ getPath: () => testState.userData })
 })
@@ -89,6 +95,8 @@ describe('CodexRuntimeHomeService per-account takeover composition', () => {
     const { settings, store } = createStore([accountOne, accountTwo], accountOne.id)
     const { CodexRuntimeHomeService } = await import('./runtime-home-service')
     const { CodexHookService } = await import('../codex/hook-service')
+    const { startCodexHookHashLookup } = await import('../codex/codex-hook-hash-lookup')
+    startCodexHookHashLookup(Promise.resolve())
     const service = new CodexRuntimeHomeService(store as never)
     const hookService = new CodexHookService()
 

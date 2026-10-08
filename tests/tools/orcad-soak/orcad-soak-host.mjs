@@ -4,6 +4,10 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { closeSync, existsSync, openSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import {
+  ORCAD_NODE_RUNTIME_MARKER_FILENAME,
+  orcadNodeRuntimeRelativePath
+} from '../../../src/shared/orcad-artifacts.ts'
 
 export const sleep = (ms) => new Promise((resolvePromise) => setTimeout(resolvePromise, ms))
 
@@ -32,6 +36,13 @@ export async function waitFor(predicate, timeoutMs, intervalMs = 100) {
   return Boolean(await predicate())
 }
 
+/** The pinned Node an orcad slot names in `.runtime-node`, at `../runtimes/node-<sha256>/`. */
+export function orcadSlotRuntime(orcadDir) {
+  const target = readFileSync(join(orcadDir, '.server-target'), 'utf8').trim()
+  const sha256 = readFileSync(join(orcadDir, ORCAD_NODE_RUNTIME_MARKER_FILENAME), 'utf8').trim()
+  return join(orcadDir, ...orcadNodeRuntimeRelativePath(target, sha256))
+}
+
 export class OrcadUnderTest {
   constructor({ orcadDir, dataRoot, port, pairingAddress, logPath }) {
     Object.assign(this, { orcadDir, dataRoot, port, pairingAddress, logPath })
@@ -44,7 +55,7 @@ export class OrcadUnderTest {
     const startedAt = Date.now()
     // Detached so harness signals never reach it, as a supervisor-managed process would be.
     this.child = spawn(
-      join(this.orcadDir, 'bun-runtime'),
+      orcadSlotRuntime(this.orcadDir),
       [
         join(this.orcadDir, 'orcad.js'),
         '--json',

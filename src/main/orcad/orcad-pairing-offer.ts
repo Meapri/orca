@@ -1,9 +1,8 @@
 /**
  * The startup pairing offers orcad prints in its readiness line, and the ones `orca serve pairing`
- * reprints: always a runtime offer, plus a mobile one with `--mobile-pairing`. Each is a standalone
- * expiring offer (see DEFAULT_PAIRING_OFFER_LIFETIME_MS), so a reprint re-serves that same
- * credential until a client claims it or it expires, then mints the next one with the same
- * lifetime. `orca serve pairing new` mints extra offers and never touches these.
+ * reprints: a runtime offer, or a mobile one with `--mobile-pairing`. A reprint re-serves that same
+ * credential until a client claims it (or, with `--pairing-expires`, until it expires), then mints
+ * the next one. `orca serve pairing new` mints extra offers and never touches these.
  */
 import type { OrcaRuntimeRpcServer } from '../runtime/runtime-rpc'
 import type { ServePairingReadiness } from '../server/serve-readiness'
@@ -19,7 +18,10 @@ export type OrcadPairingOptions = {
   pairingAddress: string | undefined
   /** The listener's other reachable endpoints (repeated --pairing-address, interfaces). */
   alternateEndpoints: readonly string[] | undefined
-  offerLifetimeMs: number
+  /** Unset: the coalescing credential `orca serve` prints, valid until claimed. */
+  offerLifetimeMs: number | undefined
+  /** Mobile only: `direct` matches `orca serve --mobile-pairing`; `administered` is the CLI path. */
+  mobileMint?: 'direct' | 'administered'
 }
 
 export type OrcadPairingRpc = Pick<
@@ -65,7 +67,7 @@ export function createOrcadPairingOffer(options: OrcadPairingOptions) {
   }
 
   const mint = async (rpc: OrcadPairingRpc): Promise<EncodedOffer | Unavailable> => {
-    if (options.scope === 'mobile') {
+    if (options.scope === 'mobile' && options.mobileMint !== 'direct') {
       // Why the administered path: it refuses a loopback address and pins the phone to the
       // direct path, since a headless host has no Relay provider.
       return rpc.createAdministeredPairingOffer({
@@ -77,10 +79,10 @@ export function createOrcadPairingOffer(options: OrcadPairingOptions) {
     }
     return rpc.createPairingOffer({
       address: options.pairingAddress,
-      name: `CLI ${new Date().toLocaleDateString()}`,
-      scope: 'runtime',
+      name: `${options.scope === 'mobile' ? 'Mobile' : 'CLI'} ${new Date().toLocaleDateString()}`,
+      scope: options.scope,
       alternateEndpoints: options.alternateEndpoints,
-      // Why: this URL lands in a supervisor journal; an unclaimed one must not stay a live credential.
+      // Set by `--pairing-expires`: a journaled URL must not stay a live credential.
       offerLifetimeMs: options.offerLifetimeMs
     })
   }

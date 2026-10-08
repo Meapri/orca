@@ -42,14 +42,14 @@ describe('prepareOrcadCliLauncher', () => {
       platform,
       dataRoot,
       installRoot,
-      runtimePath: '/opt/orcad/bun-runtime'
+      runtimePath: '/opt/runtimes/node-abc/bin/node'
     })
 
     expect(resourcesPath).toBe(join(dataRoot, 'cli'))
     const launcherPath = join(dataRoot, 'cli', 'bin', launcherName)
     expect(readFileSync(launcherPath, 'utf8')).toBe(
       buildOrcadCliLauncherScript({
-        runtimePath: '/opt/orcad/bun-runtime',
+        runtimePath: '/opt/runtimes/node-abc/bin/node',
         cliEntryPath: realpathSync(join(installRoot, ORCAD_CLI_BUNDLE_FILENAME)),
         dataRoot
       })
@@ -77,12 +77,12 @@ describe('prepareOrcadCliLauncher', () => {
 describe('buildOrcadCliLauncherScript', () => {
   it('pins the data root so an inherited one cannot retarget the CLI', () => {
     const script = buildOrcadCliLauncherScript({
-      runtimePath: "/it's/bun",
+      runtimePath: "/it's/node",
       cliEntryPath: '/install/orca-cli.js',
       dataRoot: '/home/orca/.orca'
     })
     expect(script).toContain("export ORCA_USER_DATA_PATH='/home/orca/.orca'\n")
-    expect(script).toContain(`exec '/it'"'"'s/bun' '/install/orca-cli.js' "$@"`)
+    expect(script).toContain(`exec '/it'"'"'s/node' '/install/orca-cli.js' "$@"`)
     expect(script).toContain('unset NODE_OPTIONS')
   })
 })

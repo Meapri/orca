@@ -2,8 +2,10 @@
 /**
  * Package one orcad target as a standalone release asset for self-managed Linux hosts.
  *
- * The tarball holds exactly the versioned install directory the SSH deploy creates
- * (`orcad-<fullVersion>/`, same artifacts, same `.version`), plus the on-host installer kit.
+ * The tarball holds the versioned install directory the SSH deploy creates (`orcad-<fullVersion>/`,
+ * same artifacts, same `.version`) plus the release-only payloads SSH slots never carry (the `orca`
+ * CLI bundle and the browser client) and the on-host installer kit, beside `runtimes/node-<sha256>/`:
+ * the pinned Node the slot's `.runtime-node` names.
  * `config/orcad-host/orcad-install.sh` verifies the checksum before it extracts anything.
  *
  *   node config/scripts/pack-orcad-release.mjs [--target linux-x64-glibc] [--from out/orcad]
@@ -30,10 +32,17 @@ import { basename, dirname, join, resolve } from 'node:path'
 import process from 'node:process'
 import { build } from 'esbuild'
 import {
-  ORCAD_BUILD_TARGET_FILENAME,
+  ORCAD_CLI_BUNDLE_FILENAME,
+  ORCAD_NODE_RUNTIME_MARKER_FILENAME,
+  ORCAD_RUNTIMES_DIRNAME,
+  ORCAD_SERVER_TARGET_FILENAME,
   ORCAD_VERSION_FILENAME,
-  orcadArtifactFilenames
+  orcadArtifactFilenames,
+  orcadNodeRuntimeRelativePath
 } from '../../src/shared/orcad-artifacts.ts'
+import { NODE_RUNTIME_ASSETS } from '../../src/shared/node-runtime-pin.ts'
+import { ensurePinnedNodeExecutable } from './pinned-node-downloads.mjs'
+import { stageOrcadWebClient } from './orcad-web-client-stage.mjs'
 import { runProcessSync } from './script-child-process.mjs'
 
 const ROOT = resolve(import.meta.dirname, '../..')
@@ -101,18 +110,37 @@ export function sha256File(path) {
 /** Refuse to package a directory the installer's own verification would reject. */
 export function assertReleasableBundle(dir, expectedTarget) {
   const version = readFileSync(join(dir, ORCAD_VERSION_FILENAME), 'utf8').trim()
-  const target = readFileSync(join(dir, ORCAD_BUILD_TARGET_FILENAME), 'utf8').trim()
+  const target = readFileSync(join(dir, ORCAD_SERVER_TARGET_FILENAME), 'utf8').trim()
   if (expectedTarget && target !== expectedTarget) {
     throw new Error(`${dir} was built for ${target}, not ${expectedTarget}`)
   }
   if (target.startsWith('win32-')) {
     throw new Error('The on-host installer is POSIX-only; Windows uses standalone builds')
   }
-  const missing = orcadArtifactFilenames(target).filter((name) => !existsSync(join(dir, name)))
+  const missing = [...orcadArtifactFilenames(target), ORCAD_CLI_BUNDLE_FILENAME].filter(
+    (name) => !existsSync(join(dir, name))
+  )
   if (missing.length > 0) {
     throw new Error(`${dir} is missing declared orcad artifacts: ${missing.join(', ')}`)
   }
   return { version, target }
+}
+
+// Why a stub: the shared SSH deploy modules reach ssh2 (and its native cpu-features) at load
+// only to declare classes; the host policy never dials SSH, so any real call must fail loudly.
+const ssh2LoadStub = {
+  name: 'ssh2-load-stub',
+  setup(build) {
+    build.onResolve({ filter: /^ssh2$/ }, () => ({ path: 'ssh2', namespace: 'ssh2-stub' }))
+    build.onLoad({ filter: /.*/, namespace: 'ssh2-stub' }, () => ({
+      contents:
+        "const unavailable = () => { throw new Error('ssh2 is not part of the orcad host install policy') }\n" +
+        'export class BaseAgent {}\n' +
+        'export const createAgent = unavailable\n' +
+        'export const utils = { parseKey: unavailable }\n',
+      loader: 'js'
+    }))
+  }
 }
 
 export async function bundleHostInstallPolicy(outfile) {
@@ -134,9 +162,22 @@ export async function bundleHostInstallPolicy(outfile) {
     outfile,
     // Nothing here may reach a native module or Electron; fail the build if it does.
     external: [],
+    plugins: [ssh2LoadStub],
     minify: true,
     logLevel: 'error'
   })
+}
+
+/** Copies the pinned Node the slot names to `<stage>/../runtimes/node-<sha256>/`, where it runs from. */
+export async function stagePinnedRuntime(stage, target) {
+  const sha256 = readFileSync(join(stage, ORCAD_NODE_RUNTIME_MARKER_FILENAME), 'utf8').trim()
+  if (sha256 !== NODE_RUNTIME_ASSETS[target]?.executableSha256) {
+    throw new Error(`${stage} does not reference the pinned Node for ${target}`)
+  }
+  const destination = join(stage, ...orcadNodeRuntimeRelativePath(target, sha256))
+  mkdirSync(dirname(destination), { recursive: true })
+  copyFileSync(await ensurePinnedNodeExecutable({ target }), destination)
+  chmodSync(destination, 0o755)
 }
 
 function argument(name) {
@@ -180,11 +221,11 @@ async function main() {
   let target = argument('--target')
   let source = argument('--from')
   if (!source) {
-    const { currentTarget } = await import('./build-orcad-bun.mjs')
+    const { currentTarget } = await import('./server-build-target.mjs')
     target ??= currentTarget()
     source = join(ROOT, 'out', '.orcad-release-build', target)
     run(process.execPath, [
-      join(ROOT, 'config/scripts/build-orcad-bun.mjs'),
+      join(ROOT, 'config/scripts/build-orcad-node.mjs'),
       '--target',
       target,
       '--out-dir',
@@ -198,6 +239,8 @@ async function main() {
   rmSync(stageRoot, { recursive: true, force: true })
   mkdirSync(dirname(stage), { recursive: true })
   cpSync(source, stage, { recursive: true, verbatimSymlinks: true })
+  await stagePinnedRuntime(stage, builtTarget)
+  stageOrcadWebClient(stage)
   await bundleHostInstallPolicy(join(stage, ORCAD_HOST_INSTALL_BUNDLE))
   mkdirSync(join(stage, 'deploy'), { recursive: true })
   for (const file of ORCAD_HOST_KIT_FILES) {
@@ -212,9 +255,14 @@ async function main() {
       ? orcadReleaseAssetName(builtTarget)
       : orcadReleaseTarballName(version, builtTarget)
   // COPYFILE_DISABLE keeps macOS bsdtar from adding AppleDouble `._*` members.
-  run('tar', ['-C', stageRoot, '-czf', join(outDir, tarball), basename(stage)], {
-    env: { ...process.env, COPYFILE_DISABLE: '1' }
-  })
+  // Slot first: the installer reads the version from the tarball's first entry.
+  run(
+    'tar',
+    ['-C', stageRoot, '-czf', join(outDir, tarball), basename(stage), ORCAD_RUNTIMES_DIRNAME],
+    {
+      env: { ...process.env, COPYFILE_DISABLE: '1' }
+    }
+  )
   const tarballSha = sha256File(join(outDir, tarball))
   writeFileSync(join(outDir, `${tarball}.sha256`), sha256Line(tarballSha, tarball))
   writeFileSync(join(outDir, 'orcad-install.sh'), installerSource, { mode: 0o755 })

@@ -1,12 +1,12 @@
 /**
  * orcad's startup pairing: where the listener is reachable, and the runtime and mobile offers
- * the readiness block prints and `orca serve pairing [--mobile]` reprints.
+ * the readiness block prints and `orca serve pairing [--mobile]` reprints. `--mobile-pairing`
+ * keeps `orca serve`'s meaning: the readiness offer itself is the phone offer.
  */
 import type { OrcaRuntimeRpcServer } from '../runtime/runtime-rpc'
 import type { ServeReadiness } from '../server/serve-readiness'
 import { collectPairingEndpointCandidates } from '../runtime/pairing-endpoint-candidates'
 import { getPairingNetworkInterfaces } from '../runtime/pairing-network-interfaces'
-import { DEFAULT_PAIRING_OFFER_LIFETIME_MS } from '../../shared/pairing-offer-lifetime'
 import { createOrcadPairingOffer } from './orcad-pairing-offer'
 import type { OrcadPairingOfferRequest } from './orcad-server-admin-methods'
 
@@ -37,19 +37,22 @@ export async function startOrcadPairing(
   const shared = {
     noPairing: options.noPairing === true,
     pairingAddress: options.pairingAddress,
-    // Why: `orca serve pairing new` mints a fresh offer on demand, so a short window costs nothing.
-    offerLifetimeMs: options.pairingExpiresInMs ?? DEFAULT_PAIRING_OFFER_LIFETIME_MS
+    // Why opt-in: managed SSH hosts and `--recipe-json` re-read the readiness offer later, so an
+    // unclaimed one must stay valid unless the operator asked for `--pairing-expires`.
+    offerLifetimeMs: options.pairingExpiresInMs
   }
   const runtimeOffer = createOrcadPairingOffer({
     ...shared,
     scope: 'runtime',
     alternateEndpoints: endpointCandidates?.alternates
   })
-  // Why always constructed: `pairing show --mobile` works without the startup flag, which only
-  // decides whether the readiness block carries a phone offer too.
+  // Why always constructed: `orca serve pairing --mobile` works without the startup flag. With it,
+  // the phone offer is minted the way `orca serve --mobile-pairing` mints it; without it, through
+  // the administered path, which refuses loopback and pins the phone to the direct path.
   const mobileOffer = createOrcadPairingOffer({
     ...shared,
     scope: 'mobile',
+    mobileMint: options.mobilePairing ? 'direct' : 'administered',
     alternateEndpoints: undefined
   })
 
@@ -57,11 +60,8 @@ export async function startOrcadPairing(
     advertisedEndpoint: advertised?.ok ? advertised.endpoint : null,
     offer: (request: OrcadPairingOfferRequest) =>
       (request.scope === 'mobile' ? mobileOffer : runtimeOffer).current(rpc, request),
-    async readinessPairing(): Promise<Pick<ServeReadiness, 'pairing' | 'mobilePairing'>> {
-      const pairing = await runtimeOffer.current(rpc)
-      return options.mobilePairing
-        ? { pairing, mobilePairing: await mobileOffer.current(rpc) }
-        : { pairing }
+    readinessPairing(): Promise<ServeReadiness['pairing']> {
+      return (options.mobilePairing ? mobileOffer : runtimeOffer).current(rpc)
     }
   }
 }

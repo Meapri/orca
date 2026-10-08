@@ -8,16 +8,18 @@
  * to cross the process boundary: orcad drives it, the daemon performs it, and the verdict
  * travels back over the daemon's socket.
  */
-import { createHash } from 'node:crypto'
-import { readFileSync } from 'node:fs'
+import { hashOrcadLauncher } from '../../shared/orcad-build-identity'
 import process from 'node:process'
-import { checkDaemonHealth } from '../daemon/daemon-health'
+import { checkDaemonHealthWithCoverage } from '../daemon/daemon-health'
+import { ptySpawnHealthPlatformCoverage } from '../daemon/daemon-health-identity'
 import {
   daemonOwnsFreshPersistentPtys,
   getDaemonEndpointFacts,
   readDaemonPidRecord
 } from '../daemon/daemon-init'
 import type { OrcadProfileStateAuthoritySelection } from './orcad-profile-state-telemetry'
+import { ORCAD_STOP_REQUESTS_CAPABILITY } from '../../shared/orcad-stop-request'
+import type { OrcadIdleStopRecord } from '../../shared/orcad-idle-exit'
 import type {
   OrcadHealthReport,
   OrcadPtySelfTest,
@@ -31,7 +33,7 @@ export type TerminalDaemonHealth = OrcadTerminalDaemonHealth
 export type OrcadHealth = OrcadHealthReport
 
 /**
- * Identity of the exact bytes running.
+ * Launcher identity shared with clients that predate split server bundles.
  *
  * Why hash the entry and not read a version string: `ORCA_VERSION` is whatever the deploy
  * exported, so two different builds can carry one version. A rollback that did not actually
@@ -42,7 +44,7 @@ export function computeOrcadBuildHash(entryPath = process.argv[1]): string {
     return 'unknown'
   }
   try {
-    return createHash('sha256').update(readFileSync(entryPath)).digest('hex').slice(0, 16)
+    return hashOrcadLauncher(entryPath)
   } catch {
     return 'unknown'
   }
@@ -61,14 +63,20 @@ export async function runTerminalDaemonSelfTest(
   now: () => number = () => Date.now()
 ): Promise<PtySelfTest> {
   const startedAt = now()
-  // Why: `checkPtySpawnHealth` returns immediately on win32 without spawning anything, so a
-  // green verdict there covers the handshake only. Say so instead of overclaiming.
-  const coverage: PtySelfTestCoverage = process.platform === 'win32' ? 'handshake' : 'pty-spawn'
   const facts = getDaemonEndpointFacts()
   if (!facts) {
-    return { ok: false, coverage, verdict: 'no-daemon', durationMs: now() - startedAt }
+    return {
+      ok: false,
+      coverage: ptySpawnHealthPlatformCoverage(),
+      verdict: 'no-daemon',
+      durationMs: now() - startedAt
+    }
   }
-  const verdict = await checkDaemonHealth(facts.socketPath, facts.tokenPath)
+  // The daemon reports what its probe actually did; an older daemon falls back by platform.
+  const { verdict, coverage } = await checkDaemonHealthWithCoverage(
+    facts.socketPath,
+    facts.tokenPath
+  )
   return { ok: verdict === 'healthy', coverage, verdict, durationMs: now() - startedAt }
 }
 
@@ -112,7 +120,8 @@ export async function collectTerminalDaemonHealth(): Promise<TerminalDaemonHealt
 
 export async function collectOrcadHealth(
   buildVersion: string,
-  profileStateAuthority?: OrcadProfileStateAuthoritySelection
+  profileStateAuthority?: OrcadProfileStateAuthoritySelection,
+  previousIdleStop?: OrcadIdleStopRecord | null
 ): Promise<OrcadHealth> {
   return {
     buildHash: computeOrcadBuildHash(),
@@ -123,6 +132,8 @@ export async function collectOrcadHealth(
     arch: process.arch,
     pid: process.pid,
     terminalDaemon: await collectTerminalDaemonHealth(),
-    ...(profileStateAuthority ? { profileStateAuthority } : {})
+    ...(profileStateAuthority ? { profileStateAuthority } : {}),
+    stopRequests: ORCAD_STOP_REQUESTS_CAPABILITY,
+    ...(previousIdleStop !== undefined ? { previousIdleStop } : {})
   }
 }

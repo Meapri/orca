@@ -15,7 +15,12 @@ import {
 } from '../../ssh/orcad-activation-gate'
 import { parseOrcadReadinessOutput } from '../../ssh/orcad-remote-launch'
 import { computeLocalOrcadBuildHash } from '../../ssh/orcad-local-build-hash'
-import type { DaemonIsolation, HostTerminalCensus } from './host-install-census'
+import { CURRENT_ORCAD_DAEMON_PROTOCOL } from '../../ssh/orcad-daemon-protocol-crossing'
+import {
+  daemonProtocolForCensus,
+  type DaemonIsolation,
+  type HostTerminalCensus
+} from './host-install-census'
 
 export type HostStopSafety =
   | { safe: true; reason: string }
@@ -80,8 +85,11 @@ export function planHostActivation(input: {
     // A daemon with no live record owns no sessions, so zero is host evidence here.
     census: {
       liveSessions: input.isolation.state === 'no-daemon' ? 0 : input.census.liveSessions,
-      startedSinceActivation: null
+      startedSinceActivation: null,
+      daemonProtocolVersion: daemonProtocolForCensus(input.isolation)
     },
+    // This policy runs from the candidate's own bundle, so its protocol is the incoming one.
+    candidateDaemonProtocol: CURRENT_ORCAD_DAEMON_PROTOCOL,
     ...(input.force !== undefined ? { force: input.force } : {})
   })
   // Re-activating the active version stops nothing, so it needs no stop-safety verdict.

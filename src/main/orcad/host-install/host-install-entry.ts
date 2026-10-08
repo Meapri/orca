@@ -1,15 +1,18 @@
 /**
- * `orcad-host-install.js`: the policy half of `orcad-install.sh`, run by the bundled Bun of an
- * installed orcad. The shell script owns files and the service manager; every decision about
+ * `orcad-host-install.js`: the policy half of `orcad-install.sh`, run by the pinned Node an
+ * installed orcad references (`../runtimes/node-<sha256>/bin/node`). The shell script owns files and the service manager; every decision about
  * live work, activation health, snapshots and rollback is made here, by the SSH deploy's own
  * functions. One JSON line on stdout per verb; the exit code carries the decision.
  */
+import { createHash } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import {
-  ORCAD_BUILD_TARGET_FILENAME,
+  ORCAD_NODE_RUNTIME_MARKER_FILENAME,
+  ORCAD_SERVER_TARGET_FILENAME,
   ORCAD_VERSION_FILENAME,
-  orcadArtifactFilenames
+  orcadArtifactFilenames,
+  orcadNodeRuntimeRelativePath
 } from '../../../shared/orcad-artifacts'
 import { withActivatedVersion, withRolledBackVersion } from '../../ssh/orcad-activation-record'
 import { remoteInstallDirName, ORCAD_INSTALL_MODEL } from '../../ssh/remote-install-model'
@@ -29,6 +32,10 @@ import {
   writeActivationRecord
 } from './host-install-state'
 import { planHostRollback, pruneHostInstall } from './host-install-rollback'
+import {
+  CURRENT_ORCAD_DAEMON_PROTOCOL,
+  type OrcadDaemonProtocolFacts
+} from '../../ssh/orcad-daemon-protocol-crossing'
 
 const HOST_INSTALL_EXIT = { ok: 0, usage: 2, noop: 10, refused: 20, rejected: 30 } as const
 
@@ -73,20 +80,63 @@ function liveWork(flags: Flags) {
   }
 }
 
+/** `--target-protocol` is the target bundle's own `daemon-protocol` line; absent or bad = unknown. */
+function parseTargetProtocol(raw: string | undefined): OrcadDaemonProtocolFacts | null {
+  if (!raw) {
+    return null
+  }
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      'protocolVersion' in parsed &&
+      Number.isSafeInteger(parsed.protocolVersion) &&
+      'previousProtocolVersions' in parsed &&
+      Array.isArray(parsed.previousProtocolVersions) &&
+      parsed.previousProtocolVersions.every((version: unknown) => Number.isSafeInteger(version))
+    ) {
+      return {
+        protocolVersion: Number(parsed.protocolVersion),
+        previousProtocolVersions: parsed.previousProtocolVersions.map(Number)
+      }
+    }
+  } catch {
+    // Fall through: unknown facts plan as unattachable.
+  }
+  return null
+}
+
 function decided(ok: boolean, output: Record<string, unknown>): HostInstallOutcome {
   return { exitCode: ok ? HOST_INSTALL_EXIT.ok : HOST_INSTALL_EXIT.refused, output }
 }
 
 function verifyBundle(dir: string): HostInstallOutcome {
   const version = readFileSync(join(dir, ORCAD_VERSION_FILENAME), 'utf8').trim()
-  const target = readFileSync(join(dir, ORCAD_BUILD_TARGET_FILENAME), 'utf8').trim()
+  const target = readFileSync(join(dir, ORCAD_SERVER_TARGET_FILENAME), 'utf8').trim()
   const missing = orcadArtifactFilenames(target).filter((name) => !existsSync(join(dir, name)))
   const expectedName = remoteInstallDirName(ORCAD_INSTALL_MODEL, version)
   const problems = [
     ...missing.map((name) => `missing ${name}`),
+    ...verifyReferencedRuntime(dir, target),
     ...(basename(dir) === expectedName ? [] : [`directory is not named ${expectedName}`])
   ]
   return decided(problems.length === 0, { version, target, problems })
+}
+
+/** The slot names its pinned Node by digest; the bytes beside it must hash to that name. */
+function verifyReferencedRuntime(dir: string, target: string): string[] {
+  const markerPath = join(dir, ORCAD_NODE_RUNTIME_MARKER_FILENAME)
+  const sha256 = existsSync(markerPath) ? readFileSync(markerPath, 'utf8').trim() : ''
+  if (!/^[0-9a-f]{64}$/.test(sha256)) {
+    return [`${ORCAD_NODE_RUNTIME_MARKER_FILENAME} does not name a runtime digest`]
+  }
+  const runtimePath = join(dir, ...orcadNodeRuntimeRelativePath(target, sha256))
+  if (!existsSync(runtimePath)) {
+    return [`missing the referenced runtime ${runtimePath}`]
+  }
+  const actual = createHash('sha256').update(readFileSync(runtimePath)).digest('hex')
+  return actual === sha256 ? [] : [`runtime ${runtimePath} does not hash to ${sha256}`]
 }
 
 const VERBS: Record<string, (flags: Flags, now: Date) => HostInstallOutcome> = {
@@ -94,6 +144,10 @@ const VERBS: Record<string, (flags: Flags, now: Date) => HostInstallOutcome> = {
   'daemon-isolation': (flags) => ({
     exitCode: HOST_INSTALL_EXIT.ok,
     output: { ...inspectDaemonIsolation({ dataRoot: required(flags, 'data-root') }) }
+  }),
+  'daemon-protocol': () => ({
+    exitCode: HOST_INSTALL_EXIT.ok,
+    output: { ...CURRENT_ORCAD_DAEMON_PROTOCOL }
   }),
   record: (flags) => ({
     exitCode: HOST_INSTALL_EXIT.ok,
@@ -210,7 +264,8 @@ const VERBS: Record<string, (flags: Flags, now: Date) => HostInstallOutcome> = {
       dataRoot: required(flags, 'data-root'),
       record: readActivationRecord(base),
       isolation,
-      census
+      census,
+      targetDaemonProtocol: parseTargetProtocol(flags.get('target-protocol'))
     })
     return decided(safety.safety !== 'unsafe', { ...safety, isolation, census })
   },

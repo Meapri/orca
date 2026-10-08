@@ -103,6 +103,26 @@ describe('preferNextEnvironmentEndpointAfterUnreachable', () => {
     expect(resolveEnvironment(userDataPath, id).pairingRevision).toBe(revision)
   })
 
+  it('never rotates an SSH-bound environment, whose preferred endpoint is its tunnel', () => {
+    const userDataPath = mkdtempSync(join(tmpdir(), 'orca-endpoint-failover-ssh-'))
+    const { id } = addEnvironmentFromPairingCode(userDataPath, {
+      name: 'managed',
+      pairingCode: encodePairingOffer({
+        ...OFFER_WITH_ALTERNATES,
+        endpoint: 'ws://127.0.0.1:6768'
+      }),
+      connectionDependency: 'ssh-tunnel'
+    })
+    expect(resolveEnvironment(userDataPath, id).connectionDependency).toBe('ssh-tunnel')
+
+    expect(
+      preferNextEnvironmentEndpointAfterUnreachable(userDataPath, id, 'ws://127.0.0.1:6768')
+    ).toBe(false)
+    expect(getPreferredPairingOffer(resolveEnvironment(userDataPath, id)).endpoint).toBe(
+      'ws://127.0.0.1:6768'
+    )
+  })
+
   it('ignores a stale failure from an endpoint that is no longer preferred', () => {
     const { userDataPath, id } = pairedStore(OFFER_WITH_ALTERNATES)
 

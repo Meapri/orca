@@ -127,11 +127,11 @@ export function useMobileSourceControlOpeners(params: Params) {
           relativePath: entry.path,
           staged: area === 'staged'
         })
-        if (openedTabMode === 'device-review') {
-          openReviewRoute()
+        if (!mountedRef.current) {
           return
         }
-        if (!mountedRef.current) {
+        if (openedTabMode === 'device-review') {
+          openReviewRoute()
           return
         }
         const revealResult = await revealMobileSourceControlSessionDiff({

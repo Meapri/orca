@@ -1,7 +1,7 @@
 import type { IDisposable, Terminal } from '@xterm/xterm'
 import { useAppStore } from '@/store'
 import { guardParserHandler } from '../terminal-parser-handler-guard'
-import { isVisibleForegroundPaneKey } from '../terminal-notification-pane-visibility'
+import { createTerminalAttentionSurface } from '../terminal-attention-surface'
 import { AGENT_TASK_COMPLETE_NOTIFICATION_GRACE_MS } from '../agent-task-complete-policy'
 import {
   parseOsc777Payload,
@@ -41,7 +41,12 @@ export function installTerminalPaneOscNotifications(options: InstallOptions): ID
   const notify = (notification: TerminalOscNotification): void => {
     const state = useAppStore.getState()
     // Why: the user is already looking at this exact pane; a banner would only echo it.
-    if (isVisibleForegroundPaneKey(state, worktreeId, paneKey)) {
+    if (
+      createTerminalAttentionSurface(state).isSurfaceViewed({
+        workspaceId: worktreeId,
+        surfaceKey: paneKey
+      })
+    ) {
       return
     }
     options.markWorktreeUnread(worktreeId)

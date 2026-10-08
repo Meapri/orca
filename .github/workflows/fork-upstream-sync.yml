@@ -1,15 +1,16 @@
 name: Fork upstream sync
 
-# Merges upstream main into this fork's main as a real merge commit, checks it, and
-# fast-forwards main only when every check passes. Anything else leaves a pushed
-# sync/upstream-<date> branch and one tracking issue. See docs/reference/fork-upstream-sync.md.
+# Daily: re-stacks every fork topic stack in config/fork-stacks.json onto upstream main, merges
+# them into a dated integration branch, checks it, and proposes main's update as a PR whose head
+# commit has exactly the integration tree. Never force-pushes and never pushes main.
+# See docs/reference/fork-upstream-sync.md.
 on:
   schedule:
-    - cron: '17 3 * * 1'
+    - cron: '17 3 * * *'
   workflow_dispatch:
     inputs:
       dry_run:
-        description: Merge, check, and push the sync branch, but leave main untouched
+        description: Re-stack and report only; push nothing and open no PR
         type: boolean
         default: false
 
@@ -25,8 +26,9 @@ env:
   ISSUE_TITLE: Upstream sync needs attention
 
 jobs:
-  # No secrets in this job: the xterm check runs upstream xterm's npm toolchain.
-  merge:
+  # No secrets in the re-stack itself: it may run upstream xterm's npm toolchain to regenerate
+  # patches. Only the PR lookup step sees the read-only job token.
+  restack:
     if: github.repository != 'stablyai/orca'
     # ARM shares the xterm dependency cache that ci-xterm-cache.yml seeds.
     runs-on: ubuntu-24.04-arm
@@ -36,14 +38,18 @@ jobs:
       GIT_AUTHOR_EMAIL: 41898083+github-actions[bot]@users.noreply.github.com
       GIT_COMMITTER_NAME: github-actions[bot]
       GIT_COMMITTER_EMAIL: 41898083+github-actions[bot]@users.noreply.github.com
+      SYNC_DIR: ${{ runner.temp }}/fork-sync
     outputs:
-      status: ${{ steps.xterm.outputs.status || steps.merge.outputs.status }}
-      branch: ${{ steps.merge.outputs.branch }}
-      base_sha: ${{ steps.merge.outputs.base_sha }}
-      upstream_sha: ${{ steps.merge.outputs.upstream_sha }}
-      head_sha: ${{ steps.xterm.outputs.head_sha || steps.merge.outputs.head_sha }}
+      status: ${{ steps.restack.outputs.status }}
+      key: ${{ steps.restack.outputs.key }}
+      main_sha: ${{ steps.restack.outputs.main_sha }}
+      integration_sha: ${{ steps.restack.outputs.integration_sha }}
+      integration_branch: ${{ steps.restack.outputs.integration_branch }}
+      main_update_sha: ${{ steps.restack.outputs.main_update_sha }}
+      main_update_branch: ${{ steps.restack.outputs.main_update_branch }}
 
     steps:
+      # fetch-depth 0 also fetches every branch, so the manifest's stack refs resolve as origin/<ref>.
       - name: Checkout fork main
         uses: actions/checkout@v6
         with:
@@ -59,38 +65,45 @@ jobs:
           git remote add upstream "https://github.com/${UPSTREAM_REPOSITORY}.git"
           git fetch --no-tags --quiet upstream main
 
-      - name: Merge upstream main
-        id: merge
-        run: >-
-          node config/scripts/fork-upstream-sync.mjs merge
-          --report="$RUNNER_TEMP/fork-sync/report.json"
-          --base=origin/main
-          --upstream=upstream/main
-          --date="$(date -u +%F)"
+      - name: Look up upstream PRs named in stack trailers
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node config/scripts/fork-stack-sync.mjs upstream-prs --out="$SYNC_DIR/upstream-prs.json"
+
+      # Resolutions recorded by earlier runs, plus those learned from main's last integration.
+      - name: Restore rerere cache
+        uses: actions/cache/restore@v5
+        with:
+          path: .git/rr-cache
+          key: fork-stack-rerere-${{ github.run_id }}
+          restore-keys: fork-stack-rerere-
 
       - uses: ./.github/actions/prepare-xterm-dependencies
-        if: steps.merge.outputs.status == 'merged'
 
-      - name: Check or regenerate xterm patches
-        id: xterm
-        if: steps.merge.outputs.status == 'merged'
+      - name: Re-stack topics and build the integration branch
+        id: restack
         run: >-
-          node config/scripts/fork-upstream-sync.mjs xterm
-          --report="$RUNNER_TEMP/fork-sync/report.json"
-          --work-dir="$RUNNER_TEMP/xterm-patch-build"
+          node config/scripts/fork-stack-sync.mjs restack
+          --report="$SYNC_DIR/report.json"
+          --upstream-prs="$SYNC_DIR/upstream-prs.json"
+          --upstream=upstream/main
+          --main=origin/main
+          --xterm-work-dir="$RUNNER_TEMP/xterm-patch-build"
+          --bundle="$RUNNER_TEMP/fork-sync-bundle/sync.bundle"
+          --date="$(date -u +%F)"
 
-      - name: Bundle the sync branch
-        if: steps.merge.outputs.status == 'merged'
-        env:
-          BRANCH: ${{ steps.merge.outputs.branch }}
-          BASE_SHA: ${{ steps.merge.outputs.base_sha }}
-          HEAD_SHA: ${{ steps.xterm.outputs.head_sha || steps.merge.outputs.head_sha }}
+      - name: Check for a rerere cache
+        id: rerere
+        if: always()
         run: |
-          mkdir -p "$RUNNER_TEMP/fork-sync-bundle"
-          if [ "$HEAD_SHA" != "$BASE_SHA" ]; then
-            test "$(git rev-parse "refs/heads/$BRANCH")" = "$HEAD_SHA"
-            git bundle create "$RUNNER_TEMP/fork-sync-bundle/sync.bundle" "$BASE_SHA..$BRANCH"
-          fi
+          if [ -d .git/rr-cache ]; then echo "present=true" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Save rerere cache
+        if: always() && steps.rerere.outputs.present == 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: .git/rr-cache
+          key: fork-stack-rerere-${{ github.run_id }}
 
       - name: Upload sync report
         if: always()
@@ -102,18 +115,24 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload sync bundle
-        if: steps.merge.outputs.status == 'merged'
+        if: steps.restack.outputs.status == 'ready'
         uses: actions/upload-artifact@v7
         with:
           name: fork-sync-bundle
           path: ${{ runner.temp }}/fork-sync-bundle/
           retention-days: 7
-          if-no-files-found: ignore
+
+      - name: Fail on a blocked topic
+        if: steps.restack.outputs.status == 'blocked'
+        run: |
+          echo "::error::A topic stack or the integration merge needs a human. See the run summary."
+          exit 1
 
   # Pushes from a fresh runner so the push token never shares a job with third-party build code.
+  # Every name is new and dated, so a plain push creates it; nothing is ever overwritten.
   publish:
-    needs: merge
-    if: contains(fromJSON('["merged", "conflict", "xterm-failed"]'), needs.merge.outputs.status)
+    needs: restack
+    if: needs.restack.outputs.status == 'ready' && !inputs.dry_run
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -124,48 +143,56 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-          # A merge that touches .github/workflows needs a token with the workflow scope.
+          filter: blob:none
+          # Stacks that touch .github/workflows need a token with the Workflows permission.
           token: ${{ secrets.FORK_SYNC_TOKEN || github.token }}
 
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: package.json
+          package-manager-cache: false
+
       - uses: actions/download-artifact@v8
-        if: needs.merge.outputs.head_sha != needs.merge.outputs.base_sha
         with:
           name: fork-sync-bundle
           path: ${{ runner.temp }}/fork-sync-bundle
 
-      - name: Push the sync branch
-        env:
-          BRANCH: ${{ needs.merge.outputs.branch }}
-          BASE_SHA: ${{ needs.merge.outputs.base_sha }}
-          HEAD_SHA: ${{ needs.merge.outputs.head_sha }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: fork-sync-report
+          path: ${{ runner.temp }}/fork-sync
+
+      - name: Push stack and integration branches
         run: |
           set -euo pipefail
-          if [ "$HEAD_SHA" != "$BASE_SHA" ]; then
-            git fetch --no-tags "$RUNNER_TEMP/fork-sync-bundle/sync.bundle" "refs/heads/$BRANCH:refs/fork-sync/head"
-            test "$(git rev-parse refs/fork-sync/head)" = "$HEAD_SHA"
-          fi
-          # Never --force: an existing branch of the same name must already be an ancestor.
-          if ! git push origin "$HEAD_SHA:refs/heads/$BRANCH"; then
-            echo "::error::Push of $BRANCH was rejected. If upstream changed .github/workflows, set FORK_SYNC_TOKEN to a token with the workflow scope."
+          git fetch --no-tags "$RUNNER_TEMP/fork-sync-bundle/sync.bundle" 'refs/fork-sync/*:refs/fork-sync/*'
+          mapfile -t specs < <(node config/scripts/fork-stack-report.mjs refspecs \
+            --report="$RUNNER_TEMP/fork-sync/report.json" --kinds=stack,integration)
+          if ! git push --atomic origin "${specs[@]}"; then
+            echo "::error::Push rejected. A branch with one of these names already exists, or the token lacks the Workflows permission (set FORK_SYNC_TOKEN)."
             exit 1
           fi
-          echo "Pushed $BRANCH at $HEAD_SHA" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Pushed:\n\n%s\n' "$(printf -- '- `%s`\n' "${specs[@]#*:refs/heads/}")" >> "$GITHUB_STEP_SUMMARY"
 
   static_checks:
-    needs: [merge, publish]
-    if: needs.merge.outputs.status == 'merged'
+    needs: [restack, publish]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 60
     steps:
-      - name: Checkout sync branch
+      - name: Checkout integration branch
         uses: actions/checkout@v6
         with:
-          ref: ${{ needs.merge.outputs.head_sha }}
+          ref: ${{ needs.restack.outputs.integration_sha }}
           persist-credentials: false
 
       - uses: ./.github/actions/install-node-dependencies
         with:
           native-runtime: node
+
+      # Localization checks inside `pnpm lint` run on Bun, as in pr.yml.
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: config/.bun-version
 
       - name: Typecheck
         run: pnpm tc
@@ -174,8 +201,7 @@ jobs:
         run: pnpm lint
 
   unit_plan:
-    needs: [merge, publish]
-    if: needs.merge.outputs.status == 'merged'
+    needs: [restack, publish]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
@@ -183,7 +209,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.merge.outputs.head_sha }}
+          ref: ${{ needs.restack.outputs.integration_sha }}
           persist-credentials: false
       - uses: ./.github/actions/install-node-dependencies
       # A non-pull-request event always plans the full suite.
@@ -200,7 +226,7 @@ jobs:
   # Mirrors unit-tests.yml, which cannot be called here: its checkout pins the triggering SHA.
   unit_tests:
     name: unit tests ${{ matrix.shard.index }}/${{ matrix.shard.count }}
-    needs: [merge, unit_plan]
+    needs: [restack, unit_plan]
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
@@ -208,10 +234,10 @@ jobs:
       matrix:
         shard: ${{ fromJSON(needs.unit_plan.outputs.shards) }}
     steps:
-      - name: Checkout sync branch
+      - name: Checkout integration branch
         uses: actions/checkout@v6
         with:
-          ref: ${{ needs.merge.outputs.head_sha }}
+          ref: ${{ needs.restack.outputs.integration_sha }}
           persist-credentials: false
 
       - uses: ./.github/actions/install-node-dependencies
@@ -221,6 +247,10 @@ jobs:
 
       - name: Install Electron package binary for tests
         run: node config/scripts/install-electron-package-binary.mjs
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: config/.bun-version
 
       - uses: actions/download-artifact@v8
         continue-on-error: true
@@ -236,24 +266,22 @@ jobs:
         run: |
           ORCA_SHARD_SOURCE_SHA="$(git rev-parse HEAD)"
           export ORCA_SHARD_SOURCE_SHA
-          pnpm exec vitest run --config config/vitest.config.ts --shard="$SHARD"
+          node config/scripts/run-vitest.mjs run --config config/vitest.config.ts --shard="$SHARD"
 
   relay_integration:
-    needs: [merge, publish]
-    if: needs.merge.outputs.status == 'merged'
+    needs: [restack, publish]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - name: Checkout sync branch
+      - name: Checkout integration branch
         uses: actions/checkout@v6
         with:
-          ref: ${{ needs.merge.outputs.head_sha }}
+          ref: ${{ needs.restack.outputs.integration_sha }}
           persist-credentials: false
 
       - uses: ./.github/actions/install-node-dependencies
         with:
-          native-runtime: node
-          cache-electron-package: 'true'
+          native-runtime: none
           cache-dependency-path: |
             pnpm-lock.yaml
             cloud/pnpm-lock.yaml
@@ -261,8 +289,8 @@ jobs:
       - name: Install relay integration dependencies
         working-directory: cloud
         run: |
-          npx --yes pnpm@10.24.0 --filter '@orca-cloud/relay...' install --frozen-lockfile --ignore-scripts
-          npx --yes pnpm@10.24.0 --filter '@orca-cloud/relay^...' build
+          npx --yes pnpm@10.34.6 --filter '@orca-cloud/relay...' install --frozen-lockfile --ignore-scripts
+          npx --yes pnpm@10.34.6 --filter '@orca-cloud/relay^...' build
 
       - name: Test relay integration contracts
         env:
@@ -272,16 +300,39 @@ jobs:
           tests/e2e/relay-region-compatibility.unit.test.ts
           tests/e2e/relay-region-correction.unit.test.ts
 
+  # Mirrors pr.yml's xterm patch sync; no secrets, since it runs upstream xterm's npm toolchain.
+  xterm_patches:
+    needs: [restack, publish]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    steps:
+      - name: Checkout integration branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.restack.outputs.integration_sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: package.json
+          package-manager-cache: false
+
+      - uses: ./.github/actions/prepare-xterm-dependencies
+
+      - name: Verify xterm patches match the pinned upstream build
+        env:
+          WORK_DIR: ${{ runner.temp }}/xterm-patch-build
+        run: node config/scripts/regenerate-xterm-patches.mjs --check --work-dir="$WORK_DIR"
+
   build:
-    needs: [merge, publish]
-    if: needs.merge.outputs.status == 'merged'
+    needs: [restack, publish]
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - name: Checkout sync branch
+      - name: Checkout integration branch
         uses: actions/checkout@v6
         with:
-          ref: ${{ needs.merge.outputs.head_sha }}
+          ref: ${{ needs.restack.outputs.integration_sha }}
           persist-credentials: false
 
       - uses: ./.github/actions/install-node-dependencies
@@ -299,29 +350,31 @@ jobs:
           ORCA_BACKGROUND_LAUNCH: '1'
         run: pnpm run build:release:parallel
 
-  finalize:
-    needs: [merge, publish, static_checks, unit_plan, unit_tests, relay_integration, build]
-    if: >-
-      !cancelled() &&
-      needs.merge.result != 'skipped' &&
-      needs.merge.outputs.status != 'up-to-date'
+  # Proposes main's update; a human merges it. Closes older main-update PRs it supersedes.
+  pull_request:
+    needs:
+      [
+        restack,
+        publish,
+        static_checks,
+        unit_plan,
+        unit_tests,
+        relay_integration,
+        xterm_patches,
+        build
+      ]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
       contents: write
-      issues: write
+      pull-requests: write
+    outputs:
+      url: ${{ steps.open.outputs.url }}
     env:
-      BRANCH: ${{ needs.merge.outputs.branch }}
-      HEAD_SHA: ${{ needs.merge.outputs.head_sha }}
+      MAIN_SHA: ${{ needs.restack.outputs.main_sha }}
+      BRANCH: ${{ needs.restack.outputs.main_update_branch }}
+      INTEGRATION_BRANCH: ${{ needs.restack.outputs.integration_branch }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-      GH_TOKEN: ${{ github.token }}
-      SYNC_OK: >-
-        ${{ needs.merge.outputs.status == 'merged' &&
-        needs.publish.result == 'success' &&
-        needs.static_checks.result == 'success' &&
-        needs.unit_tests.result == 'success' &&
-        needs.relay_integration.result == 'success' &&
-        needs.build.result == 'success' }}
     steps:
       - name: Checkout fork main
         uses: actions/checkout@v6
@@ -337,55 +390,136 @@ jobs:
           package-manager-cache: false
 
       - uses: actions/download-artifact@v8
+        with:
+          name: fork-sync-bundle
+          path: ${{ runner.temp }}/fork-sync-bundle
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: fork-sync-report
+          path: ${{ runner.temp }}/fork-sync
+
+      - name: Push the main-update branch
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          if [ "$(git rev-parse origin/main)" != "$MAIN_SHA" ]; then
+            echo "::error::main moved during the sync, so the main-update commit no longer extends it. Rerun the workflow."
+            exit 1
+          fi
+          git fetch --no-tags "$RUNNER_TEMP/fork-sync-bundle/sync.bundle" 'refs/fork-sync/*:refs/fork-sync/*'
+          mapfile -t specs < <(node config/scripts/fork-stack-report.mjs refspecs \
+            --report="$RUNNER_TEMP/fork-sync/report.json" --kinds=main-update)
+          git push origin "${specs[@]}"
+
+      # The push token opens the PR so the fork's PR checks run on it (GITHUB_TOKEN events don't).
+      - name: Open the main-update PR and close the ones it supersedes
+        id: open
+        env:
+          GH_TOKEN: ${{ secrets.FORK_SYNC_TOKEN || github.token }}
+        run: |
+          set -euo pipefail
+          node config/scripts/fork-stack-report.mjs pr-body \
+            --report="$RUNNER_TEMP/fork-sync/report.json" --run-url="$RUN_URL" > "$RUNNER_TEMP/pr-body.md"
+          url="$(gh pr create --base main --head "$BRANCH" \
+            --title "chore(fork): update main to $INTEGRATION_BRANCH" --body-file "$RUNNER_TEMP/pr-body.md")"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          gh pr list --state open --base main --json number,headRefName \
+            --jq '.[] | select(.headRefName | startswith("main-update/fork-")) | select(.headRefName != env.BRANCH) | .number' |
+            while read -r number; do
+              gh pr close "$number" --comment "Superseded by $url."
+            done
+
+  # Reports through the job summary and the run status. Issues are optional: touched only when
+  # the repository has them enabled, and never a reason to fail.
+  report:
+    needs:
+      [
+        restack,
+        publish,
+        static_checks,
+        unit_plan,
+        unit_tests,
+        relay_integration,
+        xterm_patches,
+        build,
+        pull_request
+      ]
+    if: ${{ !cancelled() && needs.restack.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      SYNC_OK: >-
+        ${{ needs.restack.outputs.status == 'up-to-date' ||
+        (needs.restack.outputs.status == 'ready' && (inputs.dry_run ||
+        needs.pull_request.result == 'success')) }}
+    steps:
+      - name: Checkout the report renderer
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          sparse-checkout: config/scripts
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: package.json
+          package-manager-cache: false
+
+      - uses: actions/download-artifact@v8
         continue-on-error: true
         with:
           name: fork-sync-report
           path: ${{ runner.temp }}/fork-sync
 
-      # A plain push is refused unless it is a fast-forward, so main history can only grow.
-      - name: Fast-forward main
-        id: fast_forward
-        if: env.SYNC_OK == 'true' && !inputs.dry_run
-        run: |
-          set -euo pipefail
-          git fetch --no-tags origin main "refs/heads/$BRANCH:refs/remotes/origin/$BRANCH"
-          test "$(git rev-parse "origin/$BRANCH")" = "$HEAD_SHA"
-          if ! git merge-base --is-ancestor origin/main "$HEAD_SHA"; then
-            echo "reason=main moved to $(git rev-parse --short=12 origin/main) during the sync, so $BRANCH is no longer a fast-forward. Merge main into $BRANCH, rerun the checks, then fast-forward." >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if git push origin "$HEAD_SHA:refs/heads/main"; then
-            echo "pushed=true" >> "$GITHUB_OUTPUT"
-            echo "Fast-forwarded main to $HEAD_SHA" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "reason=The fast-forward push of $HEAD_SHA to main was rejected (branch protection, or a token without the workflow scope)." >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Close the tracking issue
-        if: steps.fast_forward.outputs.pushed == 'true'
-        run: |
-          set -euo pipefail
-          number="$(gh issue list --state open --search "in:title \"$ISSUE_TITLE\"" --json number,title |
-            jq -r --arg title "$ISSUE_TITLE" 'map(select(.title == $title)) | .[0].number // empty')"
-          if [ -n "$number" ]; then
-            gh issue close "$number" --comment "Resolved: main fast-forwarded to $HEAD_SHA by $RUN_URL."
-          fi
-
-      - name: Open or update the tracking issue
-        if: env.SYNC_OK != 'true' || steps.fast_forward.outputs.reason != ''
+      - name: Write the run summary
         env:
           SYNC_NEEDS: ${{ toJSON(needs) }}
-          SYNC_FAST_FORWARD: ${{ steps.fast_forward.outputs.reason }}
+          PR_URL: ${{ needs.pull_request.outputs.url }}
         run: |
-          set -euo pipefail
-          node config/scripts/fork-upstream-sync-issue.mjs \
-            --report="$RUNNER_TEMP/fork-sync/report.json" \
-            --run-url="$RUN_URL" > "$RUNNER_TEMP/issue-body.md"
+          node config/scripts/fork-stack-report.mjs summary \
+            --report="$RUNNER_TEMP/fork-sync/report.json" --run-url="$RUN_URL" --pr-url="$PR_URL" \
+            > "$RUNNER_TEMP/summary.md"
+          cat "$RUNNER_TEMP/summary.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Comment on the open main-update PR
+        if: env.SYNC_OK != 'true'
+        continue-on-error: true
+        run: |
+          number="$(gh pr list --state open --base main --json number,headRefName \
+            --jq '[.[] | select(.headRefName | startswith("main-update/fork-"))] | max_by(.number) | .number // empty')"
+          if [ -n "$number" ]; then
+            gh pr comment "$number" --body-file "$RUNNER_TEMP/summary.md"
+          fi
+
+      - name: Update the tracking issue when Issues are enabled
+        continue-on-error: true
+        run: |
+          if [ "$(gh api "repos/$GITHUB_REPOSITORY" --jq .has_issues 2>/dev/null)" != "true" ]; then
+            echo "Issues are disabled for this repository; reporting through the run summary only."
+            exit 0
+          fi
           number="$(gh issue list --state open --search "in:title \"$ISSUE_TITLE\"" --json number,title |
             jq -r --arg title "$ISSUE_TITLE" 'map(select(.title == $title)) | .[0].number // empty')"
-          if [ -n "$number" ]; then
-            gh issue edit "$number" --body-file "$RUNNER_TEMP/issue-body.md"
-            gh issue comment "$number" --body "Sync attempt failed again: $RUN_URL (branch \`${BRANCH:-none}\`)."
+          if [ "$SYNC_OK" = "true" ]; then
+            if [ -n "$number" ]; then
+              gh issue close "$number" --comment "Resolved by $RUN_URL."
+            fi
+          elif [ -n "$number" ]; then
+            gh issue edit "$number" --body-file "$RUNNER_TEMP/summary.md"
+            gh issue comment "$number" --body "Sync failed again: $RUN_URL"
           else
-            gh issue create --title "$ISSUE_TITLE" --body-file "$RUNNER_TEMP/issue-body.md"
+            gh issue create --title "$ISSUE_TITLE" --body-file "$RUNNER_TEMP/summary.md"
           fi
+
+      - name: Fail the run when the sync did not finish
+        if: env.SYNC_OK != 'true'
+        run: |
+          echo "::error::The fork stack sync did not finish. See the run summary."
+          exit 1

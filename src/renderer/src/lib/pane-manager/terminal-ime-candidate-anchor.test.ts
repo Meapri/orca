@@ -383,6 +383,7 @@ describe('installTerminalImeCandidateAnchor', () => {
 
     expect(harness.style.top).toBe(`${2 * CELL_HEIGHT}px`)
     expect(harness.style.left).toBe(`${4 * CELL_WIDTH}px`)
+    expect(harness.compositionStyle.top).toBe('')
   })
 
   it('carries the caret through a repaint that briefly paints none, within one composition', () => {

@@ -17,15 +17,14 @@ export async function waitForElectronServeSidecarReady(
   const deadline = Date.now() + START_TIMEOUT_MS
   let lastError: unknown = null
   while (Date.now() < deadline) {
-    if (signal?.aborted) {
-      throw new Error('Installed Electron browser provider start was cancelled.')
-    }
+    signal?.throwIfAborted()
     const metadata = readRuntimeMetadata(userDataPath)
     if (metadata) {
       try {
         const status = RuntimeStatusResult.parse(
           await sendOrcadSidecarRequest(metadata, 'status.get', undefined, 5_000)
         )
+        signal?.throwIfAborted()
         if (status.capabilities?.includes('browser.headless.v1')) {
           return metadata
         }
@@ -37,7 +36,7 @@ export async function waitForElectronServeSidecarReady(
     if (child.exitCode !== null || child.signalCode !== null) {
       break
     }
-    await delay(100)
+    await delay(100, undefined, { signal })
   }
   throw new Error(
     `Installed Electron browser provider did not become ready: ${

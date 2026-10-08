@@ -54,7 +54,7 @@ export type ElectronServeSidecarLifelineOptions = {
   sidecarPid: number
   sidecarDataPath: string
   graceMs?: number
-  /** The runtime that runs the watcher; orcad's own Node or Bun binary. */
+  /** The runtime that runs the watcher; orcad's own pinned Node. */
   runtimeExecutable?: string
 }
 

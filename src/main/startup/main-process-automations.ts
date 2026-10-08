@@ -1,6 +1,5 @@
-import { AutomationService } from '../automations/service'
-import { createRuntimeHeadlessAutomationDispatcher } from '../automations/runtime-headless-dispatcher'
-import { createRuntimeAutomationRunTerminalObserver } from '../automations/runtime-terminal-run-observer'
+import type { AutomationService } from '../automations/service'
+import { createRuntimeAutomationService } from '../automations/runtime-automation-service'
 import { mainProcessState as state } from './main-process-state'
 
 export function initializeMainProcessAutomations(): AutomationService {
@@ -11,18 +10,14 @@ export function initializeMainProcessAutomations(): AutomationService {
   if (!store || !runtime || !claudeUsage || !codexUsage) {
     throw new Error('Runtime and usage stores must be initialized before automations')
   }
-  const service = new AutomationService(store, {
+  const service = createRuntimeAutomationService({
+    store,
+    runtime,
     claudeUsage,
     codexUsage,
-    terminalObserver: createRuntimeAutomationRunTerminalObserver(runtime),
-    onAutomationsChanged: (payload) => runtime.notifyAutomationsChanged(payload),
     // Why: desktop clients mirror remote-host automations, but only a server process should execute remote_host_service-owned schedules.
-    allowRemoteHostScheduling: state.isServeMode,
-    headlessDispatcher: state.isServeMode
-      ? createRuntimeHeadlessAutomationDispatcher(runtime)
-      : undefined
+    headless: state.isServeMode
   })
   state.automations = service
-  runtime.setAutomationService(service)
   return service
 }

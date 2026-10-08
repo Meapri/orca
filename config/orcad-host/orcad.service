@@ -44,7 +44,7 @@ EnvironmentFile=-@ORCAD_ENV_FILE@
 RuntimeDirectory=orcad
 # The readiness file in it carries a pairing credential.
 RuntimeDirectoryMode=0700
-# `run` resolves orcad-current to its real versioned dir and execs the bundled runtime,
+# `run` resolves orcad-current to its real versioned dir and execs its pinned Node runtime,
 # so the unit's main PID is orcad itself and SIGTERM reaches it directly.
 ExecStart=/bin/sh @ORCAD_BASE@/orcad-current/deploy/orcad-install.sh run
 Restart=always

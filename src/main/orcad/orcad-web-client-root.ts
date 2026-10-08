@@ -2,9 +2,10 @@
  * Finds the browser client shipped in orcad's install directory, the counterpart of the desktop's
  * `getBundledWebClientRoot()` for `orca serve`.
  *
- * Why size checks and not hashes: the manifest is part of the install identity the preflight
- * already hashes, and the deploy writes `.install-complete` only after every file landed. Stat
- * catches a torn or hand-edited tree without re-hashing ~50 MB on every start.
+ * Only release tarballs carry it (ORCAD_RELEASE_ONLY_PAYLOADS); SSH-managed slots do not.
+ * Why size checks and not hashes: the tarball is checksum-verified before install, and the
+ * installer writes `.install-complete` only after every file landed. Stat catches a torn or
+ * hand-edited tree without re-hashing ~50 MB on every start.
  */
 import { readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'

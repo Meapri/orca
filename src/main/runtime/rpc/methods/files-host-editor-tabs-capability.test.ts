@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { RpcDispatcher } from '../dispatcher'
 import type { RpcRequest } from '../core'
 import type { OrcaRuntimeService } from '../../orca-runtime'
-import { SESSION_TABS_HOST_EDITOR_TABS_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
+import { SESSION_TABS_HOST_EDITOR_TABS_RUNTIME_CAPABILITY } from '../../../../shared/host-owned-surface-capabilities'
 import { FILE_METHODS } from './files'
 
 function makeRequest(method: string, params?: unknown): RpcRequest {
@@ -40,10 +40,12 @@ describe('files.open / files.openDiff host editor tab gate', () => {
 
     // Why exact arity: an old client must reach the runtime exactly as before this capability.
     expect(openMobileFile.mock.calls[0]).toEqual(
-      expected ? ['id:wt-1', 'a.md', expected] : ['id:wt-1', 'a.md']
+      expected ? ['id:wt-1', 'a.md', undefined, expected] : ['id:wt-1', 'a.md', undefined]
     )
     expect(openMobileDiff.mock.calls[0]).toEqual(
-      expected ? ['id:wt-1', 'a.md', false, expected] : ['id:wt-1', 'a.md', false]
+      expected
+        ? ['id:wt-1', 'a.md', false, undefined, expected]
+        : ['id:wt-1', 'a.md', false, undefined]
     )
   })
 })

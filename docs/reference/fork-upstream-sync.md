@@ -1,124 +1,326 @@
 # Fork Upstream Sync
 
-## Scope
+## Model
 
-This fork (`Meapri/orca`) follows `stablyai/orca`. `.github/workflows/fork-upstream-sync.yml`
-brings upstream `main` into fork `main` every Monday (03:17 UTC), and on demand from the
-Actions tab. Two rules hold whether the sync is automatic or manual:
+This fork (`Meapri/orca`) follows `stablyai/orca`. Every fork change lives in a **topic stack**:
+a short, linear series of reviewable commits on top of upstream `main`. Stacks are built
+independently of each other, each on upstream alone. What each topic owns is listed in
+[`fork-topics.md`](./fork-topics.md).
 
-- A sync is a real merge commit of upstream `main` into fork `main`. Never rebase fork
-  history onto upstream.
-- Fork `main` only ever fast-forwards. Never force-push it, and never push to upstream.
+[`config/fork-stacks.json`](../../config/fork-stacks.json) lists the topics in integration
+order, each with its stack branch (`ref`) and the commit it was last built on (`base`):
 
-## What the Workflow Does
+| Order | Topic             | Why here                                                        |
+| ----- | ----------------- | --------------------------------------------------------------- |
+| 1     | `terminal`        | first, so no later topic can silently change terminal behaviour |
+| 2     | `sync-automation` | this workflow, the manifest, and the upstream-only guards       |
+| 3     | `runtime-remote`  |                                                                 |
+| 4     | `accounts`        |                                                                 |
+| 5     | `orcad-runtime`   |                                                                 |
+| 6     | `distribution`    | last: it renames identity-bearing values in files others add    |
 
-1. **merge** fetches upstream `main`. If fork `main` already contains it, the run stops.
-   Otherwise it creates `sync/upstream-<date>` from fork `main` (`-2`, `-3` for a second
-   run the same day) and runs `git merge --no-ff upstream/main`. The merge job holds no
-   secrets, because the xterm check runs upstream xterm's npm toolchain.
-2. **xterm patches.** If the merge is clean, it runs
-   `regenerate-xterm-patches.mjs --check`. If that fails, it runs the documented
-   regeneration (`--write`, then `--check`) and commits the result on top of the merge.
-   Some conflicts are only in files the generator rederives, and the merge settles those
-   by taking the fork side and running `--write` before committing, so the merge commit
-   already carries the regenerated patches. These conflicts qualify:
-   - the generated `config/patches/@xterm__*.patch` bundles,
-   - `index` lines and new-side hunk offsets in the `xterm-src/*.src.patch` sources,
-   - xterm patch hashes in `pnpm-lock.yaml`.
+From those stacks the sync builds:
 
-   Any other conflict, including real hunk conflicts in a source patch, aborts the merge.
+- **Integration branch** `integrate/fork-<key>`: upstream `main`, then a `--no-ff` merge of each
+  stack in manifest order, then one commit that records the new stack refs in the manifest.
+- **Main-update commit** on `main-update/fork-<key>`: its tree is exactly the integration tree,
+  its first parent is the current `main`, its second parent is the integration commit
+  (`git commit-tree <integration>^{tree} -p origin/main -p <integration>`). It extends `main`,
+  so adopting it is a fast-forward. `main` is never force-pushed and never rebased.
 
-3. **publish** pushes the sync branch from a fresh runner, never with `--force`.
-4. **static_checks** (`pnpm tc`, `pnpm lint`), **unit_plan** plus the sharded
-   **unit_tests**, **relay_integration**, and **build** (`pnpm run build:release:parallel`)
-   run on the pushed commit. They mirror `pr.yml` and `unit-tests.yml`. Those workflows
-   can't be called directly, because their checkout pins the triggering SHA.
-5. **finalize.** If everything passed, it re-fetches `main` and confirms `main` is still an
-   ancestor of the sync branch. Then it pushes the sync commit to `main` with a plain
-   push, which the server refuses unless it is a fast-forward. It then closes the
-   tracking issue. The `dry_run` input skips this step.
+`<key>` is the UTC date of the sync (`2026-10-09`); a second sync on the same day gets `-2`.
 
-   Otherwise it opens or updates one issue titled **Upstream sync needs attention**. The
-   issue lists the conflicts or failed jobs, the xterm log tail, the upstream commits,
-   and the commands to finish. After a conflict the sync branch stays at fork `main` (the
-   merge was aborted). After a failed check it holds the merge commit.
+A topic may set `"onto": "integration"` for cross-topic fixups that only apply on top of
+several stacks. Such topics come after all others; their commits are re-applied on top of the
+merged stacks instead of upstream, and their `base` is the merged-stacks commit they were last
+built on.
 
-## Repository Settings
+### Branch names
 
-- **Settings → Actions → General → Workflow permissions:** allow read and write, so the
-  default token can push `sync/*` branches and edit issues.
-- **`FORK_SYNC_TOKEN` secret (needed in practice).** The default `GITHUB_TOKEN` can't push
-  a commit that changes `.github/workflows/`, and most upstream syncs do. Create a
-  fine-grained token scoped to this repository only, with **Contents: read and write** and
-  **Workflows: read and write**. Pushes with it also trigger the fork's own `push`
-  workflows on `main`, just as a manual sync does.
-- **Branch protection on `main`**, if any, must let that token push directly. Otherwise the
-  fast-forward is refused and the issue says so.
+| Branch                     | Written by          | Meaning                                    |
+| -------------------------- | ------------------- | ------------------------------------------ |
+| `stack/<topic>`            | humans              | the stack as a human last built it         |
+| `stack-sync/<key>/<topic>` | automation (new)    | a re-stacked topic; never moved afterwards |
+| `integrate/fork-<key>`     | automation / humans | upstream + every stack + manifest commit   |
+| `main-update/fork-<key>`   | automation / humans | the main-update commit, proposed by PR     |
 
-## Upstream Workflows Guarded on the Fork
+`stack/<topic>` and `stack/<topic>/<anything>` cannot both exist (git stores refs as paths),
+which is why re-stacked topics live under the separate `stack-sync/` prefix.
 
-Each guard is one `github.repository == 'stablyai/orca'` condition, so upstream merges stay
-conflict-light. Where a job already had an `if`, the guard is added as an extra clause.
+## What the Daily Workflow Does
 
-| Workflow                        | Why                                                 |
-| ------------------------------- | --------------------------------------------------- |
-| `homebrew-bump.yml`             | opens PRs in `stablyai/homebrew-orca`               |
-| `pullfrog.yml`                  | Pullfrog agent with upstream's model API keys       |
-| `issue-os-labeler.yaml`         | labels upstream issue forms; noise on fork issues   |
-| `windows-signing-rehearsal.yml` | SignPath signing with upstream's token              |
-| `mobile-ios-release.yml`        | App Store Connect / TestFlight with upstream's keys |
+`.github/workflows/fork-upstream-sync.yml` runs daily at 03:17 UTC and on demand
+(`dry_run` re-stacks and reports, but pushes nothing). It only runs on the fork.
 
-These were already guarded upstream: `release-cut`, `release-mac-build`, `hourly-mac-build`,
-`daily-mac-build`, `adhoc-mac-build`, `dev-channel-win-build`, `docs`, `release-policy`,
-`readme-downloads-badge`. The `cloud-*` workflows only run when
-`vars.ORCA_CLOUD_OPERATIONS_ENABLED` is `true`, which the fork does not set.
-`orcad-release` and `mobile-android-release` publish to this repository's own releases and
-only run on a pushed tag, so they stay enabled.
+1. **restack** (holds no secrets: it may run upstream xterm's npm toolchain). It fetches
+   upstream `main`, reads the manifest from fork `main`, and looks up every `Upstream-PR:`
+   trailer in one read-only GraphQL call (the only step that sees the job token). Then
+   `fork-stack-sync.mjs restack`, for each topic in order:
+   - takes the commits `<base>..origin/<ref>` (merge commits are refused: stacks are linear);
+   - if `base` already equals the new upstream, reuses the stack as is;
+   - otherwise cherry-picks each commit onto the new upstream with rerere on, dropping the
+     commits upstream already has (next section);
+   - on a conflict rerere cannot settle, aborts that topic and records the topic, the commit
+     (hash and subject) and the conflicted files, then continues with the other topics so one
+     run reports every blocked topic.
+
+   If every topic re-stacked, it merges them into the integration commit, records the new refs
+   in the manifest, and builds the main-update commit. If the integration tree equals `main`'s
+   tree the run is **up to date** and stops. A blocked topic or integration merge fails the job.
+
+2. **publish** pushes the new `stack-sync/<key>/*` branches and `integrate/fork-<key>` with one
+   plain `git push --atomic` from a fresh runner. Every name is new, so nothing is overwritten.
+3. **Checks** run on the pushed integration commit and mirror `pr.yml` and `unit-tests.yml`
+   (which can't be called directly, because their checkout pins the triggering SHA):
+   `pnpm tc` and `pnpm lint`, the sharded unit tests, relay integration tests,
+   `regenerate-xterm-patches.mjs --check`, and `pnpm run build:release:parallel`.
+4. **pull_request**, only when every check passed: confirms `main` has not moved, pushes
+   `main-update/fork-<key>`, opens a PR into `main`, and closes older open main-update PRs as
+   superseded. A human reviews and merges it (see [Promoting](#promoting-and-pruning-refs)).
+5. **report** always writes the run summary (`$GITHUB_STEP_SUMMARY`): per-topic results, every
+   dropped commit with its reason, conflicts settled automatically, blocked topics with the
+   commands to resume, failed jobs, and the diffstat `main` would take. On failure it also
+   comments on the open main-update PR, if any. It updates the
+   **Upstream sync needs attention** issue only when the repository has Issues enabled
+   (`gh api repos/{repo} --jq .has_issues`); Issues being off never fails the run. The run's
+   own status is the failure signal.
+
+The scripts behind the workflow are `config/scripts/fork-stack-*.mjs`: pure, unit-tested
+decisions (`fork-stack-manifest`, `fork-stack-restack-plan`, `fork-stack-xterm-conflicts`,
+`fork-stack-report`) and a thin git/gh layer (`fork-stack-sync`, `fork-stack-git`,
+`fork-stack-conflict-settling`, `fork-stack-integration`).
+
+### Which commits are dropped
+
+A re-stack never drops a commit silently: each one is listed in the report with its reason.
+
+- **Upstream accepted it** (reported under "Dropped because upstream accepted the change"):
+  - its `Upstream-PR: stablyai/orca#N` trailer names a PR that merged into upstream `main`, and
+    the merge commit is in the fetched upstream. Upstream's version wins even if review
+    changed it;
+  - its `(cherry picked from commit <sha>)` line (from `git cherry-pick -x`) names a commit
+    that is now in upstream, such as a cherry-picked upstream PR that has since merged;
+  - `git cherry` finds an upstream commit with the same patch id.
+- **It became empty**: it applies cleanly but changes nothing, because upstream already made
+  the change as part of something larger.
+
+When every commit of a topic is dropped, the report says so; remove the topic from the
+manifest.
+
+## Conflict-Resolution Principles
+
+1. **Terminal first, and never lose terminal behaviour.** The terminal stack integrates first.
+   When upstream reworks terminal code, port the fork's behaviour onto upstream's new structure
+   rather than reverting upstream.
+2. **Drop fork code that upstream has replaced.** If upstream now does what a fork commit did,
+   drop the commit (and its tests) instead of keeping two implementations. Note it in the
+   commit message of whatever replaces it.
+3. **Distribution keeps the fork's behaviour.** Fork identity (app names, update feeds, release
+   channels, signing) always wins over upstream's in the distribution topic.
+4. **i18n catalogs and lockfiles keep both sides.** Keep every key from both sides in
+   localization catalogs. Never hand-edit `pnpm-lock.yaml`: take upstream's side, then
+   regenerate it (`pnpm install --lockfile-only`) in the commit that changes `package.json`.
+5. **Generated xterm patches are regenerated, never hand-merged** (see below). The automation
+   settles a commit whose only conflicts are generated xterm bundles, blob-id/offset noise in
+   `xterm-src/*.src.patch`, or xterm patch hashes in the lockfile: it keeps the topic's side and
+   appends a `chore(xterm): regenerate patches` commit to that topic.
+6. **Keep a change in the topic that owns it.** If two stacks overlap, move the overlapping
+   change into the later topic or into an `onto: "integration"` fixup topic.
+
+## rerere
+
+Git's rerere records how you resolved a conflict and replays it when the same conflict recurs.
+Daily re-stacks meet the same conflicts repeatedly until the manifest moves forward, so enable
+it wherever you re-stack:
+
+```sh
+git config rerere.enabled true
+git config rerere.autoupdate true   # stage replayed resolutions
+git rerere status                   # paths with a recorded preimage in this conflict
+git rerere diff                     # your resolution so far, against the conflict
+git rerere forget <path>            # drop a wrong recorded resolution, then resolve again
+```
+
+In Actions, `.git/rr-cache` is restored before and saved after every run
+(`fork-stack-rerere-<run id>`, restored by prefix), so resolutions accumulate across runs. Before
+merging the stacks, the workflow also replays the merges of the integration that `main` last
+adopted (the second parent of the main-update commit, also through a merge-button commit) and
+records their resolutions, the way `contrib/rerere-train.sh` does. A conflict between stacks that
+a human resolved once is therefore resolved again automatically. Replayed resolutions are listed
+under "Conflicts settled automatically" in the report: review them.
+
+A resolution recorded on your machine stays in your `.git/rr-cache`. CI does not need it: the
+manifest records the stack you rebuilt by hand, so the next run starts from it.
 
 ## Manual Sync
 
-Use Node 24 and pnpm 12 (`mise exec -- …`).
+Use Node 24 and pnpm (`mise exec -- …`). Never `--force`.
 
 ```sh
 git fetch origin && git fetch upstream
-git switch -c sync/upstream-$(date -u +%F) origin/main
-git merge --no-ff upstream/main
-# resolve conflicts; for xterm patches see below
-node config/scripts/regenerate-xterm-patches.mjs --check
-pnpm install --frozen-lockfile
-pnpm tc && pnpm lint && pnpm test
-git push origin HEAD
-git push origin HEAD:main   # fast-forward only; never --force
+git config rerere.enabled true && git config rerere.autoupdate true
+DATE=$(date -u +%F)
+UPSTREAM=$(git rev-parse upstream/main)
 ```
 
-`node config/scripts/fork-upstream-sync.mjs merge --report=/tmp/sync.json` runs the
-workflow's merge step locally. Its `xterm --report=/tmp/sync.json --work-dir=/tmp/xterm` step
-runs the xterm step. Both work on the current checkout.
+**1. Re-stack the topic the workflow reported as blocked.** Take `base` and `ref` from
+`config/fork-stacks.json` on `main`:
 
-## xterm Patches During a Sync
+```sh
+TOPIC=runtime-remote BASE=<base> REF=<ref>
+git switch -c restack/$TOPIC $UPSTREAM
+git cherry-pick $BASE..origin/$REF
+# On a conflict: resolve following the principles above, `git add`, `git cherry-pick --continue`.
+# For a commit upstream already has: `git cherry-pick --skip`, and say so in the PR.
+git push origin HEAD:refs/heads/stack-sync/$DATE/$TOPIC
+```
 
-[`xterm-patch-regeneration.md`](./xterm-patch-regeneration.md) is the authority. The short
-version:
+**2. Let the script do the rest.** Point a copy of the manifest at the stack you just pushed
+(`ref` = `stack-sync/<DATE>/<topic>`, `base` = `$UPSTREAM`) and run the same driver the
+workflow runs. It reuses that topic, re-stacks the others, merges, writes the manifest
+commit, and builds the main-update commit:
+
+```sh
+cp config/fork-stacks.json /tmp/fork-stacks.json   # then edit the topic you rebuilt
+git switch --detach origin/main
+node config/scripts/fork-stack-sync.mjs restack --manifest=/tmp/fork-stacks.json \
+  --report=/tmp/fork-sync/report.json --date=$DATE \
+  --xterm-work-dir=/tmp/xterm --bundle=/tmp/fork-sync/sync.bundle
+node config/scripts/fork-stack-report.mjs summary --report=/tmp/fork-sync/report.json | less
+```
+
+**3. Check the integration branch**, from `refs/fork-sync/integrate/fork-<key>`:
+
+```sh
+git switch --detach refs/fork-sync/integrate/fork-$DATE
+pnpm install --frozen-lockfile
+node config/scripts/regenerate-xterm-patches.mjs --check --work-dir=/tmp/xterm
+pnpm tc && pnpm lint && pnpm test
+```
+
+**4. Publish and propose:**
+
+```sh
+mapfile -t specs < <(node config/scripts/fork-stack-report.mjs refspecs \
+  --report=/tmp/fork-sync/report.json --kinds=stack,integration,main-update)
+git push --atomic origin "${specs[@]}"
+gh pr create --repo Meapri/orca --base main --head main-update/fork-$DATE \
+  --title "chore(fork): update main to integrate/fork-$DATE" \
+  --body-file <(node config/scripts/fork-stack-report.mjs pr-body --report=/tmp/fork-sync/report.json)
+```
+
+Without the script, step 2 is: `git switch -c integrate/fork-$DATE $UPSTREAM`, then
+`git merge --no-ff origin/<ref>` for each topic in manifest order, then update
+`config/fork-stacks.json` (each re-stacked topic's `ref` and `base`) and commit it, then
+`M=$(git commit-tree "HEAD^{tree}" -p origin/main -p HEAD -m "chore(fork): update main to integrate/fork-$DATE")`
+and push `HEAD` to `integrate/fork-$DATE` and `$M` to `main-update/fork-$DATE`.
+
+To add, remove, or reorder topics, edit the manifest copy in step 2 the same way; the
+manifest commit carries the change to `main`.
+
+## Promoting and Pruning Refs
+
+**Merging a main-update PR.** Prefer a fast-forward, which keeps `main` free of extra merge
+commits and marks the PR merged on GitHub:
+
+```sh
+git fetch origin main-update/fork-<key>
+git push origin <main-update sha>:main
+```
+
+GitHub's "Create a merge commit" button also works: it adds one merge commit whose tree is
+still the integration tree, and the next sync looks through it. Never squash or rebase-merge:
+that drops the link to the integration commit.
+
+**Promoting a stack.** The manifest on `main` is the source of truth, so after a merged
+main-update PR every topic already points at its newest `stack-sync/` branch; no promotion is
+required. To keep human-facing `stack/<topic>` branches current as well, a maintainer may move
+them by hand (`git push --force-with-lease origin stack-sync/<key>/<topic>:stack/<topic>`) and
+point the manifest back at `stack/<topic>` in the next manual sync. Automation never does this.
+
+**Pruning.** `node config/scripts/fork-stack-sync.mjs prune-plan --keep=7` prints
+`git push origin --delete …` for automation branches (`stack-sync/`, `integrate/fork-`,
+`main-update/fork-`) older than the newest seven sync keys and not referenced by the manifest.
+It deletes nothing itself. Commits that reached `main` stay reachable through the main-update
+commits after their branches are deleted.
+
+## Upstream PRs Carried by the Fork
+
+The fork carries the user's open upstream PRs as ordinary stack commits, one PR per commit
+where practical, each with a trailer:
+
+```text
+Upstream-PR: stablyai/orca#23334
+```
+
+A stack may also carry a byte-identical cherry-pick of someone else's unmerged upstream PR
+commit; make it with `git cherry-pick -x` so the source commit is recorded. The automation drops
+such commits only when upstream has merged the equivalent change (rules above) and lists each
+drop in the report and the main-update PR, so a reviewer can check that nothing the fork still
+needs was lost. It never pushes to, comments on, or opens PRs in `stablyai/orca`; its only
+upstream API use is one read-only GraphQL query per run.
+
+## Repository Setup
+
+- **Settings → Actions → General → Workflow permissions:** read and write, and allow GitHub
+  Actions to create pull requests (the fallback when `FORK_SYNC_TOKEN` is absent).
+- **`FORK_SYNC_TOKEN` secret.** A fine-grained token scoped to this repository only, with
+  **Contents: read and write**, **Workflows: read and write**, and **Pull requests: read and
+  write**. The default token cannot push commits that change `.github/workflows/`, and a PR
+  it opens does not trigger the fork's PR checks.
+- **Branch protection on `main`:** require a pull request, allow the maintainer who merges
+  main-update PRs to push a fast-forward (or allow merge commits), and keep force-pushes and
+  deletions blocked. Do not require linear history if you use the merge button.
+- **Issues** are optional. With Issues off, the run summary and run status are the report.
+
+## Upstream Workflows Guarded on the Fork
+
+Each guard is one `github.repository == 'stablyai/orca'` condition, added as an extra clause
+where a job already had an `if`, so re-stacking stays conflict-light.
+
+| Workflow                        | Why                                                    |
+| ------------------------------- | ------------------------------------------------------ |
+| `homebrew-bump.yml`             | opens PRs in `stablyai/homebrew-orca`                  |
+| `pullfrog.yml`                  | Pullfrog agent with upstream's model API keys          |
+| `issue-os-labeler.yaml`         | labels upstream issue forms; noise on fork issues      |
+| `windows-signing-rehearsal.yml` | SignPath signing with upstream's token                 |
+| `mobile-ios-release.yml`        | App Store Connect / TestFlight with upstream's keys    |
+| `agent-state-rules-publish.yml` | publishes rules releases apps fetch from stablyai/orca |
+
+Already guarded upstream: `release-cut`, `release-mac-build`, `hourly-mac-build`,
+`daily-mac-build`, `adhoc-mac-build`, `dev-channel-win-build`, `docs`, `release-policy`,
+`readme-downloads-badge`. The `cloud-*` workflows only run when
+`vars.ORCA_CLOUD_OPERATIONS_ENABLED` is `true`, which the fork does not set.
+`release-javascript.yml` and `relay-windows-process-tree.yml` are reusable workflows; their
+callers are the guarded release workflows and `release-javascript-benchmark`, which passes a
+placeholder key. The other workflows upstream added since the fork's
+previous base (`macos-updater-tests`, `node-server-tests`, `release-javascript-benchmark`,
+`ssh-hostile-hosts`, `ssh-windows-hosts`, `win-orcad-serve-switch-e2e`) are PR or manual test
+workflows without upstream secrets, so they stay enabled.
+
+## xterm Patches During a Re-stack
+
+[`xterm-patch-regeneration.md`](./xterm-patch-regeneration.md) is the authority. In short:
 
 - `config/patches/xterm-src/*.src.patch` is the source of truth. The
   `config/patches/@xterm__*.patch` bundles and their `pnpm-lock.yaml` hashes are generated.
-  Never hand-merge a generated patch. Take either side, then run `--write`.
-- Regenerate with `regenerate-xterm-patches.mjs --write`, then `pnpm install`, then
-  `--check`. Build outside this repository (`--work-dir=/tmp/xterm`).
+  Never hand-merge a generated patch: take either side, then run `--write`.
+- Regenerate with `regenerate-xterm-patches.mjs --write`, then `pnpm install`, then `--check`.
+  Build outside this repository (`--work-dir=/tmp/xterm`).
 
 ### xterm 3-way merge
 
-Use this procedure when both sides changed hunks in the same source patch, or when the
-merged source patch no longer applies to the pinned xterm commit. Merge the TypeScript
-sources, not the patch text. Run it from the repository root while the Orca merge is
-still in progress:
+Use this when upstream and a stack commit changed hunks in the same source patch, or when the
+re-stacked source patch no longer applies to the pinned xterm commit. Merge the TypeScript
+sources, not the patch text. Run it from the repository root while the cherry-pick is stopped
+on the conflict (`<commit>` is the stack commit being applied):
 
 ```sh
 PATCH=config/patches/xterm-src/@xterm__xterm@<version>.src.patch
 PIN=$(node -p "require('./config/patches/xterm-upstream.json').upstream.commit")
-git show "$(git merge-base HEAD MERGE_HEAD)":$PATCH > /tmp/base.patch
-git show HEAD:$PATCH > /tmp/fork.patch
-git show MERGE_HEAD:$PATCH > /tmp/upstream.patch
+git show <commit>^:$PATCH > /tmp/base.patch     # the stack's old base
+git show <commit>:$PATCH > /tmp/fork.patch      # the stack commit
+git show HEAD:$PATCH > /tmp/upstream.patch      # the new upstream side
 
 X=/tmp/xterm-merge   # outside the repo; any xterm.js clone
 [ -d $X ] || git clone --quiet https://github.com/xtermjs/xterm.js.git $X
@@ -134,15 +336,14 @@ git -C $X diff $PIN -- src/ > $PATCH
 
 node config/scripts/regenerate-xterm-patches.mjs --write --work-dir=/tmp/xterm
 pnpm install && node config/scripts/regenerate-xterm-patches.mjs --check --work-dir=/tmp/xterm
-git add config/patches pnpm-lock.yaml
+git add config/patches pnpm-lock.yaml && git cherry-pick --continue
 ```
 
 For an addon, pass `--directory=addons/<name>` to each `git apply`, and diff with
-`git -C $X/addons/<name> diff --relative $PIN -- src/`. `--write` rewrites the patch into
-its canonical form, so a hand-produced diff is fine.
+`git -C $X/addons/<name> diff --relative $PIN -- src/`. `--write` rewrites the patch into its
+canonical form, so a hand-produced diff is fine.
 
-A version bump on the upstream side changes `upstream.commit`, so the upstream patch
-applies to a newer commit than the other two. First move the base and fork patches onto
-the new commit with `git apply -3`. It uses the patch's `index` blob ids to fall back to a
-3-way merge. Then run the loop above with `PIN` set to the new commit. Commit the source
-patch, the regenerated bundles, and the lockfile together in the merge commit.
+A version bump on the upstream side changes `upstream.commit`, so the upstream patch applies to
+a newer commit than the other two. First move the base and fork patches onto the new commit
+with `git apply -3`, which uses the patch's `index` blob ids to fall back to a 3-way merge.
+Then run the loop above with `PIN` set to the new commit.

@@ -82,9 +82,11 @@ export class ExternalChromiumBrowserProcess {
     this.maintenanceIntervalMs = options.maintenanceIntervalMs ?? MAINTENANCE_INTERVAL_MS
   }
 
-  async start(): Promise<void> {
+  async start(signal?: AbortSignal): Promise<void> {
     this.stopped = false
-    this.tabs.initialize(await this.session.start())
+    const activeTabId = await this.session.start(signal)
+    signal?.throwIfAborted()
+    this.tabs.initialize(activeTabId)
     this.available = true
     this.maintenanceTimer ??= setInterval(() => {
       void this.runMaintenance()

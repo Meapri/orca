@@ -1,7 +1,7 @@
 import { app, powerMonitor, type BrowserWindow } from 'electron'
 import { is } from '@electron-toolkit/utils'
-import { APP_DISTRIBUTION } from '../../shared/app-distribution'
 import { getOrcaCloudAuthConfig } from '../orca-profiles/profile-cloud-auth-config'
+import { desktopRuntimeWsPortOption } from './desktop-runtime-ws-port'
 import { getProfileUserDataPath } from '../orca-profiles/profile-storage-paths'
 import {
   getCanonicalUserDataPath,
@@ -11,7 +11,7 @@ import { OrcaRuntimeRpcServer } from '../runtime/runtime-rpc'
 import { registerMobileHandlers } from '../ipc/mobile'
 import { getLocalPtyProvider, registerHeadlessPtyRuntime } from '../ipc/pty'
 import { LocalPtyProvider } from '../providers/local-pty-provider'
-import { HEADLESS_RUNTIME_WINDOW_ID } from '../../shared/runtime-types'
+import { publishHeadlessRuntimeGraph } from '../runtime/headless-runtime-graph'
 import { OffscreenBrowserBackend } from '../browser/offscreen-browser-backend'
 import { browserManager } from '../browser/browser-manager'
 import { getDesktopRelayStatus, publishDesktopRelayStatus } from './main-process-relay-status'
@@ -41,6 +41,7 @@ import { triggerStartupNotificationRegistration } from '../ipc/startup-notificat
 import { startDesktopPushService, startServeAgentNotifications } from './main-process-push-startup'
 import { mainProcessState as state } from './main-process-state'
 import { logStartupMilestone } from './startup-diagnostics'
+import { scheduleAgentLaunchRecordWarmup } from './agent-launch-record-warmup'
 import { emitServeBrowserIdentityActionLine } from '../server/serve-stdout-boundary'
 import { getBrowserIdentityModeStatus } from '../browser/browser-identity-mode-store'
 
@@ -76,9 +77,6 @@ function installRuntimeRpc(
   }
   // Why: pin dev to 6769 so `pnpm dev` doesn't race packaged Orca on 6768 and fall back to a random port, breaking deterministic mobile pairing/repro (STA-1511).
   const devWsPort = is.dev && !isE2E ? 6769 : undefined
-  // Why: the desktop app gets its own default so it never races the official Orca's 6768.
-  const desktopWsPort =
-    !is.dev && !isE2E && !serveOptions ? APP_DISTRIBUTION.desktopRuntimeWebSocketPort : undefined
   const runtimeRpc = new OrcaRuntimeRpcServer({
     runtime,
     // Why: mobile pairing needs the stable pre-setName() path (getCanonicalUserDataPath), not a late app.getPath('userData') that drops paired devices across restarts.
@@ -89,7 +87,7 @@ function installRuntimeRpc(
     exposeNetworkByDefault: Boolean(serveOptions) || isE2E,
     ...(isE2E ? { wsPort: e2eWsPort } : {}),
     ...(devWsPort !== undefined ? { wsPort: devWsPort } : {}),
-    ...(desktopWsPort !== undefined ? { wsPort: desktopWsPort } : {}),
+    ...desktopRuntimeWsPortOption(isE2E, Boolean(serveOptions)),
     ...(serveOptions?.wsPort !== undefined
       ? {
           wsPort: serveOptions.wsPort,
@@ -162,12 +160,12 @@ async function launchServeMode(
       })
     )
   }
-  // Why: headless servers have no renderer graph publisher; publish an explicit empty graph so status clients see a ready server.
-  runtime.syncWindowGraph(HEADLESS_RUNTIME_WINDOW_ID, { tabs: [], leaves: [] })
+  publishHeadlessRuntimeGraph(runtime)
   await runtimeRpc.start().catch((error) => {
     console.error('[runtime] Failed to start headless RPC transport:', error)
     throw error
   })
+  scheduleAgentLaunchRecordWarmup(null)
   // Why: with no renderer, agent notifications for paired phones come from the hook tap.
   startDesktopPushService(runtimeRpc)
   startServeAgentNotifications()
@@ -243,6 +241,7 @@ async function launchDesktopMode(
         }
       )
   ])
+  scheduleAgentLaunchRecordWarmup(win)
   if (!runtimeRpcStartResult.ok) {
     // Why gated: this dialog is the only launch-phase text read through translateMain, and i18n
     // now settles alongside this phase — without the wait a non-English user could get the

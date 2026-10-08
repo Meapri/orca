@@ -1,14 +1,19 @@
-import { getAppEnvironment } from '../../shared/app-environment'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import type { AgentProviderSessionMetadata } from '../../shared/agent-session-resume'
 import type { CodexAccountSelectionTarget } from '../codex-accounts/runtime-selection'
 import type { CodexRuntimeHomeService } from '../codex-accounts/runtime-home-service'
-import type { CodexSessionResumePreparation } from './codex-session-resume-home'
+import {
+  trustedCodexResumeHomes,
+  type CodexSessionResumePreparation
+} from './codex-session-resume-home'
 import { prepareCodexSessionResume } from './codex-session-resume-preparation'
-import { prepareLegacySharedCodexSessionResume } from './codex-legacy-session-resume'
+import {
+  prepareCodexAccountRestartResume,
+  prepareLegacySharedCodexSessionResume
+} from './codex-legacy-session-resume'
 import { ManagedCodexHomeTemporarilyUnavailableError } from '../codex-accounts/host-codex-managed-home-ownership'
 import { codexHookService } from './hook-service'
-import { ensureRealHomeCodexHookState } from './codex-real-home-hook-install'
+import { reconcileCodexHooksForLaunch } from './codex-hook-reconcile'
 import { ensureCodexDaemonSocketGuard } from './codex-config-mirror'
 import { isAgentStatusHooksEnabledForAgent } from '../agent-hooks/managed-agent-hook-controls'
 import { getOrcaManagedCodexHomePath, getSystemCodexHomePath } from './codex-home-paths'
@@ -18,28 +23,38 @@ export type CodexSessionResumeLaunchPreparation = (args: {
   providerSession: AgentProviderSessionMetadata
   target: CodexAccountSelectionTarget
   launchEnv?: NodeJS.ProcessEnv
+  useSelectedAccount?: boolean
 }) => Promise<CodexSessionResumePreparation | null>
 
-/** Resume prep that pins a resumed Codex pane to the home that owns its rollout, on any execution host. */
-export function createCodexSessionResumeLaunchPreparation(deps: {
+export type CodexPinnedLaunchHomePreparation = (
+  home: string,
+  systemHomePath?: string
+) => Promise<void>
+
+type CodexLaunchPreparationDeps = {
   getRuntimeHome: () => CodexRuntimeHomeService | null
   getSettings: () => GlobalSettings | undefined
-}): CodexSessionResumeLaunchPreparation {
-  return (args) => prepareCodexSessionResumeForLaunch(args, deps)
+}
+
+/** Resume prep that pins a resumed Codex pane to the home that owns its rollout, on any execution host. */
+export function createCodexSessionResumeLaunchPreparation(
+  deps: CodexLaunchPreparationDeps
+): CodexSessionResumeLaunchPreparation {
+  const preparePinnedLaunchHome = createCodexPinnedLaunchHomePreparation(deps)
+  return (args) => prepareCodexSessionResumeForLaunch(args, deps, preparePinnedLaunchHome)
 }
 
 async function prepareCodexSessionResumeForLaunch(
   args: Parameters<CodexSessionResumeLaunchPreparation>[0],
-  deps: Parameters<typeof createCodexSessionResumeLaunchPreparation>[0]
+  deps: CodexLaunchPreparationDeps,
+  preparePinnedLaunchHome: CodexPinnedLaunchHomePreparation
 ): Promise<CodexSessionResumePreparation | null> {
   const runtimeHome = deps.getRuntimeHome()
-  const settings = deps.getSettings()
-  if (args.target.runtime === 'wsl' || !runtimeHome || !settings) {
+  if (args.target.runtime === 'wsl' || !runtimeHome || !deps.getSettings()) {
     return null
   }
   const systemHomePath = getSystemCodexHomePath()
-  // Why: codexSessionSourceHome is import-only; treating it as CODEX_HOME would mutate history sources and bypass account auth.
-  const trustedHomes = [systemHomePath, ...runtimeHome.getHostCodexHomePathsForSessionDiscovery()]
+  const trustedHomes = trustedCodexResumeHomes(runtimeHome, systemHomePath)
   // Why: resolved eagerly, once, before any ranking or provenance match. The
   // marker read used to be deferred into the ranking thunk so a
   // provenance-present resume never paid for it, but that optimisation let an
@@ -72,17 +87,13 @@ async function prepareCodexSessionResumeForLaunch(
             codexHome: sessionSource.homePath
           },
           {
-            isHostSystemDefaultRealHome: () => runtimeHome.isHostSystemDefaultRealHome(),
+            isHostSystemDefaultRealHomeSelected: () =>
+              runtimeHome.isHostSystemDefaultRealHomeSelected(),
             systemCodexHomePath: systemHomePath
           }
         )
       } catch (error) {
-        // Why: this launch path pins CODEX_HOME to the account that OWNS the
-        // rollout and deliberately refuses to repin onto whichever account is
-        // selected now (#10793), so it does not wire
-        // getSelectedHostAccountCodexHomePath and this branch cannot fire today.
-        // It stays as a contract guard: the blanket catch below must never
-        // silently swallow a typed refusal if that ever changes.
+        // A credential-read refusal must never fall back to the old account.
         if (error instanceof ManagedCodexHomeTemporarilyUnavailableError) {
           throw error
         }
@@ -92,30 +103,17 @@ async function prepareCodexSessionResumeForLaunch(
           error
         )
       }
-      const resumeHome = migrated.useRealCodexHome ? systemHomePath : sessionSource.homePath
-      const isSystemHome =
-        normalizeRuntimePathForComparison(resumeHome) ===
-        normalizeRuntimePathForComparison(systemHomePath)
-      const hooksEnabled = isAgentStatusHooksEnabledForAgent(deps.getSettings(), 'codex')
-      try {
-        if (isSystemHome) {
-          await ensureRealHomeCodexHookState({
-            hooksEnabled,
-            userDataPath: getAppEnvironment().getPath('userData')
+      const resumeHome = args.useSelectedAccount
+        ? await prepareCodexAccountRestartResume({
+            sourceHome: sessionSource.homePath,
+            transcriptPath: sessionSource.transcriptPath,
+            targetHome: selectedAccountCodexHome ?? systemHomePath,
+            systemCodexHomePath: systemHomePath
           })
-        } else if (hooksEnabled) {
-          await codexHookService.installForLaunchPrep(resumeHome)
-        } else {
-          await codexHookService.refreshRuntimeUserHooksForLaunchPrep(resumeHome)
-        }
-      } catch (error) {
-        // Why: hook repair is best-effort; session provenance must still win over the currently selected home.
-        console.warn('[codex-hook-service] failed to prepare automatic resume home:', error)
-      }
-      if (!isSystemHome) {
-        // Why: this pins the resumed pane's CODEX_HOME, and hook repair above can skip or fail before its config mirror applies the daemon guard.
-        ensureCodexDaemonSocketGuard(resumeHome)
-      }
+        : migrated.useRealCodexHome
+          ? systemHomePath
+          : sessionSource.homePath
+      await preparePinnedLaunchHome(resumeHome, systemHomePath)
       return resumeHome
     }
   })
@@ -127,4 +125,34 @@ async function prepareCodexSessionResumeForLaunch(
           normalizeRuntimePathForComparison(getOrcaManagedCodexHomePath())
       }
     : preparation
+}
+
+/** Hook repair and the daemon-socket guard for a pane that pins `home` as its CODEX_HOME rather
+ *  than launching in the selected account's home, which the pane spawn prepares itself. */
+export function createCodexPinnedLaunchHomePreparation(
+  deps: Pick<CodexLaunchPreparationDeps, 'getSettings'>
+): CodexPinnedLaunchHomePreparation {
+  return async (home, systemHomePath = getSystemCodexHomePath()) => {
+    const isSystemHome =
+      normalizeRuntimePathForComparison(home) === normalizeRuntimePathForComparison(systemHomePath)
+    const isHooksEnabled = (): boolean =>
+      isAgentStatusHooksEnabledForAgent(deps.getSettings(), 'codex')
+    try {
+      if (isSystemHome) {
+        // Why bounded: the resume waits only briefly for a reconcile; it runs on ~/.codex whatever the selection.
+        await reconcileCodexHooksForLaunch()
+      } else if (isHooksEnabled()) {
+        await codexHookService.installForLaunchPrep(home, true, isHooksEnabled)
+      } else {
+        await codexHookService.refreshRuntimeUserHooksForLaunchPrep(home)
+      }
+    } catch (error) {
+      // Why: hook repair is best-effort; it must not stop the pane from launching in this home.
+      console.warn('[codex-hook-service] failed to prepare automatic resume home:', error)
+    }
+    if (!isSystemHome) {
+      // Why: this pins the pane's CODEX_HOME, and hook repair above can skip or fail before its config mirror applies the daemon guard.
+      ensureCodexDaemonSocketGuard(home)
+    }
+  }
 }

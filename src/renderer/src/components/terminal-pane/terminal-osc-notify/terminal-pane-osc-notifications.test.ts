@@ -5,18 +5,29 @@ import { AGENT_TASK_COMPLETE_NOTIFICATION_GRACE_MS } from '../agent-task-complet
 import { getTerminalPaneProgress } from './terminal-progress-store'
 
 type MockAppStoreState = {
+  activeView: string
   activeWorktreeId: string | null
   activeTabId: string | null
+  floatingWorkspacePanelOpen: boolean
   terminalLayoutsByTabId: Record<string, { activeLeafId: string }>
   settings: { experimentalTerminalAttention: boolean }
+  getActiveTab: (worktreeId: string) => { contentType: 'terminal'; entityId: string } | null
 }
 
 const storeState = vi.hoisted((): { current: MockAppStoreState } => ({
   current: {
+    activeView: 'terminal',
     activeWorktreeId: 'wt-other',
     activeTabId: null,
+    floatingWorkspacePanelOpen: false,
     terminalLayoutsByTabId: {},
-    settings: { experimentalTerminalAttention: false }
+    settings: { experimentalTerminalAttention: false },
+    getActiveTab: (worktreeId) => {
+      const { activeWorktreeId, activeTabId } = storeState.current
+      return worktreeId === activeWorktreeId && activeTabId
+        ? { contentType: 'terminal', entityId: activeTabId }
+        : null
+    }
   }
 }))
 

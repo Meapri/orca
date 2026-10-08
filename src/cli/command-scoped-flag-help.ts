@@ -1,8 +1,17 @@
-/** Per-command flag help, kept out of the shared help chain it would crowd. */
+// Why: the shared --focus line describes terminal create's terminal session.
+const FILE_OPEN_FOCUS_HELP =
+  "--focus                Bring the user to the file (switches Orca's window to its worktree)"
+
 const SERVE_DATA_ROOT_HELP =
   '--data-root <path>     Runtime data root (default: $ORCA_USER_DATA, else the running orcad or desktop runtime)'
 
+/** Per-command flag help, kept out of the shared help chain it would crowd. */
 const COMMAND_SCOPED_FLAG_HELP: Record<string, Record<string, string>> = {
+  'worktree create': {
+    pr: '--pr <number>          Linked GitHub pull request number',
+    'gitlab-issue': '--gitlab-issue <number|url> Linked GitLab issue in the source project',
+    'gitlab-mr': '--gitlab-mr <number|url> Linked GitLab merge request in the source project'
+  },
   'serve status': {
     fresh: '--fresh                Re-run the terminal-daemon self-test before answering',
     'data-root': SERVE_DATA_ROOT_HELP
@@ -33,8 +42,32 @@ const COMMAND_SCOPED_FLAG_HELP: Record<string, Record<string, string>> = {
     reference: '--reference <name>     Print one bundled reference by name',
     references: '--references           List the bundled reference names for a topic'
   },
+  'environment update': {
+    force: '--force                Restart over running terminals instead of deferring the update'
+  },
+  'environment recover': {
+    'accept-changed-state':
+      '--accept-changed-state Restore the prelaunch snapshot over state a rejected build changed',
+    yes: '--yes                  Confirm discarding what the rejected build changed'
+  },
+  'environment stop': {
+    yes: '--yes                  Confirm stopping the server and unlinking it from this machine'
+  },
+  'file open': {
+    focus: FILE_OPEN_FOCUS_HELP
+  },
+  'file diff': {
+    focus: FILE_OPEN_FOCUS_HELP
+  },
+  'file open-changed': {
+    focus: FILE_OPEN_FOCUS_HELP
+  },
   'skills install': {
     agent: '--agent <names>        Comma-separated install targets; default is detected agents'
+  },
+  'worktree set': {
+    unread: '--unread               Mark the workspace unread in the sidebar',
+    read: '--read                 Mark the workspace read, clearing the unread dot'
   },
   search: {
     query: '--query <text>         Search text; also accepted as the positional argument',

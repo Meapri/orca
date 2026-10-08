@@ -19,7 +19,19 @@ import {
 } from '../../ssh/remote-install-model'
 import { ORCAD_PID_FILENAME } from '../../ssh/orcad-remote-host-support'
 import { ORCAD_INSTALL_COMPLETE_FILENAME } from '../../../shared/orcad-artifacts'
-import { probeProcess, type DaemonIsolation, type HostTerminalCensus } from './host-install-census'
+import type { OrcadDaemonProtocolFacts } from '../../ssh/orcad-daemon-protocol-crossing'
+import {
+  daemonProtocolForCensus,
+  probeProcess,
+  type DaemonIsolation,
+  type HostTerminalCensus
+} from './host-install-census'
+
+// Why protocol 0: no build speaks it, so live terminals read as stranded and rollback refuses.
+const UNKNOWN_DAEMON_PROTOCOL: OrcadDaemonProtocolFacts = {
+  protocolVersion: 0,
+  previousProtocolVersions: []
+}
 import { snapshotPresent, stateWrittenSince } from './host-install-state'
 
 /** The symlink the service unit starts through; outside the version-dir namespace, so no GC owns it. */
@@ -31,6 +43,8 @@ export function planHostRollback(input: {
   record: OrcadActivationRecord
   isolation: DaemonIsolation
   census: HostTerminalCensus
+  /** From the target's own bundle (`daemon-protocol`); null plans as unattachable. */
+  targetDaemonProtocol: OrcadDaemonProtocolFacts | null
 }): OrcadRollbackSafety {
   // Without per-terminal start times, every live terminal is counted as post-activation.
   const startedSinceActivation =
@@ -38,7 +52,12 @@ export function planHostRollback(input: {
   return assessOrcadRollback({
     record: input.record,
     snapshotPresent: snapshotPresent(input.base, input.record.snapshot),
-    census: { liveSessions: startedSinceActivation, startedSinceActivation },
+    census: {
+      liveSessions: startedSinceActivation,
+      startedSinceActivation,
+      daemonProtocolVersion: daemonProtocolForCensus(input.isolation)
+    },
+    targetDaemonProtocol: input.targetDaemonProtocol ?? UNKNOWN_DAEMON_PROTOCOL,
     stateWritesSinceActivation: stateWrittenSince(input.dataRoot, input.record.activatedAt)
   })
 }

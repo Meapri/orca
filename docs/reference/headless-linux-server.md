@@ -5,7 +5,7 @@ Ubuntu VPS or a remote build box, and connect to it from other devices.
 
 There are two ways to do it:
 
-- **orcad (recommended).** The Orca runtime served from a bundled Bun runtime. No
+- **orcad (recommended).** The Orca runtime served from a pinned Node runtime. No
   Electron, no Xvfb, no GTK or X11 libraries. It is packaged as a versioned install
   directory with an on-host installer, systemd units and a container image, and the
   service contract it follows is [Running orcad](./orcad-operations.md).
@@ -32,12 +32,12 @@ Nothing else: the release carries its own runtime, file watcher and ripgrep.
 
 A release is three files per target plus the installer:
 
-| File                                          | What it is                                                       |
-| --------------------------------------------- | ---------------------------------------------------------------- |
-| `orcad-<version>-<target>.tar.gz`             | one `orcad-<version>/` install directory (the SSH deploy's own)  |
-| `orcad-<version>-<target>.tar.gz.sha256`      | its checksum, `sha256sum -c` format                              |
-| `orcad-<version>-<target>.json`               | version, target and both checksums                               |
-| `orcad-install.sh`, `orcad-install.sh.sha256` | the installer, also shipped inside every tarball under `deploy/` |
+| File                                          | What it is                                                                                                                                         |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `orcad-<version>-<target>.tar.gz`             | `orcad-<version>/` (the SSH deploy's slot plus the release-only `orca` CLI and browser client) and the pinned Node under `runtimes/node-<sha256>/` |
+| `orcad-<version>-<target>.tar.gz.sha256`      | its checksum, `sha256sum -c` format                                                                                                                |
+| `orcad-<version>-<target>.json`               | version, target and both checksums                                                                                                                 |
+| `orcad-install.sh`, `orcad-install.sh.sha256` | the installer, also shipped inside every tarball under `deploy/`                                                                                   |
 
 `<version>` is content-hashed (`0.1.0+5f23baf0c093`), so two different builds never
 share a name. `<target>` is `linux-x64-glibc`, `linux-arm64-glibc`, `linux-x64-musl` or
@@ -114,6 +114,7 @@ same one the desktop's SSH deploy uses:
 ~/.orca-remote/orcad-current           symlink the unit starts through
 ~/.orca-remote/orcad-active.json       activation record: active, previous, snapshot
 ~/.orca-remote/orcad-state-snapshots/  pre-activation copies of the data root
+~/.orca-remote/runtimes/node-<sha256>/ the pinned Node a version names in its .runtime-node
 ~/.orca/                               the data root (ORCA_USER_DATA)
 ```
 
@@ -159,7 +160,9 @@ WantedBy=default.target
 Why each setting is what it is:
 
 - **`ExecStart` runs `orcad-install.sh run`**, which resolves `orcad-current` to its real
-  versioned directory and `exec`s the bundled runtime. The unit's main PID is orcad itself,
+  versioned directory and `exec`s the pinned Node it references, with `--require-port` (a taken
+  port exits 78 instead of moving) and `--pairing-expires 15m` (`ORCAD_PAIRING_EXPIRES`).
+  The unit's main PID is orcad itself,
   and the daemon records the version directory it was forked from, which pruning keeps.
 - **`RestartPreventExitStatus=78`.** 78 is orcad's configuration-fault exit (bind address,
   data root, instance lock). Restarting cannot fix it.
@@ -217,8 +220,9 @@ launch.
 
 Either way the browser client is served on the same port: open
 `jq -r .pairing.webClientUrl "$XDG_RUNTIME_DIR/orcad/readiness.json"` (through the forward, on
-the same local port). To pair a phone, add `--mobile-pairing` to `ORCAD_EXTRA_ARGS` with a
-tailnet `--pairing-address`, or run `orca serve pairing --mobile` on the host for its QR (see
+the same local port). To pair a phone, run `orca serve pairing --mobile` on the host for its QR
+with a tailnet `--pairing-address` set, or add `--mobile-pairing` to `ORCAD_EXTRA_ARGS` to make
+the readiness offer itself the phone offer, as on `orca serve` (see
 [Browser client](./orcad-operations.md#browser-client)).
 
 ### Terminal survival

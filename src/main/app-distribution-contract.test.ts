@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import distributionJson from '../shared/app-distribution.json'
 import { APP_DISTRIBUTION, APP_DISTRIBUTION_RELEASE_REPO } from '../shared/app-distribution'
-import { RUNTIME_DEFAULT_WS_PORT } from '../shared/runtime-default-ws-port'
+import { DEFAULT_WS_PORT } from './runtime/runtime-rpc/runtime-rpc-pairing-types'
 
 describe('app distribution identity', () => {
   it('keeps the TS mirror identical to the JSON electron-builder reads', () => {
@@ -16,9 +16,7 @@ describe('app distribution identity', () => {
     expect(APP_DISTRIBUTION.urlScheme).not.toBe('orca')
     expect(['orca', 'orca-dev', 'orca-ide']).not.toContain(APP_DISTRIBUTION.cliCommandName)
     expect(APP_DISTRIBUTION.homeStateDirName).not.toBe('.orca')
-    expect([RUNTIME_DEFAULT_WS_PORT, 6769]).not.toContain(
-      APP_DISTRIBUTION.desktopRuntimeWebSocketPort
-    )
+    expect([DEFAULT_WS_PORT, 6769]).not.toContain(APP_DISTRIBUTION.desktopRuntimeWebSocketPort)
     expect(APP_DISTRIBUTION_RELEASE_REPO).not.toBe('stablyai/orca')
   })
 

@@ -1,4 +1,4 @@
-import { OrcaRuntimeWithResolveWaiter } from './orca-runtime-resolve-waiter'
+import { OrcaRuntimeWithMigrationCatalog } from './orca-runtime-migration-catalog'
 import type {
   SleepingAgentLaunchConfig,
   SleepingAgentSessionRecord
@@ -15,7 +15,7 @@ export type SleepingAgentPaneLiveness = {
 }
 
 /** Host reads a renderer-less sleeping-agent capture and cold restore need (headless-agent-resume-host.ts). */
-export class OrcaRuntimeWithSleepingAgentResumeProbes extends OrcaRuntimeWithResolveWaiter {
+export class OrcaRuntimeWithSleepingAgentResumeProbes extends OrcaRuntimeWithMigrationCatalog {
   /** Resume records in this host's own partition, where the renderer would have written them. */
   listLocalSleepingAgentSessions(): SleepingAgentSessionRecord[] {
     const session = this.store?.getWorkspaceSession?.(LOCAL_EXECUTION_HOST_ID)

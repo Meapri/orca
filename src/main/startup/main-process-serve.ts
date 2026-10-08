@@ -1,9 +1,9 @@
-import { existsSync, statSync } from 'node:fs'
-import { isAbsolute, join } from 'node:path'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { app } from 'electron'
 import { resolveAdvertisedPairingEndpoint } from '../runtime/pairing-endpoint'
 import { notifyServeSupervisorReady } from '../serve-update-handoff'
-import { renderTerminalPairingQr } from '../../shared/terminal-pairing-qr'
+import { assertServeProjectRoot, renderServePairingQr } from '../server/serve-pairing-output'
 import { mainProcessState as state } from './main-process-state'
 import { getServeOptions, type ServeOptions } from './serve-options'
 
@@ -29,12 +29,7 @@ export async function printServeReady(options: ServeOptions): Promise<void> {
     if (!options.projectRoot) {
       throw new Error('--serve-recipe-json requires --serve-project-root')
     }
-    if (!isAbsolute(options.projectRoot)) {
-      throw new Error(`--serve-project-root must be absolute: ${options.projectRoot}`)
-    }
-    if (!statSync(options.projectRoot).isDirectory()) {
-      throw new Error(`--serve-project-root must be a directory: ${options.projectRoot}`)
-    }
+    assertServeProjectRoot(options.projectRoot)
   }
   const boundEndpoint = runtimeRpc.getWebSocketEndpoint()
   const advertised = boundEndpoint
@@ -53,7 +48,7 @@ export async function printServeReady(options: ServeOptions): Promise<void> {
       })
   const pairingQr =
     pairing.available && options.mobilePairing
-      ? await renderTerminalPairingQr(pairing.pairingUrl)
+      ? await renderServePairingQr(pairing.pairingUrl)
       : null
   await state.serveReadinessPublisher.publish(
     {

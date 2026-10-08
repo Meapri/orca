@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "upstream": {
+    "repository": "stablyai/orca",
+    "branch": "main"
+  },
+  "topics": [
+    {
+      "name": "terminal",
+      "ref": "stack/terminal",
+      "base": "7c50009ca4946cf7384495f542d0b5856308b70c"
+    },
+    {
+      "name": "sync-automation",
+      "ref": "stack/sync-automation",
+      "base": "7c50009ca4946cf7384495f542d0b5856308b70c"
+    },
+    {
+      "name": "runtime-remote",
+      "ref": "stack/runtime-remote",
+      "base": "7c50009ca4946cf7384495f542d0b5856308b70c"
+    },
+    {
+      "name": "accounts",
+      "ref": "stack/accounts",
+      "base": "7c50009ca4946cf7384495f542d0b5856308b70c"
+    },
+    {
+      "name": "orcad-runtime",
+      "ref": "stack/orcad-runtime",
+      "base": "7c50009ca4946cf7384495f542d0b5856308b70c"
+    },
+    {
+      "name": "distribution",
+      "ref": "stack/distribution",
+      "base": "7c50009ca4946cf7384495f542d0b5856308b70c"
+    },
+    {
+      "name": "integration-fixups",
+      "ref": "stack/integration-fixups",
+      "base": "def9793735a666480e93eac79cc233656e124670",
+      "onto": "integration"
+    }
+  ]
+}

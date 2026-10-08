@@ -44,7 +44,14 @@ export class OrcaRuntimeWithFileCommands extends OrcaRuntimeWithPreservedBranchC
         absolutePath
       }),
     resolveRuntimeGitTarget: (selector) => this.resolveRuntimeGitTarget(selector),
-    openFile: (worktreeId, filePath, relativePath, runtimeEnvironmentId, hostEditorTab) => {
+    openFile: (
+      worktreeId,
+      filePath,
+      relativePath,
+      runtimeEnvironmentId,
+      navigation,
+      hostEditorTab
+    ) => {
       if (!this.notifier?.openFile) {
         // Why: a renderer stays the tab owner; only a renderer-less host opens its own tab.
         if (hostEditorTab && this.hostEditorTabs.ownsEditorTabs()) {
@@ -52,9 +59,17 @@ export class OrcaRuntimeWithFileCommands extends OrcaRuntimeWithPreservedBranchC
         }
         throw new Error('renderer_unavailable')
       }
-      this.notifier.openFile(worktreeId, filePath, relativePath, runtimeEnvironmentId)
+      this.notifier.openFile(worktreeId, filePath, relativePath, runtimeEnvironmentId, navigation)
     },
-    openDiff: (worktreeId, filePath, relativePath, staged, runtimeEnvironmentId, hostEditorTab) => {
+    openDiff: (
+      worktreeId,
+      filePath,
+      relativePath,
+      staged,
+      runtimeEnvironmentId,
+      navigation,
+      hostEditorTab
+    ) => {
       if (!this.notifier?.openDiff) {
         if (hostEditorTab && this.hostEditorTabs.ownsEditorTabs()) {
           return this.hostEditorTabs.open({
@@ -67,7 +82,14 @@ export class OrcaRuntimeWithFileCommands extends OrcaRuntimeWithPreservedBranchC
         }
         throw new Error('renderer_unavailable')
       }
-      this.notifier.openDiff(worktreeId, filePath, relativePath, staged, runtimeEnvironmentId)
+      this.notifier.openDiff(
+        worktreeId,
+        filePath,
+        relativePath,
+        staged,
+        runtimeEnvironmentId,
+        navigation
+      )
     }
   })
 

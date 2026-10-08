@@ -5,6 +5,7 @@
 import { randomBytes, randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import type { DeviceScope } from '../../shared/runtime-types'
+import { removeStaleDurableWriteTempFiles } from '../durable-file-write'
 import { DEVICE_REGISTRY_FILENAME } from './mobile-pairing-files'
 import type { RelayDeviceBinding } from './relay/relay-revoke-outbox'
 import type { MobilePairingConnectionMode } from '../../shared/mobile-pairing-connection-mode'
@@ -43,6 +44,7 @@ export type DeviceRegistryOptions = {
 // Why: a lastSeen refresh is pure bookkeeping, so coalesce reconnect bursts into one write instead of
 // paying a secure-file rewrite (two synchronous PowerShell ACL spawns on Windows) per connection.
 const LAST_SEEN_FLUSH_DELAY_MS = 250
+const STALE_WRITE_TEMP_AGE_MS = 24 * 60 * 60 * 1000
 
 export class DeviceRegistry {
   private readonly file: DeviceRegistryFile
@@ -52,9 +54,12 @@ export class DeviceRegistry {
   private readonly now: () => number
 
   constructor(userDataPath: string, options: DeviceRegistryOptions = {}) {
-    this.file = new DeviceRegistryFile(join(userDataPath, DEVICE_REGISTRY_FILENAME))
+    const registryPath = join(userDataPath, DEVICE_REGISTRY_FILENAME)
+    this.file = new DeviceRegistryFile(registryPath)
     this.securityEvents = options.securityEvents ?? null
     this.now = options.now ?? Date.now
+    // Why: a write killed between writeFile and rename (e.g. a hung icacls, #20497) orphans its temp forever.
+    void removeStaleDurableWriteTempFiles(registryPath, { minimumAgeMs: STALE_WRITE_TEMP_AGE_MS })
     this.devices = this.file.read()
   }
 

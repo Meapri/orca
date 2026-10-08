@@ -10,13 +10,18 @@ import {
   planHostActivation
 } from './host-install-activation'
 import type { DaemonIsolation, HostTerminalCensus } from './host-install-census'
+import { PROTOCOL_VERSION } from '../../daemon/daemon-protocol-version'
 
-function isolation(state: DaemonIsolation['state']): DaemonIsolation {
+function isolation(
+  state: DaemonIsolation['state'],
+  protocolVersion: number = PROTOCOL_VERSION
+): DaemonIsolation {
   return {
     state,
     pids: state === 'no-daemon' ? [] : [42],
     cgroupUnits: [],
     versions: [],
+    protocolVersions: state === 'no-daemon' ? [] : [protocolVersion],
     reason: state
   }
 }
@@ -73,6 +78,15 @@ describe('planHostActivation', () => {
     expect(plan({ census: LIVE, force: true }).action).toBe('proceed')
     expect(plan({ census: UNKNOWN })).toMatchObject({
       code: 'orcad_update_terminal_census_unavailable'
+    })
+  })
+
+  it('refuses, even forced, to strand live terminals on a daemon protocol the candidate cannot attach', () => {
+    expect(
+      plan({ isolation: isolation('isolated', 9_999), census: LIVE, force: true })
+    ).toMatchObject({
+      action: 'refuse',
+      code: 'orcad_update_strands_live_terminals'
     })
   })
 

@@ -31,7 +31,7 @@ export function createInitialManagedPane(
     focusPanePreservingOverlays(pane)
   }
 
-  host.publishPaneCreated(pane)
+  host.publishPaneCreated(pane, { placement: { kind: 'new-tab' } })
   return toPublicPane(pane)
 }
 

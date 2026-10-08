@@ -57,10 +57,9 @@ describe('orcad startup pairing', () => {
       pairingAddresses: ['127.0.0.1', '100.64.0.5']
     })
     const port = new URL(rpc.getWebSocketEndpoint() ?? '').port
-    const { pairing: offer, mobilePairing } = await pairing.readinessPairing()
-    const runtime = available(offer)
+    const runtime = available(await pairing.readinessPairing())
 
-    expect(mobilePairing).toBeUndefined()
+    expect(runtime.scope).toBe('runtime')
     expect(runtime.webClientUrl).toMatch(
       new RegExp(`^http://127\\.0\\.0\\.1:${port}/web-index\\.html#pairing=`)
     )
@@ -80,19 +79,15 @@ describe('orcad startup pairing', () => {
     expect(await page.text()).toContain('<title>Orca</title>')
   })
 
-  it('prints a phone offer beside the runtime one and reprints the same credential', async () => {
+  it('makes the readiness offer the phone offer with --mobile-pairing, like orca serve', async () => {
     const { pairing } = await startServer({
       pairingAddress: '100.64.0.5',
       pairingAddresses: ['100.64.0.5'],
       mobilePairing: true
     })
-    const { pairing: offer, mobilePairing } = await pairing.readinessPairing()
-    const runtime = available(offer)
-    const mobile = available(mobilePairing)
+    const mobile = available(await pairing.readinessPairing())
 
-    expect(runtime.scope).toBe('runtime')
     expect(mobile.scope).toBe('mobile')
-    expect(mobile.deviceId).not.toBe(runtime.deviceId)
     expect(mobile.webClientUrl).toBeNull()
     expect(mobile.qr).toEqual(expect.any(String))
     expect(decodePairingOffer(mobile.url).scope).toBe('mobile')
@@ -101,16 +96,22 @@ describe('orcad startup pairing', () => {
     expect(reprint.deviceId).toBe(mobile.deviceId)
     const rotated = available(await pairing.offer({ rotate: true, scope: 'mobile' }))
     expect(rotated.deviceId).not.toBe(mobile.deviceId)
-    const runtimeReprint = available(await pairing.offer({ rotate: false, scope: 'runtime' }))
-    expect(runtimeReprint.deviceId).toBe(runtime.deviceId)
+    const runtime = available(await pairing.offer({ rotate: false, scope: 'runtime' }))
+    expect(runtime.scope).toBe('runtime')
+    expect(runtime.deviceId).not.toBe(mobile.deviceId)
   })
 
-  it('reports a phone offer unavailable when only loopback is advertised', async () => {
-    const { pairing } = await startServer({ mobilePairing: true })
-    const { pairing: offer, mobilePairing } = await pairing.readinessPairing()
+  it('keeps the startup offer valid until claimed unless --pairing-expires is given', async () => {
+    const lasting = await startServer({})
+    expect(available(await lasting.pairing.readinessPairing()).expiresAt).toBeNull()
+    const expiring = await startServer({ pairingExpiresInMs: 60_000 })
+    const offer = available(await expiring.pairing.readinessPairing())
+    expect(offer.expiresAt).toEqual(expect.any(Number))
+  })
 
-    expect(offer.available).toBe(true)
-    expect(mobilePairing).toMatchObject({
+  it('refuses a CLI phone offer when only loopback is advertised', async () => {
+    const { pairing } = await startServer({})
+    expect(await pairing.offer({ rotate: false, scope: 'mobile' })).toMatchObject({
       available: false,
       reason: 'invalid_advertised_endpoint',
       guidance: expect.stringContaining('--pairing-address')

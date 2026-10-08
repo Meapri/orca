@@ -14,11 +14,9 @@ import { reserveNotificationCooldown } from '../../shared/notification-burst-coo
 import type { NotificationSettings } from '../../shared/notification-settings-types'
 import type { EnrichedAgentHookEventPayload } from '../agent-hooks/server/server-types'
 import type { MobileNotificationDispatchEvent } from '../runtime/runtime-mobile-notification-controller'
-import {
-  buildNotificationText,
-  untranslatedNotificationText,
-  type NotificationTextTranslator
-} from './agent-notification-text'
+import { buildNotificationOptions } from '../ipc/notification-options'
+
+type NotificationTextTranslator = (key: string, fallback: string) => string
 
 // Matches the renderer coordinator: a `done` followed by more work within this window is a milestone, not a finish.
 export const HEADLESS_AGENT_DONE_QUIET_MS = 1_500
@@ -76,7 +74,7 @@ export function installHeadlessAgentNotifications(deps: HeadlessAgentNotificatio
   const pendingBells = new Map<string, { cancel(): void }>()
   const now = deps.now ?? Date.now
   const schedule = deps.schedule ?? defaultSchedule
-  const translate = deps.translate ?? untranslatedNotificationText
+  const translate: NotificationTextTranslator = deps.translate ?? ((_key, fallback) => fallback)
 
   const paneState = (paneKey: string): PaneState => {
     let state = panes.get(paneKey)
@@ -127,7 +125,7 @@ export function installHeadlessAgentNotifications(deps: HeadlessAgentNotificatio
     lastAgentDispatchAtByWorktree.set(worktreeId ?? 'global', emittedAt)
     const payload = event.payload
     const agentTurnOutcome = agentMainAgentVerdict(payload)
-    const text = buildNotificationText(
+    const text = buildNotificationOptions(
       {
         source: 'agent-task-complete',
         worktreeId,
@@ -165,6 +163,10 @@ export function installHeadlessAgentNotifications(deps: HeadlessAgentNotificatio
     // Only live observations announce anything: replays, restored rows and resume-identity
     // refreshes describe work a previous process already saw.
     if (event.isReplay || event.restoredUnconfirmed || event.providerSessionOnly) {
+      return
+    }
+    // Structured chats push from structured-agent-session-mobile-attention.ts; a second producer would double them.
+    if (event.structuredHost) {
       return
     }
     const state = paneState(event.paneKey)
@@ -239,7 +241,7 @@ export function installHeadlessAgentNotifications(deps: HeadlessAgentNotificatio
     if (!reserveNotificationCooldown(recentMobileNotifications, cooldownKey, emittedAt)) {
       return
     }
-    const text = buildNotificationText(
+    const text = buildNotificationOptions(
       {
         source: 'terminal-bell',
         worktreeId,

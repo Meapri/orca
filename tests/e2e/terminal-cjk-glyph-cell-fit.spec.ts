@@ -376,6 +376,15 @@ test.describe('terminal CJK glyph cell fit', () => {
       }
       // customGlyphs (on by default in the WebGL addon) draws box bars edge to edge.
       expect(webgl.boxGapRows).toBe(0)
+      // The chain names CJK faces between the Latin/symbol fonts and the generic keyword.
+      const families = webgl.fontFamily.split(',').map((family) => family.trim())
+      const firstCjk = families.findIndex((family) =>
+        /PingFang|Hiragino|Apple SD Gothic Neo|Malgun Gothic|Microsoft YaHei|Yu Gothic|Noto Sans (Mono )?CJK/.test(
+          family
+        )
+      )
+      expect(firstCjk, webgl.fontFamily).toBeGreaterThan(families.indexOf('"Hack Nerd Font"'))
+      expect(families.at(-1)).toBe('monospace')
 
       const dom = await probeDom(orcaPage, tabId, lineHeight)
       if (screenshotDir) {
@@ -467,11 +476,10 @@ test.describe('terminal CJK glyph cell fit', () => {
           })
           continue
         }
-        // The advance is centered, so a syllable drawn off-center in its own advance (세) keeps
-        // that design offset; the probe glyphs are balanced.
+        // The advance is centered, so a glyph drawn off-center in its own advance (세, カ) keeps
+        // that design offset; 2 device px bounds it for the system fallback faces.
         const centerError = (glyph.minX + glyph.maxX + 1) / 2 - glyph.span / 2
-        const tolerance = glyph.label.startsWith('sentence') ? 2 : 1
-        expect(Math.abs(centerError), glyph.label).toBeLessThanOrEqual(tolerance)
+        expect(Math.abs(centerError), glyph.label).toBeLessThanOrEqual(2)
       }
       expect(stats(after.glyphs).inkWidthRatio).toBeGreaterThan(stats(before.glyphs).inkWidthRatio)
       expect(stats(after.glyphs).gapPx).toBeLessThan(stats(before.glyphs).gapPx)

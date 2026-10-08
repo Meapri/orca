@@ -11,7 +11,7 @@ import {
 import { TEST_WORKTREE_ID, store } from '../orca-runtime-test-fixtures.spec'
 import { FILE_METHODS } from '../rpc/methods/files'
 import { SESSION_TAB_METHODS } from '../rpc/methods/session-tabs'
-import { SESSION_TABS_HOST_EDITOR_TABS_RUNTIME_CAPABILITY } from '../../../shared/protocol-version'
+import { SESSION_TABS_HOST_EDITOR_TABS_RUNTIME_CAPABILITY } from '../../../shared/host-owned-surface-capabilities'
 import { hashMarkdownContent } from '../../../shared/mobile-markdown-document'
 
 type Runtime = InstanceType<typeof OrcaRuntimeService>
@@ -268,6 +268,7 @@ describe('host-owned editor tabs on a renderer-less host', () => {
       TEST_WORKTREE_ID,
       join(dir, 'notes.md'),
       'notes.md',
+      undefined,
       undefined
     )
     expect(runtime['hostEditorTabs'].hasTabs()).toBe(false)

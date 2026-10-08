@@ -146,6 +146,7 @@ export function createPaneDOM(
     compositionHandler: null,
     appCaretAdoptionCleanup: null,
     focusClassSyncCleanup: null,
+    domBlockFillCleanup: null,
     terminalScrollIntentDisposable: null,
     terminalSmoothScrollDisposable: null,
     mouseEncodingTrackerDisposable,

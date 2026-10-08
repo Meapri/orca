@@ -61,15 +61,21 @@ export function TerminalComposer({
     })
   }
 
+  const isSendChord = (event: React.KeyboardEvent<HTMLTextAreaElement>): boolean =>
+    event.key === 'Enter' && (isMac ? event.metaKey : event.ctrlKey) && !event.altKey
+
+  // Why capture: the shared Textarea swallows IME-owned keydowns before onKeyDown runs.
+  const onKeyDownCapture = (event: React.KeyboardEvent<HTMLTextAreaElement>): void => {
+    if (isSendChord(event) && isImeOwnedKeyboardEvent(event)) {
+      event.preventDefault()
+      sendAfterCompositionRef.current = true
+    }
+  }
+
   const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>): void => {
-    const primaryModifier = isMac ? event.metaKey : event.ctrlKey
-    if (event.key === 'Enter' && primaryModifier && !event.altKey) {
+    if (isSendChord(event)) {
       event.preventDefault()
       event.stopPropagation()
-      if (isImeOwnedKeyboardEvent(event)) {
-        sendAfterCompositionRef.current = true
-        return
-      }
       send()
       return
     }
@@ -111,6 +117,7 @@ export function TerminalComposer({
         )}
         className="max-h-60 resize-none"
         onChange={(event) => updateText(event.target.value)}
+        onKeyDownCapture={onKeyDownCapture}
         onKeyDown={onKeyDown}
         onCompositionEnd={onCompositionEnd}
       />

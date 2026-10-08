@@ -293,6 +293,9 @@ opcode and no host-published content. Each piece is safe for a stated reason:
   `web-runtime-connection-endpoint-failover.test.ts` and `rpc-client-endpoint-failover.test.ts`).
   The phone persists alternates in its own host store; an older app build rewriting that record
   drops the optional key, which only loses failover, never the pairing (the field is salvaged).
+- **The desktop persists failover only for plain environments.** An SSH-tunnelled, SSH-access or
+  Orca-managed environment keeps its `preferredEndpointId`, because SSH access and managed
+  deployments bind that field to their tunnel; rotating it would leave their links stale.
 - **The web resume probe** is an ordinary `status.get` with a shorter deadline, the same request
   the idle heartbeat already sends, so every host answers it.
 

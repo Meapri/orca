@@ -169,6 +169,14 @@ describe('installHeadlessAgentNotifications', () => {
     expect(harness.dispatched).toHaveLength(0)
   })
 
+  it('leaves structured chats to their own host attention producer', () => {
+    harness.emit(status('working', { structuredHost: 'owned' }))
+    harness.emit(status('done', { structuredHost: 'owned', stateStartedAt: 200 }))
+    harness.emit(status('waiting', { structuredHost: 'held', stateStartedAt: 300 }))
+    harness.advance(HEADLESS_AGENT_DONE_QUIET_MS)
+    expect(harness.dispatched).toHaveLength(0)
+  })
+
   it('announces needs-input once per prompt and again after new work', () => {
     harness.emit(status('working'))
     harness.emit(status('waiting', { stateStartedAt: 150 }, { toolName: 'Bash' }))

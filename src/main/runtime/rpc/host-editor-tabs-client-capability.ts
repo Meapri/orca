@@ -1,4 +1,4 @@
-import { SESSION_TABS_HOST_EDITOR_TABS_RUNTIME_CAPABILITY } from '../../../shared/protocol-version'
+import { SESSION_TABS_HOST_EDITOR_TABS_RUNTIME_CAPABILITY } from '../../../shared/host-owned-surface-capabilities'
 import type { RpcContext } from './core'
 
 /**

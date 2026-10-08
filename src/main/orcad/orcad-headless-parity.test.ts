@@ -1,8 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { AutomationService } from '../automations/service'
 import { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { getDefaultWorkspaceSession } from '../../shared/constants'
-import { HEADLESS_RUNTIME_WINDOW_ID } from '../../shared/runtime-types'
 import type { EnrichedAgentHookEventPayload } from '../agent-hooks/server/server-types'
 import type * as ManagedAgentHookControls from '../agent-hooks/managed-agent-hook-controls'
 
@@ -77,54 +75,22 @@ function makeAgentHookServer() {
   }
 }
 
-function makeAccounts() {
-  return {
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: these suites never run an automation, so no usage lookup reaches the stores.
-    claudeUsage: {} as never,
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: as above.
-    codexUsage: {} as never,
-    stop: vi.fn()
-  }
-}
-
 describe('installOrcadHeadlessParity', () => {
-  it('publishes the headless placeholder graph so session-tab RPCs stop refusing (#17846)', () => {
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: makeStore returns every read the graph publish reaches.
-    const store = makeStore() as never
-    const runtime = new OrcaRuntimeService(store)
-    expect(runtime.getStatus().graphStatus).not.toBe('ready')
-
-    installOrcadHeadlessParity({
-      runtime,
-      store,
-      agentHookServer: makeAgentHookServer(),
-      accounts: makeAccounts()
-    })
-
-    const status = runtime.getStatus()
-    expect(status.graphStatus).toBe('ready')
-    expect(status.authoritativeWindowId).toBe(HEADLESS_RUNTIME_WINDOW_ID)
-  })
-
   it('subscribes the rename, notification and sleeping-agent consumers, and removes them on uninstall', () => {
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: makeStore returns every read the graph publish reaches.
     const store = makeStore() as never
     const server = makeAgentHookServer()
 
     const runtime = new OrcaRuntimeService(store)
-    const setAutomationService = vi.spyOn(runtime, 'setAutomationService')
     const setResumeHost = vi.spyOn(runtime, 'setHeadlessAgentResumeHost')
-    const accounts = makeAccounts()
-    const parity = installOrcadHeadlessParity({ runtime, store, agentHookServer: server, accounts })
+    const parity = installOrcadHeadlessParity({ runtime, store, agentHookServer: server })
     expect(server.statusListeners.size).toBe(3)
     expect(server.dropListeners.size).toBe(1)
-    expect(setAutomationService.mock.calls[0]?.[0]).toBeInstanceOf(AutomationService)
     expect(setResumeHost.mock.calls[0]?.[0]).not.toBeNull()
 
     parity.uninstall()
     expect(server.statusListeners.size).toBe(0)
     expect(server.dropListeners.size).toBe(0)
-    expect(accounts.stop).toHaveBeenCalledOnce()
     // Why: shutdown's own PTY teardown must not reach a resume host.
     expect(setResumeHost.mock.calls.at(-1)?.[0]).toBeNull()
   })
@@ -135,17 +101,12 @@ describe('installOrcadHeadlessParity', () => {
     vi.useFakeTimers()
     try {
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: makeStore returns every read the graph publish reaches.
-      const store = {
-        ...makeStore(),
-        listAutomations: () => [],
-        listAutomationRuns: () => []
-      } as never
+      const store = makeStore() as never
       const runtime = new OrcaRuntimeService(store)
       const parity = installOrcadHeadlessParity({
         runtime,
         store,
-        agentHookServer: makeAgentHookServer(),
-        accounts: makeAccounts()
+        agentHookServer: makeAgentHookServer()
       })
       expect(diskHygiene).toEqual([])
 
@@ -173,15 +134,12 @@ describe('installOrcadHeadlessParity', () => {
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: makeStore returns every read the graph publish reaches.
       const store = {
         ...base,
-        getSettings: () => ({ ...base.getSettings(), agentStatusHooksEnabled: false }),
-        listAutomations: () => [],
-        listAutomationRuns: () => []
+        getSettings: () => ({ ...base.getSettings(), agentStatusHooksEnabled: false })
       } as never
       const parity = installOrcadHeadlessParity({
         runtime: new OrcaRuntimeService(store),
         store,
-        agentHookServer: makeAgentHookServer(),
-        accounts: makeAccounts()
+        agentHookServer: makeAgentHookServer()
       })
       parity.startScheduledWork()
       expect(hookInstalls).toHaveLength(0)

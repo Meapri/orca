@@ -6,6 +6,9 @@
  * absence means "not reported", never "healthy".
  */
 
+import type { ORCAD_STOP_REQUESTS_CAPABILITY } from './orcad-stop-request'
+import type { OrcadIdleStopRecord } from './orcad-idle-exit'
+
 export const ORCAD_SERVER_HEALTH_METHOD = 'server.health'
 export const ORCAD_SERVER_PAIRING_OFFER_METHOD = 'server.pairingOffer'
 
@@ -61,7 +64,7 @@ export type OrcadTerminalDaemonHealth = {
 }
 
 export type OrcadHealthReport = {
-  /** Content hash of the running orcad bundle — the deployed build's identity. */
+  /** Launcher hash understood by older clients; split launchers embed the server digest. */
   buildHash: string
   buildVersion: string
   nodeVersion: string
@@ -77,6 +80,16 @@ export type OrcadHealthReport = {
   degradations?: OrcadDegradation[]
   /** Self-watchdog snapshot; absent in the readiness payload, which precedes the first probe. */
   watchdog?: OrcadWatchdogSnapshot
+  /**
+   * Present when this build consumes stop-request files and answers the managed-stop commands.
+   * Absent on older builds, which a client must keep stopping with SIGTERM.
+   */
+  stopRequests?: typeof ORCAD_STOP_REQUESTS_CAPABILITY
+  /**
+   * Managed launches only: how the previous run ended if it stopped for idleness, else null
+   * (a crash, a signal, or a first start). Absent on user-started and older builds.
+   */
+  previousIdleStop?: OrcadIdleStopRecord | null
 }
 
 export type OrcadDegradationSeverity = 'critical' | 'warning'

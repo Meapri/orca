@@ -22,14 +22,19 @@ import { getInitialClaudeRateLimitTarget } from '../rate-limits/claude-rate-limi
 import { getKimiRuntimeTarget, resolveKimiHome } from '../kimi/kimi-runtime-home'
 import { readMiniMaxSessionCookie } from '../minimax/minimax-cookie-store'
 import { readMiniMaxApiKey } from '../minimax/minimax-api-key-store'
+import { readZcodePlanApiKey } from '../zcode/zcode-plan-api-key-store'
+import {
+  hasOpenCodeGoApiKey,
+  readOpenCodeGoApiKey,
+  saveOpenCodeGoApiKey
+} from '../opencode/opencode-go-api-key-store'
 import { createAccountRuntimeTargetSettingsSync } from '../rate-limits/account-runtime-target-sync'
 import { normalizeCodexRuntimeSelection } from '../codex-accounts/runtime-selection'
 import { normalizeClaudeRuntimeSelection } from '../claude-accounts/runtime-selection'
 import { agentHookServer } from '../agent-hooks/server'
-import { setSystemCodexHomeHookSweepSuppressed } from '../codex/hook-service'
-import { shouldSuppressSystemCodexHomeHookSweep } from '../codex/codex-hook-legacy-cleanup'
-import { isRealHomeCodexHookLaneUsable } from '../codex/codex-real-home-hook-install'
 import { resolveHostCodexSessionSourceHome } from '../codex/codex-session-source-home'
+import { agentModelCatalogStore } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
+import { expireAgentModelCatalogFailuresForSettings } from '../native-chat/agent-model-catalog/agent-model-catalog-account-expiry'
 
 export type AccountServices = {
   rateLimits: RateLimitService
@@ -48,19 +53,6 @@ export function createAccountServices(options: {
   const rateLimits = new RateLimitService()
   const codexRuntimeHome = new CodexRuntimeHomeService(store)
   void startCodexStateDbBackfillRecoveryInBackground(getOrcaManagedCodexHomePath())
-  // Why: an incapable trust-grant host must fall back to the managed home for
-  // every consumer (PTY env, rate limits, commit messages) in one place.
-  codexRuntimeHome.setRealHomeLaneGate(() => isRealHomeCodexHookLaneUsable())
-  // Why: while the real-home lane owns ~/.codex/hooks.json, the legacy
-  // system-home sweep inside managed installs would delete the entry the
-  // real-home installer just appended. Flag OFF, hooks off (all or Codex), or an
-  // incapable trust lane re-arms the sweep so downgrade, opt-out, and rollback converge.
-  setSystemCodexHomeHookSweepSuppressed(() =>
-    shouldSuppressSystemCodexHomeHookSweep({
-      isHostSystemDefaultRealHome: codexRuntimeHome.isHostSystemDefaultRealHome(),
-      settings: store.getSettings()
-    })
-  )
   const codexSessionMigration = createCodexSessionMigrationScheduler({
     isEligible: () => codexRuntimeHome.isHostSystemDefaultSessionMigrationEligible(),
     isQuitting: options.isQuitting,
@@ -91,10 +83,20 @@ export function createAccountServices(options: {
     store.getSettings()
   )
   store.onSettingsChanged((updates, settings) => {
+    expireAgentModelCatalogFailuresForSettings(agentModelCatalogStore, updates)
     // Why: auto is a live policy; retarget only providers whose settings-derived runtime changed.
     void syncAccountRuntimeTargets(updates, settings).catch((error) =>
       console.warn('[rate-limits] Failed to apply account runtime target:', error)
     )
+    if ('opencodeSessionCookie' in updates || 'opencodeWorkspaceId' in updates) {
+      rateLimits.invalidateOpenCodeGoCredentialState()
+      void rateLimits.refresh().catch((error: unknown) => {
+        console.warn(
+          '[rate-limits] Failed to refresh OpenCode Go usage after a settings change:',
+          error
+        )
+      })
+    }
     // Why: these three pick the MiniMax host and quota bucket, so a stale snapshot from the
     // previous endpoint would otherwise sit in the status bar until the next poll.
     if (
@@ -110,6 +112,17 @@ export function createAccountServices(options: {
         )
       })
     }
+    // Why: the site picks the GLM Coding Plan quota host, so a stale snapshot from
+    // the previous site would otherwise sit in the status bar until the next poll.
+    if ('zcodePlanSite' in updates) {
+      rateLimits.invalidateZcodeCredentialState()
+      void rateLimits.refresh().catch((error: unknown) => {
+        console.warn(
+          '[rate-limits] Failed to refresh GLM Coding Plan usage after a settings change:',
+          error
+        )
+      })
+    }
   })
   rateLimits.setClaudeAuthPreparationResolver((target) =>
     claudeRuntimeAuth.prepareForRateLimitFetch(target)
@@ -118,14 +131,18 @@ export function createAccountServices(options: {
   agentHookServer.setClaudeStatusLineListener((event) => {
     rateLimits.ingestLiveClaudeRateLimits(event)
   })
+  store.migrateLegacyOpenCodeGoApiKey({
+    has: hasOpenCodeGoApiKey,
+    read: readOpenCodeGoApiKey,
+    save: saveOpenCodeGoApiKey
+  })
   rateLimits.setOpenCodeGoConfigResolver(() => {
     const settings = store.getSettings()
     return {
       sessionCookie: settings.opencodeSessionCookie,
-      workspaceIdOverride: settings.opencodeWorkspaceId,
-      apiKey: settings.opencodeGoApiKey
+      workspaceIdOverride: settings.opencodeWorkspaceId
     }
-  })
+  }, readOpenCodeGoApiKey)
   rateLimits.setMiniMaxConfigResolver(() => {
     const settings = store.getSettings()
     const apiKey = readMiniMaxApiKey() ?? ''
@@ -137,7 +154,15 @@ export function createAccountServices(options: {
       apiKey
     }
   })
+  rateLimits.setZcodePlanConfigResolver(() => ({
+    site: store.getSettings().zcodePlanSite ?? 'zai',
+    apiKey: readZcodePlanApiKey() ?? ''
+  }))
   rateLimits.setGeminiCliOAuthEnabledResolver(() => store.getSettings().geminiCliOAuthEnabled)
+  // Reuse the meter switch so hidden Antigravity usage does not spawn agy.
+  rateLimits.setAntigravityUsageEnabledResolver(() =>
+    store.getUI().statusBarItems.includes('antigravity')
+  )
   rateLimits.setNetworkProxySettingsResolver(() => store.getSettings())
   rateLimits.setInactiveClaudeAccountsResolver(() => {
     const settings = store.getSettings()
@@ -147,7 +172,6 @@ export function createAccountServices(options: {
       .filter((account) => !activeIds.has(account.id))
       .map((account) => ({
         id: account.id,
-        managedAuthPath: account.managedAuthPath,
         managedAuthRuntime: account.managedAuthRuntime,
         wslDistro: account.wslDistro,
         wslLinuxAuthPath: account.wslLinuxAuthPath

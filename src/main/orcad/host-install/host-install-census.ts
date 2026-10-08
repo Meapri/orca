@@ -88,7 +88,15 @@ export type DaemonIsolation = {
   cgroupUnits: string[]
   /** Full versions of the install dirs live daemons were forked from; GC must keep them. */
   versions: string[]
+  /** Protocol of each live daemon, from its `daemon-v<N>.pid` record name. */
+  protocolVersions: number[]
   reason: string
+}
+
+/** The one protocol the live sessions' daemon speaks; null when none or several are live. */
+export function daemonProtocolForCensus(isolation: DaemonIsolation): number | null {
+  const distinct = [...new Set(isolation.protocolVersions)]
+  return distinct.length === 1 ? distinct[0]! : null
 }
 
 type ProcessProbe = (pid: number) => 'alive' | 'dead' | 'unknown'
@@ -138,6 +146,7 @@ export function inspectDaemonIsolation(options: {
     pids: [],
     cgroupUnits: [],
     versions: [],
+    protocolVersions: [],
     reason: 'no live terminal daemon is recorded under this data root'
   }
   if (!existsSync(daemonDir)) {
@@ -167,6 +176,7 @@ export function inspectDaemonIsolation(options: {
       unknown = true
     }
     result.pids.push(parsed.pid)
+    result.protocolVersions.push(Number(/^daemon-v(\d+)\.pid$/.exec(name)![1]))
     const version = daemonEntryInstallVersion(parsed.entryPath)
     if (version) {
       result.versions.push(version)

@@ -11,6 +11,7 @@ import type {
 import type { RuntimeCapability } from '../../../shared/protocol-version'
 import type { OrchestrationCompatibilityEvidence } from '../../../shared/orchestration-compatibility-evidence'
 import type { OrchestrationSessionCaller } from '../orchestration/orchestration-caller-identity'
+import type { RpcCallerIdentity } from './rpc-caller-identity'
 import type { DeviceAdministrationRpcContext } from './device-administration-context'
 
 export type PairingRpcContext = {
@@ -48,7 +49,6 @@ export type RpcRequest = {
   authToken: string
   method: string
   params?: unknown
-  orchestrationCapability?: string
   orchestrationContractVersion?: number
   orchestrationRequestId?: string
   compatibilityInvocationId?: string
@@ -77,14 +77,14 @@ export type RpcContext = {
   clientId?: string
   // Why: navigation is keyed by revocable device identity, never by the bearer credential or transient socket id.
   pairedDeviceId?: string
+  // Why: host-assigned from the transport (rpc-caller-identity.ts); absent when the transport could not name its caller.
+  caller?: RpcCallerIdentity
   // Why: lets handlers gate mobile payload truncation to phones only; undefined for in-process callers → treat as full-class (no clip).
   clientKind?: 'mobile' | 'runtime'
   // Why: negotiation is bound to the authenticated socket, never asserted by a destructive request.
   clientCapabilities?: readonly RuntimeCapability[]
   // Why: mobile v2 auth is exact-key validated; capability upgrades must mutate only the authenticated socket after auth.
   updateClientCapabilities?: (capabilities: readonly RuntimeCapability[]) => void
-  // Why: Dispatch authority rides in the authenticated RPC envelope, never in user payload fields.
-  orchestrationCapability?: string
   // Why: long-lived mutations such as ask can durably expose acceptance before their waiter settles.
   recordMutationReceipt?: (receipt: unknown) => void
   // Why: only local worker_done makes pending proof that its atomic settlement transaction never committed.
@@ -116,13 +116,13 @@ export type RpcContext = {
   deviceAdministration?: DeviceAdministrationRpcContext
   // Why: mobile terminal traffic bypasses JSON streaming; undefined on Unix/socket and non-E2EE WebSocket paths.
   sendBinary?: (bytes: Uint8Array<ArrayBufferLike>) => boolean | void
+  // Why: a stream that lost a frame must reset the whole connection; a silent local close leaves
+  // the client attached to nothing, dropping its input with no error (#20802).
+  closeConnection?: (code: number, reason: string) => void
   // Why: state streams send only their latest frame while this connection's writes are backlogged.
   outboundBacklogBytes?: () => number
   // Why: resolves once the peer has received everything sent before the call, kernel queues included.
   awaitOutboundDelivery?: (onDelivered: () => void) => () => void
-  // Why: a stream that lost a frame must reset the whole connection; a silent local close leaves
-  // the client attached to nothing, dropping its input with no error (#20802).
-  closeConnection?: (code: number, reason: string) => void
   // Why: binary terminal frames arrive outside JSON-RPC once a stream is established; handlers register only the stream IDs they created.
   registerBinaryStreamHandler?: (
     streamId: number,

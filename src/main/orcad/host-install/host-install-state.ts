@@ -22,7 +22,6 @@ import {
   captureOrcadStateSnapshotCommand,
   compareOrcadStateSnapshotCommand,
   newestStateMtimeCommand,
-  ORCAD_SNAPSHOT_MEMBERS,
   orcadSnapshotDirName,
   orcadSnapshotIsUnchanged,
   parseNewestStateMtimeSeconds,
@@ -30,6 +29,7 @@ import {
   parseOrcadSnapshotRestore,
   restoreOrcadStateSnapshotCommand
 } from '../../ssh/orcad-state-snapshot'
+import { ORCAD_SNAPSHOT_MEMBERS } from '../../ssh/orcad-state-snapshot-members'
 import { getRemoteHostPlatform, type RemoteHostPlatform } from '../../ssh/ssh-remote-platform'
 
 /** Only the POSIX command dialect matters to these builders; the arch is never read. */
@@ -87,7 +87,8 @@ export function captureHostSnapshot(input: {
       captureOrcadStateSnapshotCommand(
         LOCAL_POSIX_HOST,
         input.dataRoot,
-        snapshotDirPath(input.base, dirName)
+        snapshotDirPath(input.base, dirName),
+        input.base
       )
     )
   )
@@ -201,7 +202,8 @@ export function restoreHostSnapshot(input: {
       restoreOrcadStateSnapshotCommand(
         LOCAL_POSIX_HOST,
         input.dataRoot,
-        snapshotDirPath(input.base, input.snapshot.dirName)
+        snapshotDirPath(input.base, input.snapshot.dirName),
+        input.base
       )
     )
   )

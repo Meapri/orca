@@ -103,11 +103,18 @@ describe('local doctor checks', () => {
     }
   })
 
+  const LOCK_RECORD = {
+    startedAtMs: null,
+    version: '0.1.0',
+    acquiredAt: '2026-10-01T00:00:00.000Z',
+    nonce: 'doctor-fixture'
+  }
+
   it('fails a lock owned by another identity and marks a silent live holder unverifiable', () => {
     const root = mkdtempSync(join(tmpdir(), 'orcad-doctor-'))
     writeFileSync(
       join(root, 'orcad.lock'),
-      JSON.stringify({ pid: process.pid, identity: 'someone-else', startedAtMs: null })
+      JSON.stringify({ ...LOCK_RECORD, pid: process.pid, identity: 'someone-else' })
     )
     expect(checkInstanceLock(root, null).status).toBe('fail')
 
@@ -115,7 +122,7 @@ describe('local doctor checks', () => {
     if (posix) {
       writeFileSync(
         join(root, 'orcad.lock'),
-        JSON.stringify({ pid: process.pid, identity, startedAtMs: null })
+        JSON.stringify({ ...LOCK_RECORD, pid: process.pid, identity })
       )
       const silent = checkInstanceLock(root, null)
       expect(silent.status).toBe('warn')
