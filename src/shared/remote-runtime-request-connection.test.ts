@@ -11,7 +11,7 @@ import {
   publicKeyToBase64
 } from './e2ee-crypto'
 import { RemoteRuntimeRequestConnection } from './remote-runtime-request-connection'
-import { remoteRuntimeClientCapabilities } from './remote-runtime-client-capabilities'
+import { nodeRemoteRuntimeClientCapabilities } from './remote-runtime-node-client-capabilities'
 
 type TestServer = {
   wss: WebSocketServer
@@ -58,7 +58,7 @@ describe('RemoteRuntimeRequestConnection', () => {
     expect(server.connectionCount()).toBe(1)
     expect(server.auths).toContainEqual(
       expect.objectContaining({
-        clientCapabilities: remoteRuntimeClientCapabilities()
+        clientCapabilities: nodeRemoteRuntimeClientCapabilities()
       })
     )
     expect(server.requests).toMatchObject([
@@ -130,7 +130,7 @@ async function createServer(): Promise<TestServer> {
         expect(auth).toEqual({
           type: 'e2ee_auth',
           deviceToken: 'device-token',
-          clientCapabilities: remoteRuntimeClientCapabilities()
+          clientCapabilities: nodeRemoteRuntimeClientCapabilities()
         })
         authenticated = true
         sendEncrypted(ws, sharedKey, { type: 'e2ee_authenticated' })

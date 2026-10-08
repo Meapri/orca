@@ -3,6 +3,7 @@ import {
   serializeBudgetedMobileSnapshot
 } from './terminal-snapshot-publication'
 import { getOutputAfterSnapshotSeq } from './terminal-stream-replay'
+import { multiplexSubscribedNegotiation } from './terminal-multiplex-resumed-tail'
 import type {
   MultiplexSubscribeRequest,
   TerminalMultiplexConnection
@@ -60,13 +61,7 @@ export async function publishMultiplexInitialSnapshot(
     rows: serialized?.rows ?? size?.rows,
     displayMode,
     seq: layoutSeq,
-    ...((stream.ackOutputSourceRanges || stream.supportsOutputPause) && {
-      capabilities: {
-        ...(stream.ackOutputSourceRanges ? { ackOutputSourceRanges: 1 as const } : {}),
-        ...(stream.supportsOutputPause ? { outputPause: 1 as const } : {})
-      }
-    }),
-    ...(stream.ackOutputSourceRanges ? { streamGeneration: stream.streamGeneration } : {}),
+    ...multiplexSubscribedNegotiation(stream),
     // Why: retained-tail truncation loses history, not the authoritative latest-screen fallback.
     truncated: initialOutputOverflowed
   })

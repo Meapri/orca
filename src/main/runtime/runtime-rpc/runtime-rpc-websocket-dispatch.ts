@@ -11,6 +11,8 @@ import type { DeviceScope } from '../device-registry'
 import { RuntimeRpcRequestAdmission } from './runtime-rpc-request-admission'
 import { classifyRuntimeLongPoll } from './runtime-rpc-long-poll'
 import type { RpcCallerScope } from '../rpc/rpc-caller-scope'
+import { COMPRESSIBLE_RUNTIME_RPC_METHODS } from './runtime-rpc-compressible-methods'
+import type { E2EETextReply } from '../../../shared/e2ee-text-compression'
 
 // Why: status.get has no per-connection context in the dispatcher, so stamp the scope here at the transport boundary.
 function injectDeviceScope(response: string, scope: DeviceScope): string {
@@ -30,7 +32,7 @@ export class RuntimeRpcWebSocketDispatch extends RuntimeRpcRequestAdmission {
   // Why: WebSocket dispatch is streaming (multiple responses) and auths via per-device tokens, not the shared token.
   protected async handleWebSocketMessage(
     rawMessage: string,
-    reply: (response: string) => void,
+    reply: E2EETextReply,
     sendBinary: (response: Uint8Array<ArrayBufferLike>) => boolean | void,
     wsTransport?: WebSocketTransport,
     ws?: WebSocket,
@@ -93,11 +95,15 @@ export class RuntimeRpcWebSocketDispatch extends RuntimeRpcRequestAdmission {
 
     const abortRegistration = ws ? this.registerWebSocketDispatchAbort(ws) : null
 
+    // Why: the channel compresses only when this reply is on the policy list and the client can decode.
+    const replyOptions = COMPRESSIBLE_RUNTIME_RPC_METHODS.has(request.method)
+      ? { compressible: true }
+      : undefined
     // Why: older pairings may lack scope metadata, so stamp the authenticated scope onto status.get.
     const replyForRequest =
       request.method === 'status.get'
-        ? (response: string): void => reply(injectDeviceScope(response, device.scope))
-        : reply
+        ? (response: string): void => reply(injectDeviceScope(response, device.scope), replyOptions)
+        : (response: string): void => reply(response, replyOptions)
 
     const connectionId = ws ? this.mobileSocketWiring?.getConnectionId(ws) : undefined
     const pairingProvider = this.mobileRelayPairingProvider
@@ -144,6 +150,8 @@ export class RuntimeRpcWebSocketDispatch extends RuntimeRpcRequestAdmission {
         pairing: pairingContext,
         signal: abortRegistration?.signal,
         sendBinary,
+        outboundBacklogBytes: authenticatedSocket?.outboundBacklogBytes,
+        awaitOutboundDelivery: authenticatedSocket?.awaitOutboundDelivery,
         registerBinaryStreamHandler: (streamId, handler) =>
           this.registerBinaryStreamHandler(connectionId, streamId, handler),
         registerBinaryMessageHandler: (handler) =>
