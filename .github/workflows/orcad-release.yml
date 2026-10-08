@@ -1,0 +1,130 @@
+name: orcad release
+
+# Publishes standalone orcad tarballs for self-managed hosts to a GitHub Release named after the
+# pushed tag. Assets use fixed per-target names (`orcad-<target>.tar.gz` + `.sha256`) so
+# `orcad-install.sh install --release <tag|latest>` can download and verify them without the
+# content-hashed version in the filename. Desktop releases are untouched: this never marks a
+# release "latest", and the installer resolves `latest` from orcad-v* tags only.
+on:
+  push:
+    tags:
+      - 'orcad-v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing orcad-v* tag to build and (re)publish
+        required: true
+        type: string
+  # Why: distribution-release.yml builds orcad for the same version in the same run.
+  workflow_call:
+    inputs:
+      tag:
+        description: Existing orcad-v* tag to build and (re)publish
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: orcad-release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  build:
+    name: build (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: linux-x64-glibc
+            arch: x64
+            optional: false
+          - os: ubuntu-24.04-arm
+            target: linux-arm64-glibc
+            arch: arm64
+            optional: false
+          # Why optional: a macOS host is a convenience target; a runner outage there must not
+          # hold back the Linux assets the installer exists for.
+          - os: macos-15
+            target: darwin-arm64
+            arch: arm64
+            optional: true
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.optional }}
+    timeout-minutes: 45
+    env:
+      ORCA_BACKGROUND_LAUNCH: '1'
+      TARGET: ${{ matrix.target }}
+      TARGET_ARCH: ${{ matrix.arch }}
+    steps:
+      - name: Refuse a tag that is not an orcad release tag
+        shell: bash
+        run: |
+          [[ "$RELEASE_TAG" =~ ^orcad-v[0-9A-Za-z._-]+$ ]] || {
+            echo "::error::$RELEASE_TAG is not an orcad-v* tag"
+            exit 1
+          }
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          persist-credentials: false
+      - uses: ./.github/actions/install-node-dependencies
+      - run: pnpm build:orcad
+      - name: Verify the bundled natives against the glibc floor
+        if: runner.os == 'Linux'
+        run: >-
+          node -e "require('./config/scripts/verify-linux-glibc-floor.cjs')
+          .verifyLinuxGlibcFloor('out/orcad', { targetArch: process.env.TARGET_ARCH })"
+      - name: Package the release assets
+        run: >-
+          pnpm pack:orcad-release --from out/orcad --target "$TARGET"
+          --asset-names stable --release-repo "$GITHUB_REPOSITORY"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: orcad-release-${{ matrix.target }}
+          path: out/orcad-release/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: orcad-release-*
+          merge-multiple: true
+          path: release
+      - name: Verify every asset against its checksum
+        working-directory: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          ls -la
+          for sum in *.sha256; do sha256sum -c "$sum"; done
+          cat orcad-*.tar.gz.sha256 orcad-install.sh.sha256 > SHA256SUMS
+          cat SHA256SUMS
+      - name: Create or update the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          prerelease=()
+          if [[ "$RELEASE_TAG" == *-* ]]; then prerelease=(--prerelease); fi
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" release/* --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$RELEASE_TAG" release/* --repo "$GITHUB_REPOSITORY" \
+              --verify-tag --latest=false "${prerelease[@]}" \
+              --title "orcad $RELEASE_TAG" \
+              --notes "Standalone orcad for self-managed hosts. Install: see docs/reference/headless-linux-server.md (orcad-install.sh install --release $RELEASE_TAG)."
+          fi
