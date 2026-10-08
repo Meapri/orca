@@ -15,10 +15,18 @@ export type MacosTccResetResult = { ok: true } | { ok: false; detail: string }
  * binary plist, so PlistBuddy is the only reader that works on both encodings.
  */
 export async function readMacosBundleId(appBundlePath: string): Promise<string | null> {
+  return readMacosBundleInfoValue(appBundlePath, 'CFBundleIdentifier')
+}
+
+/** One top-level Info.plist string value, or null when it cannot be read. */
+export async function readMacosBundleInfoValue(
+  appBundlePath: string,
+  key: string
+): Promise<string | null> {
   try {
     const result = await runProcess({
       program: '/usr/libexec/PlistBuddy',
-      args: ['-c', 'Print :CFBundleIdentifier', join(appBundlePath, 'Contents', 'Info.plist')],
+      args: ['-c', `Print :${key}`, join(appBundlePath, 'Contents', 'Info.plist')],
       timeoutMs: TCC_COMMAND_TIMEOUT_MS
     })
     if (result.code !== 0) {

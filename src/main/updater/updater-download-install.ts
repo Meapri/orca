@@ -94,7 +94,18 @@ export abstract class UpdaterDownloadInstall extends UpdaterRemoteStatus {
     if (this.deferHeadlessServeInstall('download', version)) {
       return
     }
+    const macStrategy = this.getMacUpdateInstallStrategy()
+    if (macStrategy === null) {
+      // Why: the one-time codesign probe normally settles at startup; retry once it has.
+      void this.prepareMacUpdateInstallStrategy().then(() => this.downloadUpdate())
+      return
+    }
     this.downloadInFlight = true
+    if (macStrategy === 'bundle-swap') {
+      this.sendStatus({ state: 'downloading', percent: 0, version })
+      void this.downloadMacBundleSwapUpdate(version)
+      return
+    }
     const localBuildDownload = this.activeUpdateSource === 'local'
     beginMacUpdateDownload()
     // Why: setup can take seconds before progress emits; surface acceptance now so the action never looks inert.

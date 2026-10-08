@@ -143,6 +143,8 @@ export class UpdaterSetup extends UpdaterDownloadInstall {
       return
     }
 
+    // Why early: the download click must already know whether Squirrel can install this bundle.
+    void this.prepareMacUpdateInstallStrategy()
     const autoUpdater = this.getAutoUpdater()
     autoUpdater.autoDownload = false
     if (this.activeUpdateSource === 'release') {
