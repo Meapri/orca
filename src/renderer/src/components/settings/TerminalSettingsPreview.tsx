@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
-import { LigaturesAddon } from '@xterm/addon-ligatures'
 import { Moon, Sun } from 'lucide-react'
 import '@xterm/xterm/css/xterm.css'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -12,6 +11,8 @@ import { resolveTerminalMinimumContrastRatio } from '@/lib/terminal-contrast-cor
 import { resolveTerminalFontWeights } from '../../../../shared/terminal-fonts'
 import { resolveTerminalLigaturesEnabled } from '../../../../shared/terminal-ligatures'
 import { normalizeTerminalLineHeight } from '../../../../shared/terminal-line-height-settings'
+import { resolveTerminalFitWideGlyphs } from '@/lib/pane-manager/terminal-wide-glyph-fit'
+import { TerminalLigaturesAddon } from '@/lib/pane-manager/terminal-ligatures-addon'
 import { PREVIEW_BUFFER } from './terminal-preview-content'
 import { SettingsSwitch } from './SettingsFormControls'
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
@@ -60,7 +61,7 @@ export function TerminalSettingsPreview({
 }: TerminalSettingsPreviewProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const terminalRef = useRef<Terminal | null>(null)
-  const ligaturesAddonRef = useRef<LigaturesAddon | null>(null)
+  const ligaturesAddonRef = useRef<TerminalLigaturesAddon | null>(null)
   const skipInitialOptionMutationRef = useRef(false)
   const skipInitialThemeRewriteRef = useRef(false)
 
@@ -133,10 +134,13 @@ export function TerminalSettingsPreview({
       cursorStyle: settings.terminalCursorStyle,
       cursorBlink: settings.terminalCursorBlink,
       fontSize: settings.terminalFontSize,
-      fontFamily: buildFontFamily(effectiveFontFamily),
+      fontFamily: buildFontFamily(effectiveFontFamily, {
+        fallbackFamilies: settings.terminalFontFallbackFamily
+      }),
       fontWeight: weights.fontWeight,
       fontWeightBold: weights.fontWeightBold,
       lineHeight: terminalLineHeight,
+      fitWideGlyphs: resolveTerminalFitWideGlyphs(settings.terminalFitWideGlyphs),
       theme: composedTheme ?? undefined,
       allowTransparency:
         settings.terminalBackgroundOpacity !== undefined && settings.terminalBackgroundOpacity < 1,
@@ -179,7 +183,9 @@ export function TerminalSettingsPreview({
       settings.terminalFontWeightBold
     )
     terminal.options.fontSize = settings.terminalFontSize
-    terminal.options.fontFamily = buildFontFamily(effectiveFontFamily)
+    terminal.options.fontFamily = buildFontFamily(effectiveFontFamily, {
+      fallbackFamilies: settings.terminalFontFallbackFamily
+    })
     terminal.options.fontWeight = weights.fontWeight
     terminal.options.fontWeightBold = weights.fontWeightBold
     terminal.options.lineHeight = terminalLineHeight
@@ -187,14 +193,17 @@ export function TerminalSettingsPreview({
     // Why: mirror so the unfocused cursor reflects the chosen shape (xterm defaults inactive to 'outline'; see constructor).
     terminal.options.cursorInactiveStyle = settings.terminalCursorStyle
     terminal.options.cursorBlink = settings.terminalCursorBlink
+    terminal.options.fitWideGlyphs = resolveTerminalFitWideGlyphs(settings.terminalFitWideGlyphs)
   }, [
     settings.terminalFontSize,
     settings.terminalFontWeightBold,
     effectiveFontFamily,
+    settings.terminalFontFallbackFamily,
     settings.terminalFontWeight,
     terminalLineHeight,
     settings.terminalCursorStyle,
-    settings.terminalCursorBlink
+    settings.terminalCursorBlink,
+    settings.terminalFitWideGlyphs
   ])
 
   useEffect(() => {
@@ -234,7 +243,7 @@ export function TerminalSettingsPreview({
     const enabled = resolveTerminalLigaturesEnabled(settings.terminalLigatures, effectiveFontFamily)
     const current = ligaturesAddonRef.current
     if (enabled && !current) {
-      const addon = new LigaturesAddon()
+      const addon = new TerminalLigaturesAddon()
       try {
         terminal.loadAddon(addon)
         ligaturesAddonRef.current = addon

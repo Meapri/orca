@@ -1,21 +1,37 @@
 /**
- * The terminal font chain must name CJK faces, and Hangul/Han/Kana drawn from them must
- * stay inside their two cells under WebGL. Set ORCA_GLYPH_SCREENSHOT_DIR to also keep a
- * PNG capture of a mixed Latin/CJK line for manual review.
+ * CJK fallback glyphs must render inside their two cells under both renderers:
+ * no ink bleeding into the neighbouring cell or row, and box-drawing frames that
+ * stay connected when lineHeight > 1. With fitWideGlyphs (Orca's default) they are
+ * also enlarged toward and centered in those cells, identically for the IME preedit.
+ * Set ORCA_GLYPH_SCREENSHOT_DIR to also keep PNG captures for manual review.
  */
 import { mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import type { Page } from '@stablyai/playwright-test'
 import { test, expect } from './helpers/orca-app'
 import { waitForActiveTerminalManager } from './helpers/terminal'
+import {
+  closeWideGlyphProbe,
+  measureWideGlyphProbe,
+  openWideGlyphProbe,
+  writeWideGlyphProbe,
+  type GlyphInk,
+  type ProbeOptions,
+  type ProbeRenderer,
+  type ProbeRun
+} from './terminal-wide-glyph-fit-probe'
 
 type ProbeTerminal = {
   rows: number
+  cols: number
+  element?: HTMLElement
   options: Record<string, unknown>
   _core: {
     _renderService: {
       _isPaused: boolean
+      _needsFullRefresh: boolean
       refreshRows: (start: number, end: number, immediate: boolean) => void
+      dimensions: { css: { cell: { width: number; height: number } } }
     }
   }
   dispose: () => void
@@ -41,29 +57,51 @@ type CellInkReport = {
   inkInside: number
   inkLeftNeighbour: number
   inkRightNeighbour: number
+  inkRowAbove: number
+  inkRowBelow: number
+  inkBottomRow: number
 }
 
 type WebglProbeResult = {
   fontFamily: string
+  lineHeight: number
   cellWidth: number
   cellHeight: number
   glyphs: CellInkReport[]
-  sampleLine: string
+  boxGapRows: number
   dataUrl: string
 }
 
-// Why isolated rows: each probed glyph has blank cells on both sides, so ink found
-// there is overflow from that glyph.
-const PROBE_GLYPHS = [
-  { label: 'hangul', glyph: '한' },
-  { label: 'hangul', glyph: '글' },
-  { label: 'han', glyph: '漢' },
-  { label: 'han simplified', glyph: '语' },
-  { label: 'hiragana', glyph: 'か' },
-  { label: 'katakana', glyph: 'カ' }
-]
+type DomGlyphRect = {
+  label: string
+  width: number
+  left: number
+  letterSpacing: number
+  cellLeft: number
+  nextCellLeft: number
+}
 
-const SAMPLE_LINE = 'Latin abc 한글 漢字 语言 かなカナ |'
+type DomProbeResult = {
+  lineHeight: number
+  cellWidth: number
+  glyphs: DomGlyphRect[]
+}
+
+// Why isolated rows: each probed glyph gets blank cells on both sides and blank rows
+// above and below, so any ink found there is overflow from that glyph.
+type ProbeGlyph = { label: string; glyph: string; cells: number }
+
+const PROBE_GLYPHS: ProbeGlyph[] = [
+  { label: 'latin H', glyph: 'H', cells: 1 },
+  { label: 'hangul', glyph: '한', cells: 2 },
+  { label: 'hangul', glyph: '글', cells: 2 },
+  { label: 'hangul jamo', glyph: 'ㅎ', cells: 2 },
+  { label: 'han', glyph: '漢', cells: 2 },
+  { label: 'han simplified', glyph: '语', cells: 2 },
+  { label: 'hiragana', glyph: 'か', cells: 2 },
+  { label: 'katakana', glyph: 'カ', cells: 2 },
+  { label: 'fullwidth A', glyph: 'Ａ', cells: 2 }
+]
 
 /** Returns the tab whose pane now runs WebGL, or null when no WebGL context is available. */
 async function forceActivePaneWebgl(page: Page): Promise<string | null> {
@@ -96,10 +134,14 @@ async function forceActivePaneWebgl(page: Page): Promise<string | null> {
     .catch(() => null)
 }
 
-async function probeWebgl(page: Page, tabId: string): Promise<WebglProbeResult> {
+async function probeWebgl(
+  page: Page,
+  tabId: string,
+  lineHeight: number
+): Promise<WebglProbeResult> {
   return page.evaluate(
-    async ({ glyphs, sampleLine, tabId: webglTabId }) => {
-      const manager = window.__paneManagers?.get(webglTabId)
+    async ({ glyphs, lineHeight: probeLineHeight, tabId: probeTabId }) => {
+      const manager = window.__paneManagers?.get(probeTabId)
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the e2e build exposes the pane manager; panes is its private pane map.
       const panes = (manager as unknown as { panes?: Map<number, PaneInternals> })?.panes
       const pane = [...(panes?.values() ?? [])][0]
@@ -109,18 +151,18 @@ async function probeWebgl(page: Page, tabId: string): Promise<WebglProbeResult> 
       const fontFamily = String(pane.terminal.options.fontFamily)
       const host = document.createElement('div')
       host.style.cssText =
-        'position:fixed;left:0;top:0;width:900px;height:600px;opacity:0.001;pointer-events:none;z-index:-1;background:#000'
+        'position:fixed;left:0;top:0;width:900px;height:900px;opacity:0.001;pointer-events:none;z-index:-1;background:#000'
       document.body.appendChild(host)
-      // Why a probe terminal: it copies the live pane's font options onto a known grid.
       const terminal = new pane.terminal.constructor({
-        cols: 44,
-        rows: glyphs.length * 2 + 4,
+        cols: 30,
+        rows: glyphs.length * 2 + 8,
         fontSize: pane.terminal.options.fontSize,
         fontFamily,
         fontWeight: pane.terminal.options.fontWeight,
         fontWeightBold: pane.terminal.options.fontWeightBold,
-        rescaleOverlappingGlyphs: pane.terminal.options.rescaleOverlappingGlyphs,
-        lineHeight: 1,
+        lineHeight: probeLineHeight,
+        rescaleOverlappingGlyphs: true,
+        fitWideGlyphs: true,
         cursorBlink: false,
         allowProposedApi: true,
         theme: { background: '#000000', foreground: '#ffffff', cursor: '#000000' }
@@ -128,13 +170,17 @@ async function probeWebgl(page: Page, tabId: string): Promise<WebglProbeResult> 
       terminal.open(host)
       const addon = new pane.webglAddon.constructor()
       terminal.loadAddon(addon)
-      // Probe rows at 1, 3, 5…; each glyph starts at column 2. The sample line goes last.
+      const write = (data: string): Promise<void> =>
+        new Promise((resolve) => terminal.write(data, resolve))
+      // Probe rows at 1, 3, 5…; each glyph starts at column 2.
       let content = '\x1b[?25l\r\n'
       for (const { glyph } of glyphs) {
         content += `  ${glyph}\r\n\r\n`
       }
-      content += `  ${sampleLine}`
-      await new Promise<void>((resolve) => terminal.write(content, resolve))
+      // Box frame: the vertical bars must stay connected across rows at any line height.
+      content += '  ┌──┬──┐\r\n  │한│ab│\r\n  ├──┼──┤\r\n  │漢│か│\r\n  └──┴──┘\r\n'
+      content += '  a한b漢cかd ①※→ ❤️1️⃣🥲'
+      await write(content)
       await document.fonts.ready
       terminal._core._renderService._isPaused = false
       terminal._core._renderService.refreshRows(0, terminal.rows - 1, true)
@@ -150,84 +196,375 @@ async function probeWebgl(page: Page, tabId: string): Promise<WebglProbeResult> 
       }
       context.drawImage(source, 0, 0)
       const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data
+      const isInk = (x: number, y: number): boolean => {
+        const i = (y * canvas.width + x) * 4
+        return pixels[i] + pixels[i + 1] + pixels[i + 2] > 96
+      }
       const countInk = (x0: number, y0: number, x1: number, y1: number): number => {
         let count = 0
-        const yEnd = Math.min(canvas.height, Math.round(y1))
-        const xEnd = Math.min(canvas.width, Math.round(x1))
-        for (let y = Math.max(0, Math.round(y0)); y < yEnd; y++) {
-          for (let x = Math.max(0, Math.round(x0)); x < xEnd; x++) {
-            const i = (y * canvas.width + x) * 4
-            if (pixels[i] + pixels[i + 1] + pixels[i + 2] > 96) {
+        for (
+          let y = Math.max(0, Math.round(y0));
+          y < Math.min(canvas.height, Math.round(y1));
+          y++
+        ) {
+          for (
+            let x = Math.max(0, Math.round(x0));
+            x < Math.min(canvas.width, Math.round(x1));
+            x++
+          ) {
+            if (isInk(x, y)) {
               count += 1
             }
           }
         }
         return count
       }
-      const reports = glyphs.map(({ label, glyph }, index) => {
-        const top = (1 + index * 2) * cellHeight
+      const reports = glyphs.map(({ label, glyph, cells }, index) => {
+        const row = 1 + index * 2
+        const top = row * cellHeight
         const left = 2 * cellWidth
-        const right = left + 2 * cellWidth
+        const right = left + cells * cellWidth
+        let inkBottomRow = -1
+        for (
+          let y = Math.round(top + cellHeight) - 1;
+          y >= Math.round(top) && inkBottomRow < 0;
+          y--
+        ) {
+          if (countInk(left, y, right, y + 1) > 0) {
+            inkBottomRow = y - Math.round(top)
+          }
+        }
         return {
           label: `${label} ${glyph}`,
           inkInside: countInk(left, top, right, top + cellHeight),
           inkLeftNeighbour: countInk(left - cellWidth, top, left, top + cellHeight),
-          inkRightNeighbour: countInk(right, top, right + cellWidth, top + cellHeight)
+          inkRightNeighbour: countInk(right, top, right + cellWidth, top + cellHeight),
+          inkRowAbove: countInk(left, top - cellHeight, right, top),
+          inkRowBelow: countInk(left, top + cellHeight, right, top + 2 * cellHeight),
+          inkBottomRow
         }
       })
-      // Keep only the sample line (plus one row of margin) in the capture.
-      const sampleTop = (1 + glyphs.length * 2 - 1) * cellHeight
-      const crop = document.createElement('canvas')
-      crop.width = canvas.width
-      crop.height = Math.round(cellHeight * 3)
-      crop.getContext('2d')?.drawImage(canvas, 0, -sampleTop)
-      const dataUrl = crop.toDataURL('image/png')
+      // Scan the frame's left bar (column 2) from the ┌ stroke down to the └ stroke.
+      const boxTop = (1 + glyphs.length * 2) * cellHeight
+      let boxGapRows = 0
+      const barStart = Math.ceil(boxTop + cellHeight / 2) + 1
+      const barEnd = Math.floor(boxTop + 4.5 * cellHeight) - 1
+      for (let y = barStart; y < barEnd; y++) {
+        if (countInk(2 * cellWidth, y, 3 * cellWidth, y + 1) === 0) {
+          boxGapRows += 1
+        }
+      }
+      const dataUrl = canvas.toDataURL('image/png')
       terminal.dispose()
       host.remove()
-      return { fontFamily, cellWidth, cellHeight, glyphs: reports, sampleLine, dataUrl }
+      return {
+        fontFamily,
+        lineHeight: probeLineHeight,
+        cellWidth,
+        cellHeight,
+        glyphs: reports,
+        boxGapRows,
+        dataUrl
+      }
     },
-    { glyphs: PROBE_GLYPHS, sampleLine: SAMPLE_LINE, tabId }
+    { glyphs: PROBE_GLYPHS, lineHeight, tabId }
+  )
+}
+
+async function probeDom(page: Page, tabId: string, lineHeight: number): Promise<DomProbeResult> {
+  return page.evaluate(
+    async ({ glyphs, lineHeight: probeLineHeight, tabId: probeTabId }) => {
+      const manager = window.__paneManagers?.get(probeTabId)
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the e2e build exposes the pane manager; panes is its private pane map.
+      const panes = (manager as unknown as { panes?: Map<number, PaneInternals> })?.panes
+      const pane = [...(panes?.values() ?? [])][0]
+      if (!pane) {
+        throw new Error('Active pane unavailable')
+      }
+      const host = document.createElement('div')
+      host.style.cssText =
+        'position:fixed;left:0;top:0;width:900px;height:900px;opacity:0.001;pointer-events:none;z-index:-1'
+      document.body.appendChild(host)
+      const terminal = new pane.terminal.constructor({
+        cols: 30,
+        rows: glyphs.length + 2,
+        fontSize: pane.terminal.options.fontSize,
+        fontFamily: pane.terminal.options.fontFamily,
+        fontWeight: pane.terminal.options.fontWeight,
+        lineHeight: probeLineHeight,
+        fitWideGlyphs: true,
+        cursorBlink: false,
+        allowProposedApi: true
+      })
+      terminal.open(host)
+      await new Promise<void>((resolve) =>
+        terminal.write(glyphs.map(({ glyph }) => `  ${glyph}  x`).join('\r\n'), resolve)
+      )
+      await document.fonts.ready
+      terminal._core._renderService._isPaused = false
+      terminal._core._renderService.refreshRows(0, terminal.rows - 1, true)
+      const cellWidth = terminal._core._renderService.dimensions.css.cell.width
+      const rows = [...(terminal.element?.querySelectorAll('.xterm-rows > div') ?? [])]
+      const screenLeft =
+        terminal.element?.querySelector('.xterm-rows')?.getBoundingClientRect().left ?? 0
+      const textRect = (row: Element | undefined, text: string): DOMRect => {
+        const walker = document.createTreeWalker(row ?? document.body, NodeFilter.SHOW_TEXT)
+        let node = walker.nextNode()
+        while (node && !(node.textContent ?? '').includes(text)) {
+          node = walker.nextNode()
+        }
+        const range = document.createRange()
+        const offset = (node?.textContent ?? '').indexOf(text)
+        if (node && offset !== -1) {
+          range.setStart(node, offset)
+          range.setEnd(node, offset + text.length)
+        }
+        return range.getBoundingClientRect()
+      }
+      const rects = glyphs.map(({ label, glyph }, index) => {
+        const row = rows[index]
+        const rect = textRect(row, glyph)
+        const span = [...(row?.querySelectorAll('span') ?? [])].find((element) =>
+          (element.textContent ?? '').includes(glyph)
+        )
+        return {
+          label: `${label} ${glyph}`,
+          width: rect.width,
+          left: rect.left - screenLeft,
+          letterSpacing: Number.parseFloat(span ? getComputedStyle(span).letterSpacing : '') || 0,
+          cellLeft: 2 * cellWidth,
+          nextCellLeft: textRect(row, 'x').left - screenLeft
+        }
+      })
+      terminal.dispose()
+      host.remove()
+      return { lineHeight: probeLineHeight, cellWidth, glyphs: rects }
+    },
+    { glyphs: PROBE_GLYPHS, lineHeight, tabId }
   )
 }
 
 test.describe('terminal CJK glyph cell fit', () => {
-  test('@headful lists CJK fallback faces and keeps their glyphs inside two cells under WebGL', async ({
-    orcaPage
-  }) => {
+  test('keeps CJK fallback glyphs inside their cells under WebGL and DOM', async ({ orcaPage }) => {
     await waitForActiveTerminalManager(orcaPage)
     const tabId = await forceActivePaneWebgl(orcaPage)
     if (!tabId) {
       test.skip(true, 'WebGL unavailable in this environment')
       return
     }
-    const webgl = await probeWebgl(orcaPage, tabId)
     const screenshotDir = process.env.ORCA_GLYPH_SCREENSHOT_DIR
-    if (screenshotDir) {
-      mkdirSync(screenshotDir, { recursive: true })
-      writeFileSync(
-        path.join(screenshotDir, 'webgl-sample-line.png'),
-        Buffer.from(webgl.dataUrl.split(',')[1] ?? '', 'base64')
+
+    for (const lineHeight of [1, 1.4]) {
+      const webgl = await probeWebgl(orcaPage, tabId, lineHeight)
+      if (screenshotDir) {
+        mkdirSync(screenshotDir, { recursive: true })
+        writeFileSync(
+          path.join(screenshotDir, `webgl-lh${lineHeight}.png`),
+          Buffer.from(webgl.dataUrl.split(',')[1] ?? '', 'base64')
+        )
+        writeFileSync(
+          path.join(screenshotDir, `webgl-lh${lineHeight}.json`),
+          JSON.stringify({ ...webgl, dataUrl: undefined }, null, 2)
+        )
+      }
+      for (const glyph of webgl.glyphs) {
+        expect(glyph.inkInside, glyph.label).toBeGreaterThan(0)
+        expect(glyph.inkLeftNeighbour, glyph.label).toBe(0)
+        expect(glyph.inkRightNeighbour, glyph.label).toBe(0)
+        expect(glyph.inkRowAbove, glyph.label).toBe(0)
+        expect(glyph.inkRowBelow, glyph.label).toBe(0)
+      }
+      // customGlyphs (on by default in the WebGL addon) draws box bars edge to edge.
+      expect(webgl.boxGapRows).toBe(0)
+      // The chain names CJK faces between the Latin/symbol fonts and the generic keyword.
+      const families = webgl.fontFamily.split(',').map((family) => family.trim())
+      const firstCjk = families.findIndex((family) =>
+        /PingFang|Hiragino|Apple SD Gothic Neo|Malgun Gothic|Microsoft YaHei|Yu Gothic|Noto Sans (Mono )?CJK/.test(
+          family
+        )
       )
-      writeFileSync(
-        path.join(screenshotDir, 'webgl-probe.json'),
-        JSON.stringify({ ...webgl, dataUrl: undefined }, null, 2)
-      )
+      expect(firstCjk, webgl.fontFamily).toBeGreaterThan(families.indexOf('"Hack Nerd Font"'))
+      expect(families.at(-1)).toBe('monospace')
+
+      const dom = await probeDom(orcaPage, tabId, lineHeight)
+      if (screenshotDir) {
+        writeFileSync(
+          path.join(screenshotDir, `dom-lh${lineHeight}.json`),
+          JSON.stringify(dom, null, 2)
+        )
+      }
+      for (const [index, glyph] of dom.glyphs.entries()) {
+        const cells = PROBE_GLYPHS[index]?.cells ?? 1
+        expect(glyph.width, glyph.label).toBeGreaterThan(0)
+        expect(glyph.width, glyph.label).toBeLessThanOrEqual(cells * dom.cellWidth + 0.5)
+        if (cells === 1) {
+          expect(Math.abs(glyph.left - glyph.cellLeft), glyph.label).toBeLessThanOrEqual(1)
+        } else {
+          // A text box is the advance plus its trailing letter-spacing; the advance centers.
+          const advanceCenter = glyph.left + (glyph.width - glyph.letterSpacing) / 2
+          const spanCenter = glyph.cellLeft + (cells * dom.cellWidth) / 2
+          expect(Math.abs(advanceCenter - spanCenter), glyph.label).toBeLessThanOrEqual(1)
+        }
+        // Fitting never moves the cells that follow.
+        expect(
+          Math.abs(glyph.nextCellLeft - (glyph.cellLeft + (cells + 2) * dom.cellWidth)),
+          glyph.label
+        ).toBeLessThanOrEqual(1)
+      }
     }
+  })
 
-    // The chain names CJK faces between the Latin/symbol fonts and the generic keyword.
-    const families = webgl.fontFamily.split(',').map((family) => family.trim())
-    const firstCjk = families.findIndex((family) =>
-      /PingFang|Hiragino|Apple SD Gothic Neo|Malgun Gothic|Microsoft YaHei|Yu Gothic|Noto Sans (Mono )?CJK/.test(
-        family
-      )
-    )
-    expect(firstCjk, webgl.fontFamily).toBeGreaterThan(families.indexOf('"Hack Nerd Font"'))
-    expect(families.at(-1)).toBe('monospace')
+  test('fits and centers wide glyphs, and the IME preedit lands where the commit does', async ({
+    orcaPage
+  }) => {
+    await waitForActiveTerminalManager(orcaPage)
+    if (!(await forceActivePaneWebgl(orcaPage))) {
+      test.skip(true, 'WebGL unavailable in this environment')
+      return
+    }
+    const screenshotDir = process.env.ORCA_GLYPH_SCREENSHOT_DIR
+    const report: Record<string, unknown> = {}
 
-    for (const glyph of webgl.glyphs) {
-      expect(glyph.inkInside, glyph.label).toBeGreaterThan(0)
-      expect(glyph.inkLeftNeighbour, glyph.label).toBe(0)
-      expect(glyph.inkRightNeighbour, glyph.label).toBe(0)
+    for (const renderer of ['webgl', 'dom'] as const) {
+      const [before, after] = [
+        await captureFitRuns(orcaPage, renderer, false),
+        await captureFitRuns(orcaPage, renderer, true)
+      ]
+      if (screenshotDir) {
+        mkdirSync(screenshotDir, { recursive: true })
+        for (const [name, capture] of [
+          ['before', before],
+          ['after', after]
+        ] as const) {
+          writeFileSync(
+            path.join(screenshotDir, `fit-${renderer}-${name}.png`),
+            Buffer.from(capture.dataUrl.split(',')[1] ?? '', 'base64')
+          )
+        }
+      }
+      const sentence = (glyphs: GlyphInk[]): GlyphInk[] =>
+        glyphs.filter((glyph) => glyph.label.startsWith('sentence'))
+      const stats = (glyphs: GlyphInk[]) => {
+        const syllables = sentence(glyphs)
+        const gaps = syllables.slice(1).map((next, i) => {
+          const previous = syllables[i]
+          return next.minX + previous.span - previous.maxX - 1
+        })
+        return {
+          inkWidthRatio: mean(syllables.map((g) => (g.maxX - g.minX + 1) / g.span)),
+          gapPx: mean(gaps),
+          gapCells: mean(gaps) / (syllables[0]?.span ? syllables[0].span / 2 : 1)
+        }
+      }
+      report[renderer] = {
+        before: stats(before.glyphs),
+        after: stats(after.glyphs),
+        glyphs: after.glyphs.map((glyph, index) => ({ after: glyph, before: before.glyphs[index] }))
+      }
+
+      for (const [index, glyph] of after.glyphs.entries()) {
+        expect(glyph.minX, glyph.label).toBeGreaterThanOrEqual(0)
+        if (!glyph.label.startsWith('mixed')) {
+          expect(glyph.bleed, glyph.label).toEqual({ left: 0, right: 0, above: 0, below: 0 })
+        }
+        const unfitted = before.glyphs[index]
+        if (glyph.span <= Math.ceil(after.cellWidth)) {
+          // Single-width glyphs (Latin) render exactly as without fitting.
+          expect({ minX: glyph.minX, maxX: glyph.maxX }, glyph.label).toEqual({
+            minX: unfitted?.minX,
+            maxX: unfitted?.maxX
+          })
+          continue
+        }
+        // The advance is centered, so a glyph drawn off-center in its own advance (세, カ) keeps
+        // that design offset; 2 device px bounds it for the system fallback faces.
+        const centerError = (glyph.minX + glyph.maxX + 1) / 2 - glyph.span / 2
+        expect(Math.abs(centerError), glyph.label).toBeLessThanOrEqual(2)
+      }
+      expect(stats(after.glyphs).inkWidthRatio).toBeGreaterThan(stats(before.glyphs).inkWidthRatio)
+      expect(stats(after.glyphs).gapPx).toBeLessThan(stats(before.glyphs).gapPx)
+
+      // The preedit syllable must not move when it commits and the app echoes it.
+      const preeditRun: ProbeRun[] = [{ label: 'preedit', row: 1, col: 2, text: '한', cells: 2 }]
+      const probe = await openProbe(orcaPage, {
+        renderer,
+        fitWideGlyphs: true,
+        lineHeight: 1,
+        rows: 4,
+        content: '\x1b[?25l\r\n  ',
+        preedit: '한'
+      })
+      const composing = await captureProbe(orcaPage, probe, preeditRun)
+      await writeWideGlyphProbe(orcaPage, '한', true)
+      const committed = await captureProbe(orcaPage, probe, preeditRun)
+      await closeWideGlyphProbe(orcaPage)
+      const [drawn, echoed] = [composing.glyphs[0], committed.glyphs[0]]
+      report[`${renderer}Preedit`] = { composing: drawn, committed: echoed }
+      if (screenshotDir) {
+        for (const [name, capture] of [
+          ['composing', composing],
+          ['committed', committed]
+        ] as const) {
+          writeFileSync(
+            path.join(screenshotDir, `preedit-${renderer}-${name}.png`),
+            Buffer.from(capture.dataUrl.split(',')[1] ?? '', 'base64')
+          )
+        }
+        writeFileSync(path.join(screenshotDir, 'fit-report.json'), JSON.stringify(report, null, 2))
+      }
+      expect(drawn?.minY, 'preedit drawn').toBeGreaterThanOrEqual(0)
+      expect(Math.abs((drawn?.minX ?? 0) - (echoed?.minX ?? 0))).toBeLessThanOrEqual(1)
+      expect(Math.abs((drawn?.maxX ?? 0) - (echoed?.maxX ?? 0))).toBeLessThanOrEqual(1)
+      expect(Math.abs((drawn?.minY ?? 0) - (echoed?.minY ?? 0))).toBeLessThanOrEqual(1)
     }
   })
 })
+
+const FIT_SENTENCE = '안녕하세요'
+
+function mean(values: number[]): number {
+  return values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length)
+}
+
+async function captureFitRuns(page: Page, renderer: ProbeRenderer, fitWideGlyphs: boolean) {
+  const runs: ProbeRun[] = PROBE_GLYPHS.map(({ label, glyph, cells }, index) => ({
+    label,
+    row: 1 + index * 2,
+    col: 2,
+    text: glyph,
+    cells
+  }))
+  const sentenceRow = 1 + PROBE_GLYPHS.length * 2
+  runs.push({ label: 'sentence', row: sentenceRow, col: 2, text: FIT_SENTENCE, cells: 2 })
+  // Latin between wide glyphs in the mixed line below.
+  runs.push({ label: 'mixed', row: sentenceRow + 2, col: 12, text: 'ls', cells: 1 })
+  runs.push({ label: 'mixed', row: sentenceRow + 2, col: 19, text: 'abc', cells: 1 })
+  let content = '\x1b[?25l\r\n'
+  for (const { glyph } of PROBE_GLYPHS) {
+    content += `  ${glyph}\r\n\r\n`
+  }
+  // Mixed text for the screenshots a reviewer compares; only its Latin is measured.
+  content += `  ${FIT_SENTENCE}\r\n\r\n  다 쳤어요 ls 한글abc 漢字`
+  const probe = await openProbe(page, {
+    renderer,
+    fitWideGlyphs,
+    lineHeight: 1,
+    rows: PROBE_GLYPHS.length * 2 + 4,
+    content
+  })
+  const capture = await captureProbe(page, probe, runs)
+  await closeWideGlyphProbe(page)
+  return capture
+}
+
+type OpenProbe = { renderer: ProbeRenderer; clip: Awaited<ReturnType<typeof openWideGlyphProbe>> }
+
+async function openProbe(page: Page, options: ProbeOptions): Promise<OpenProbe> {
+  return { renderer: options.renderer, clip: await openWideGlyphProbe(page, options) }
+}
+
+// Why a screenshot for DOM: only the compositor knows where CSS put the glyph's pixels.
+async function captureProbe(page: Page, probe: OpenProbe, runs: ProbeRun[]) {
+  const png = probe.renderer === 'dom' ? await page.screenshot({ clip: probe.clip }) : null
+  return measureWideGlyphProbe(page, runs, png)
+}
