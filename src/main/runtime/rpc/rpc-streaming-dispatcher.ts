@@ -171,6 +171,7 @@ export class RpcStreamingDispatcher {
             orchestrationMutation: mutation?.identity,
             pairing: options?.pairing,
             sendBinary: options?.sendBinary,
+            closeConnection: options?.closeConnection,
             registerBinaryStreamHandler: options?.registerBinaryStreamHandler,
             registerBinaryMessageHandler: options?.registerBinaryMessageHandler,
             legacyCoordinatorRunId,
@@ -227,6 +228,7 @@ export class RpcStreamingDispatcher {
           updateClientCapabilities: options?.updateClientCapabilities,
           pairing: options?.pairing,
           sendBinary: options?.sendBinary,
+          closeConnection: options?.closeConnection,
           registerBinaryStreamHandler: options?.registerBinaryStreamHandler,
           registerBinaryMessageHandler: options?.registerBinaryMessageHandler,
           orchestrationCaller
