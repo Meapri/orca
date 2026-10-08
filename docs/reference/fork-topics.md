@@ -16,7 +16,7 @@ The stacks were rebuilt on 2026-10-08 from the 223 fork commits (190 non-merge) 
 | Order | Topic                | Branch                     | Commits (before → after) | Upstream PRs                                                   |
 | ----- | -------------------- | -------------------------- | ------------------------ | -------------------------------------------------------------- |
 | 1     | `terminal`           | `stack/terminal`           | 70 → 13                  | #23330 #23331 #23334 #23337 #23338 #23340 #23342               |
-| 2     | `sync-automation`    | `stack/sync-automation`    | 1 → 6                    |                                                                |
+| 2     | `sync-automation`    | `stack/sync-automation`    | 1 → 9                    |                                                                |
 | 3     | `runtime-remote`     | `stack/runtime-remote`     | 15 → 6                   | #23356 #23357 #23358 #23359 (+ upstream #26200, cherry-picked) |
 | 4     | `accounts`           | `stack/accounts`           | 5 → 3                    |                                                                |
 | 5     | `orcad-runtime`      | `stack/orcad-runtime`      | 91 → 15                  |                                                                |
@@ -82,13 +82,17 @@ guards in upstream-only workflows (`homebrew-bump`, `pullfrog`, `issue-os-labele
 
 **Why the fork keeps it.** Fork-only; upstream has no use for it.
 
-| Commit       | Subject                                                                        | Upstream PR | Fork commits folded in |
-| ------------ | ------------------------------------------------------------------------------ | ----------- | ---------------------- |
-| `1a13dbb8f9` | ci(fork): skip upstream-only workflows on the fork                             |             | 1bc0174c78             |
-| `ee6a7929fe` | feat(fork): re-stack fork topic stacks onto upstream main                      |             | 1bc0174c78             |
-| `a0da21ae52` | ci(fork): sync topic stacks daily and propose main updates by PR               |             | 1bc0174c78             |
-| `f4af5b44b2` | docs(fork): document the topic patch stack sync                                |             | 1bc0174c78             |
-| `860db01f2c` | fix(fork): read an Upstream-PR trailer split off by a Co-Authored-By paragraph |             |                        |
+| Commit        | Subject                                                                           | Upstream PR | Fork commits folded in |
+| ------------- | --------------------------------------------------------------------------------- | ----------- | ---------------------- |
+| `1a13dbb8f9`  | ci(fork): skip upstream-only workflows on the fork                                |             | 1bc0174c78             |
+| `ee6a7929fe`  | feat(fork): re-stack fork topic stacks onto upstream main                         |             | 1bc0174c78             |
+| `a0da21ae52`  | ci(fork): sync topic stacks daily and propose main updates by PR                  |             | 1bc0174c78             |
+| `f4af5b44b2`  | docs(fork): document the topic patch stack sync                                   |             | 1bc0174c78             |
+| `860db01f2c`  | fix(fork): read an Upstream-PR trailer split off by a Co-Authored-By paragraph    |             |                        |
+| `8b7474b25c`  | docs(fork): record what each topic stack carries and which upstream PR it answers |             |                        |
+| `970b35e01f`  | test(fork): let the checked-in manifest carry integration fixup topics            |             |                        |
+| `d5392827c4`  | fix(fork): set the sync work directory in a step, not in job-level env            |             |                        |
+| (this commit) | docs(fork): count the sync-automation commits in fork-topics                      |             |                        |
 
 ## runtime-remote
 
