@@ -15,6 +15,7 @@ import { OffscreenBrowserBackend } from '../browser/offscreen-browser-backend'
 import { browserManager } from '../browser/browser-manager'
 import { getDesktopRelayStatus, publishDesktopRelayStatus } from './main-process-relay-status'
 import { DesktopRelayService } from '../runtime/relay/desktop-relay-service'
+import { relayPairingProvider } from '../runtime/relay/relay-pairing-provider'
 import { getServeOptions, getBundledWebClientRoot, printServeReady } from './main-process-serve'
 import {
   bindTerminalRuntimeStartupServices,
@@ -37,7 +38,7 @@ import { CliInstaller } from '../cli/cli-installer'
 import { installLinuxBareOrcaDispatcher } from '../cli/linux-bare-orca-dispatcher'
 import { scheduleAllPendingHistoryTreeRemovals } from '../terminal-history-deletion'
 import { triggerStartupNotificationRegistration } from '../ipc/startup-notification-registration'
-import { startDesktopPushService } from './main-process-push-startup'
+import { startDesktopPushService, startServeAgentNotifications } from './main-process-push-startup'
 import { mainProcessState as state } from './main-process-state'
 import { logStartupMilestone } from './startup-diagnostics'
 import { scheduleAgentLaunchRecordWarmup } from './agent-launch-record-warmup'
@@ -166,9 +167,9 @@ async function launchServeMode(
     throw error
   })
   scheduleAgentLaunchRecordWarmup(null)
-  // Why: a phone paired to a headless host still registers and unregisters its token;
-  // it simply never receives a push, because nothing dispatches notifications here.
+  // Why: with no renderer, agent notifications for paired phones come from the hook tap.
   startDesktopPushService(runtimeRpc)
+  startServeAgentNotifications()
   settleDesktopActivation()
   installServeQuitHandling()
   // Why: headless serve has no renderer to run the normal cli:install flow; do it here for macOS/Linux only (Windows-excluded: install() only mutates registry PATH, not child terminals).
@@ -267,13 +268,7 @@ async function launchDesktopMode(
         onStatus: publishDesktopRelayStatus
       })
       state.desktopRelayService = relayService
-      runtimeRpc.setMobileRelayPairingProvider({
-        createPairingRelay: (relayDeviceId) => relayService.createPairingRelay(relayDeviceId),
-        onDeviceRevokeQueued: (item) => relayService.onDeviceRevokeQueued(item),
-        onDemandStateChanged: () => relayService.demandStateChanged(),
-        getEndpoints: (context, params) => relayService.getEndpoints(context, params),
-        provisionRelay: (context, params) => relayService.provisionRelay(context, params)
-      })
+      runtimeRpc.setMobileRelayPairingProvider(relayPairingProvider(relayService))
       relayService.start()
       // Why: sleeping past relay-token expiry kills the broker with no retry
       // timer; resume is the moment that state becomes recoverable.

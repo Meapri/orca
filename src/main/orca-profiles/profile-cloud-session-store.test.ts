@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { OrcaCloudSession } from './profile-cloud-session-store'
+import { setSecretStore } from '../../shared/secret-store'
 
 const safeStorageMock = vi.hoisted(() => ({
   decryptString: vi.fn((value: Buffer) => value.toString('utf-8')),
@@ -12,12 +13,15 @@ const safeStorageMock = vi.hoisted(() => ({
 
 let userDataPath = ''
 
-vi.mock('electron', () => ({
-  app: {
-    getPath: () => userDataPath
-  },
-  safeStorage: safeStorageMock
-}))
+// Why a SecretStore over the mock: the store reads the host port, so a Node host can seal (or not) too.
+function installMockSecretStore(): void {
+  setSecretStore({
+    isEncryptionAvailable: () => safeStorageMock.isEncryptionAvailable(),
+    encryptString: (value) => safeStorageMock.encryptString(value),
+    decryptString: (value) => safeStorageMock.decryptString(value),
+    describeProtectionGap: () => null
+  })
+}
 
 async function loadSessionStore() {
   vi.resetModules()
@@ -67,6 +71,7 @@ describe('Orca cloud session store', () => {
     safeStorageMock.encryptString.mockClear()
     safeStorageMock.isEncryptionAvailable.mockClear()
     safeStorageMock.isEncryptionAvailable.mockReturnValue(true)
+    installMockSecretStore()
   })
 
   afterEach(() => {
@@ -166,6 +171,36 @@ describe('Orca cloud session store', () => {
       status: 'found',
       session,
       persistence: 'dev-plaintext'
+    })
+  })
+
+  it('keeps an unsealed session on disk only for a host that opted in', async () => {
+    safeStorageMock.isEncryptionAvailable.mockReturnValue(false)
+    const session = makeSession()
+    const store = await loadSessionStore()
+    expect(store.saveOrcaCloudSession('profile-1', userDataPath, session)).toBe('memory-only')
+
+    const optedIn = await loadSessionStore()
+    optedIn.allowHostUnsealedOrcaCloudSessionPersistence()
+    expect(optedIn.saveOrcaCloudSession('profile-1', userDataPath, session)).toBe('host-unsealed')
+    const path = optedIn.getOrcaCloudSessionPath('profile-1', userDataPath)
+    const saved: { format: string } = JSON.parse(readFileSync(path, 'utf-8'))
+    expect(saved.format).toBe('host-unsealed-v1')
+    if (process.platform !== 'win32') {
+      expect(statSync(path).mode & 0o777).toBe(0o600)
+    }
+
+    const restarted = await loadSessionStore()
+    restarted.allowHostUnsealedOrcaCloudSessionPersistence()
+    expect(restarted.readOrcaCloudSession('profile-1', userDataPath)).toEqual({
+      status: 'found',
+      session,
+      persistence: 'host-unsealed'
+    })
+    // Why: a host that never opted in (the desktop) must refuse the file rather than trust it.
+    const desktop = await loadSessionStore()
+    expect(desktop.readOrcaCloudSession('profile-1', userDataPath)).toMatchObject({
+      status: 'decrypt-failed'
     })
   })
 
