@@ -1,13 +1,9 @@
 import type { RpcFailure } from '../transport/types'
+import { isRendererUnavailableRefusal } from '../transport/renderer-unavailable-refusal'
 import type { MarkdownDocState } from './mobile-session-route-types'
 
-const RENDERER_UNAVAILABLE = 'renderer_unavailable'
-
 export function shouldReadMarkdownFromDiskAfterReadTabFailure(response: RpcFailure): boolean {
-  return (
-    response.error.code === RENDERER_UNAVAILABLE ||
-    (response.error.code === 'runtime_error' && response.error.message === RENDERER_UNAVAILABLE)
-  )
+  return isRendererUnavailableRefusal(response)
 }
 
 export function buildMarkdownDiskFallbackDoc(args: {

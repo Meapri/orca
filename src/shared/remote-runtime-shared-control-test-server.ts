@@ -15,6 +15,7 @@ export type SharedControlTestServer = {
   requests: { id: string; method: string; params?: unknown }[]
   auths: unknown[]
   connectionCount: () => number
+  pingPayloads: Buffer[]
   flushDelayedResponses: () => void
   closeClients: () => void
 }
@@ -58,6 +59,7 @@ export async function createSharedControlTestServer(
   const serverKeyPair = generateKeyPair()
   const requests: SharedControlTestServer['requests'] = []
   const auths: unknown[] = []
+  const pingPayloads: Buffer[] = []
   const delayedResponses: (() => void)[] = []
   let connectionCount = 0
   let closedAfterFirstStreamingResponse = false
@@ -71,6 +73,7 @@ export async function createSharedControlTestServer(
 
   wss.on('connection', (ws) => {
     connectionCount += 1
+    ws.on('ping', (data) => pingPayloads.push(data))
     let sharedKey: Uint8Array | null = null
     let authenticated = false
     ws.on('message', (data, isBinary) => {
@@ -144,6 +147,7 @@ export async function createSharedControlTestServer(
     requests,
     auths,
     connectionCount: () => connectionCount,
+    pingPayloads,
     flushDelayedResponses: () => delayedResponses.splice(0).forEach((send) => send()),
     closeClients: () => wss.clients.forEach((client) => client.close(4001, 'test close'))
   }

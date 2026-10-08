@@ -30,6 +30,7 @@ import { RemoteRuntimeSubscriptionFrameRouter } from './remote-runtime-subscript
 import { RemoteRuntimeSubscriptionOutbound } from './remote-runtime-subscription-outbound'
 import { RemoteRuntimeSubscriptionRequestChannel } from './remote-runtime-subscription-request-channel'
 import {
+  REMOTE_RUNTIME_SOCKET_PING_PAYLOAD,
   startRemoteRuntimeSocketLiveness,
   type RemoteRuntimeSocketLivenessMonitor
 } from './remote-runtime-socket-liveness'
@@ -293,9 +294,11 @@ export async function subscribeRemoteRuntimeTransport<TResult>(
     const monitoredWs = ws
     liveness = startRemoteRuntimeSocketLiveness({
       ping: () => {
-        if (monitoredWs.readyState === WebSocket.OPEN) {
-          monitoredWs.ping()
+        if (monitoredWs.readyState !== WebSocket.OPEN) {
+          return false
         }
+        monitoredWs.ping(REMOTE_RUNTIME_SOCKET_PING_PAYLOAD)
+        return true
       },
       onDead: () => {
         fail(
