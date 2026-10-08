@@ -1,6 +1,7 @@
 import { app, powerMonitor, type BrowserWindow } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { getOrcaCloudAuthConfig } from '../orca-profiles/profile-cloud-auth-config'
+import { desktopRuntimeWsPortOption } from './desktop-runtime-ws-port'
 import { getProfileUserDataPath } from '../orca-profiles/profile-storage-paths'
 import {
   getCanonicalUserDataPath,
@@ -86,6 +87,7 @@ function installRuntimeRpc(
     exposeNetworkByDefault: Boolean(serveOptions) || isE2E,
     ...(isE2E ? { wsPort: e2eWsPort } : {}),
     ...(devWsPort !== undefined ? { wsPort: devWsPort } : {}),
+    ...desktopRuntimeWsPortOption(isE2E, Boolean(serveOptions)),
     ...(serveOptions?.wsPort !== undefined
       ? {
           wsPort: serveOptions.wsPort,

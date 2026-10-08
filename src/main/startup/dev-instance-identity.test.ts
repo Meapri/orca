@@ -1,16 +1,18 @@
 import { describe, expect, it } from 'vitest'
+import { APP_DISTRIBUTION } from '../../shared/app-distribution'
 import { getDevInstanceIdentity, shouldApplyPreReadyAppName } from './dev-instance-identity'
 
 describe('dev-instance-identity', () => {
-  it('keeps packaged identity stable', () => {
+  it('names a packaged build after its distribution, not the official Orca', () => {
     expect(getDevInstanceIdentity(false, {})).toMatchObject({
-      name: 'Orca',
-      appName: 'Orca',
+      name: APP_DISTRIBUTION.productName,
+      appName: APP_DISTRIBUTION.productName,
       isDev: false,
       devLabel: null,
       dockBadgeLabel: null,
-      appUserModelId: 'com.stablyai.orca'
+      appUserModelId: APP_DISTRIBUTION.appId
     })
+    expect(getDevInstanceIdentity(false, {}).appUserModelId).not.toBe('com.stablyai.orca')
   })
 
   it('pins a stable dev appName across branches so the safeStorage key does not churn', () => {

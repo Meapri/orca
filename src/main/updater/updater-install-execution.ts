@@ -13,9 +13,9 @@ import { getLinuxPackageType } from '../linux-update-package-type'
 import { LINUX_PACKAGE_MARKER_UNUSABLE_MESSAGE } from '../linux-package-downloaded-status'
 import { recordUpdaterLifecycle } from '../updater-lifecycle-diagnostics'
 import { requestServeUpdateHandoff, failServeUpdateHandoff } from '../serve-update-handoff'
-import { UpdaterPackageRecovery } from './updater-package-recovery'
+import { UpdaterMacBundleSwap } from './updater-mac-bundle-swap'
 
-export abstract class UpdaterInstallExecution extends UpdaterPackageRecovery {
+export abstract class UpdaterInstallExecution extends UpdaterMacBundleSwap {
   protected async performQuitAndInstall(): Promise<void> {
     if (this.quitAndInstallInProgress) {
       recordUpdaterLifecycle('quit_and_install_ignored', { reason: 'already-in-progress' })
@@ -58,6 +58,10 @@ export abstract class UpdaterInstallExecution extends UpdaterPackageRecovery {
     }
     this.finishActiveUpdateCheckAttempt()
     this.clearBackgroundCheckLaunchPending()
+    // Why before Squirrel: an ad-hoc build staged its own verified bundle instead.
+    if (await this.performMacBundleSwapInstall(pendingVersion)) {
+      return
+    }
     this.quitAndInstallInProgress = true
 
     // Set BEFORE anything else so the `activate` handler doesn't reopen the old version while ShipIt replaces the .app bundle.

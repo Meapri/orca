@@ -1,0 +1,234 @@
+name: Distribution release
+
+# Builds this fork's own app (identity in src/shared/app-distribution.json) and publishes it to
+# the fork's GitHub Releases, where its in-app updater looks. The macOS build is ad-hoc signed
+# and unnotarized, so updates install through the app's bundle-swap path, not Squirrel.Mac.
+#   - app:   release `v<version>` with the arm64 DMG/zip, latest-mac.yml, and SHA256SUMS
+#   - orcad: release `orcad-v<version>` via orcad-release.yml, stamped with this repo
+on:
+  push:
+    tags:
+      - 'v[0-9]*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version, X.Y.Z or X.Y.Z-pre.N (default package.json). Tags v<version>.
+        required: false
+        type: string
+      dry_run:
+        description: Build and upload workflow artifacts only; create no tags or releases.
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: distribution-release-${{ inputs.version || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      tag: ${{ steps.resolve.outputs.tag }}
+      orcad_tag: ${{ steps.resolve.outputs.orcad_tag }}
+      prerelease: ${{ steps.resolve.outputs.prerelease }}
+      publish: ${{ steps.resolve.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Refuse to run outside the distribution's own repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="$(node -p "const d=require('./src/shared/app-distribution.json'); d.updateRepository.owner+'/'+d.updateRepository.repo")"
+          if [[ "${GITHUB_REPOSITORY,,}" != "${expected,,}" ]]; then
+            echo "::error::This workflow publishes $expected builds; refusing to run in $GITHUB_REPOSITORY"
+            exit 1
+          fi
+      - name: Resolve version and tags
+        id: resolve
+        shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == push ]]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version="${INPUT_VERSION:-$(node -p "require('./package.json').version")}"
+          fi
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::$version is not X.Y.Z or X.Y.Z-pre.N"
+            exit 1
+          fi
+          prerelease=false
+          if [[ "$version" == *-* ]]; then prerelease=true; fi
+          publish=true
+          if [[ "$DRY_RUN" == true ]]; then publish=false; fi
+          {
+            echo "version=$version"
+            echo "tag=v$version"
+            echo "orcad_tag=orcad-v$version"
+            echo "prerelease=$prerelease"
+            echo "publish=$publish"
+          } >>"$GITHUB_OUTPUT"
+          echo "Resolved v$version (prerelease=$prerelease, publish=$publish)"
+      - name: Refuse to overwrite a published release
+        if: steps.resolve.outputs.publish == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          draft="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>/dev/null || echo missing)"
+          if [[ "$draft" == false ]]; then
+            echo "::error::$TAG is already published; bump the version instead of replacing installed builds"
+            exit 1
+          fi
+      # Why the API: tags created with GITHUB_TOKEN do not re-trigger this or orcad-release.yml.
+      - name: Create the app and orcad tags at this commit
+        if: steps.resolve.outputs.publish == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.resolve.outputs.tag }}
+          ORCAD_TAG: ${{ steps.resolve.outputs.orcad_tag }}
+        run: |
+          set -euo pipefail
+          for tag in "$TAG" "$ORCAD_TAG"; do
+            ref="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq '.object.type + " " + .object.sha' 2>/dev/null || true)"
+            existing="${ref#* }"
+            # Why: an annotated tag's ref names the tag object; compare the commit it points at.
+            if [[ "$ref" == tag\ * ]]; then
+              existing="$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$existing" --jq .object.sha)"
+            fi
+            if [[ -z "$ref" ]]; then
+              gh api "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$tag" -f "sha=$GITHUB_SHA" >/dev/null
+              echo "Created $tag at $GITHUB_SHA"
+            elif [[ "$existing" != "$GITHUB_SHA" ]]; then
+              echo "::error::$tag already points at $existing, not $GITHUB_SHA"
+              exit 1
+            fi
+          done
+
+  mac:
+    needs: prepare
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
+      ORCA_BACKGROUND_LAUNCH: '1'
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: pnpm/setup@v2
+        with:
+          install: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: package.json
+          cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            mobile/pnpm-lock.yaml
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/Library/Caches/electron
+            ~/Library/Caches/electron-builder
+          key: electron-builder-mac-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            electron-builder-mac-
+      # Why retry: Electron's postinstall download occasionally hits GitHub CDN 504s.
+      - name: Install dependencies
+        uses: nick-fields/retry@v4
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          retry_wait_seconds: 30
+          command: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/install-mobile-dependencies
+      - name: Verify macOS entitlements
+        run: pnpm verify:macos-entitlements
+      - name: Build app bundles
+        run: pnpm build:release
+      - name: Package the ad-hoc signed arm64 app
+        run: |
+          node config/scripts/ensure-native-runtime.mjs --runtime=electron
+          node config/scripts/package-mac-adhoc.mjs --arch arm64 --version "$VERSION"
+      - name: Collect release assets and checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="$(node -p "require('./src/shared/app-distribution.json').artifactBaseName")"
+          mkdir -p release
+          cp "dist/$base-macos-arm64.dmg" "dist/$base-macos-arm64.zip" dist/latest-mac.yml release/
+          cp dist/*.blockmap release/ 2>/dev/null || true
+          grep -q "^version: $VERSION$" release/latest-mac.yml || {
+            echo "::error::latest-mac.yml does not describe $VERSION"
+            exit 1
+          }
+          (cd release && shasum -a 256 -- * >SHA256SUMS && cat SHA256SUMS)
+      - uses: actions/upload-artifact@v7
+        with:
+          name: distribution-release-mac-arm64
+          path: release/
+          if-no-files-found: error
+          retention-days: 7
+
+  orcad:
+    needs: prepare
+    if: needs.prepare.outputs.publish == 'true'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/orcad-release.yml
+    with:
+      tag: ${{ needs.prepare.outputs.orcad_tag }}
+
+  publish:
+    needs: [prepare, mac]
+    if: needs.prepare.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+      PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: distribution-release-mac-arm64
+          path: release
+      - name: Verify every asset against SHA256SUMS
+        working-directory: release
+        run: sha256sum -c SHA256SUMS
+      # Why draft first: the updater probes latest-mac.yml and its zip, so the release must not
+      # be visible until every asset is uploaded.
+      - name: Upload assets to a draft release, then publish it
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --draft \
+              --title "$TAG" \
+              --notes "Ad-hoc signed macOS (Apple Silicon) build. First launch: right-click the app > Open, or run xattr -dr com.apple.quarantine on it. Later updates install from inside the app. Checksums: SHA256SUMS."
+          fi
+          gh release upload "$TAG" release/* --repo "$GITHUB_REPOSITORY" --clobber
+          latest=(--latest)
+          prerelease=()
+          if [[ "$PRERELEASE" == true ]]; then latest=(--latest=false); prerelease=(--prerelease); fi
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false "${latest[@]}" "${prerelease[@]}"

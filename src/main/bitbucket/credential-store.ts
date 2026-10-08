@@ -1,5 +1,4 @@
 import { existsSync, mkdirSync, readFileSync, unlinkSync } from 'node:fs'
-import { homedir } from 'node:os'
 import { join } from 'node:path'
 import {
   CredentialDecryptionError,
@@ -9,6 +8,7 @@ import {
   writeEncryptedCredential
 } from '../integration-credential-file'
 import type { BitbucketAuthMode } from '../../shared/bitbucket-credentials'
+import { getAppSecretHomeDir } from '../app-secret-home-dir'
 import { readCredentialFileProtection } from '../credential-file-protection'
 import type { SecretAtRestProtection } from '../../shared/secret-at-rest-protection'
 
@@ -51,7 +51,7 @@ let cachedSecret: BitbucketStoredSecret | null = null
 let credentialError: string | null = null
 
 function getOrcaDir(): string {
-  return join(homedir(), '.orca')
+  return getAppSecretHomeDir()
 }
 
 function getMetadataPath(): string {
