@@ -16,7 +16,7 @@ The stacks were rebuilt on 2026-10-08 from the 223 fork commits (190 non-merge) 
 | Order | Topic                | Branch                     | Commits (before → after) | Upstream PRs                                                   |
 | ----- | -------------------- | -------------------------- | ------------------------ | -------------------------------------------------------------- |
 | 1     | `terminal`           | `stack/terminal`           | 70 → 13                  | #23330 #23331 #23334 #23337 #23338 #23340 #23342               |
-| 2     | `sync-automation`    | `stack/sync-automation`    | 1 → 9                    |                                                                |
+| 2     | `sync-automation`    | `stack/sync-automation`    | 1 → 12                   |                                                                |
 | 3     | `runtime-remote`     | `stack/runtime-remote`     | 15 → 6                   | #23356 #23357 #23358 #23359 (+ upstream #26200, cherry-picked) |
 | 4     | `accounts`           | `stack/accounts`           | 5 → 3                    |                                                                |
 | 5     | `orcad-runtime`      | `stack/orcad-runtime`      | 91 → 15                  |                                                                |
@@ -70,8 +70,9 @@ feature commit stays: expect a conflict to resolve by hand the first time.
 
 ## sync-automation
 
-**Purpose.** The daily re-stack workflow, its scripts and manifest, and the guards that keep
-upstream-only workflows from running on the fork.
+**Purpose.** The daily re-stack (run on the fork owner's server by
+`fork-stack-server-sync.mjs`; the Actions workflow is a manual fallback), its scripts and
+manifest, and the guards that keep upstream-only workflows from running on the fork.
 
 **Owns.** `.github/workflows/fork-upstream-sync.yml`, the `github.repository == 'stablyai/orca'`
 guards in upstream-only workflows (`homebrew-bump`, `pullfrog`, `issue-os-labeler`,
@@ -92,7 +93,10 @@ guards in upstream-only workflows (`homebrew-bump`, `pullfrog`, `issue-os-labele
 | `8b7474b25c`  | docs(fork): record what each topic stack carries and which upstream PR it answers |             |                        |
 | `970b35e01f`  | test(fork): let the checked-in manifest carry integration fixup topics            |             |                        |
 | `d5392827c4`  | fix(fork): set the sync work directory in a step, not in job-level env            |             |                        |
-| (this commit) | docs(fork): count the sync-automation commits in fork-topics                      |             |                        |
+| `8b2c199907`  | docs(fork): count the sync-automation commits in fork-topics                      |             |                        |
+| `214e20c5d8`  | feat(fork): run the daily stack sync on the owner's server                        |             |                        |
+| `adddfa803d`  | ci(fork): keep the Actions sync as a manual fallback only                         |             |                        |
+| (this commit) | docs(fork): run the daily sync on the owner's server, Actions as fallback         |             |                        |
 
 ## runtime-remote
 
