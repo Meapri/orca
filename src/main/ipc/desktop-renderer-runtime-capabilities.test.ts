@@ -22,6 +22,7 @@ import {
   WORKTREE_VISIBILITY_SOURCE_DEFAULTS_RUNTIME_CAPABILITY,
   type RuntimeCapability
 } from '../../shared/protocol-version'
+import { SESSION_TABS_HOST_EDITOR_TABS_RUNTIME_CAPABILITY } from '../../shared/host-owned-surface-capabilities'
 import {
   AGENT_LAUNCH_PROMPT_UNCONFIRMED_RUNTIME_CAPABILITY,
   AGENT_LAUNCH_RUNTIME_CAPABILITY,
@@ -68,7 +69,9 @@ const REMOTE_ONLY_BY_DECISION: readonly RuntimeCapability[] = [
   SKILL_INSTALL_RESULT_V2_CAPABILITY,
   // Unsettled, not a decision: the local tabs sync reads the census's `authoritative` label
   // (local-structured-session-tabs-sync/inventory-refresh.ts), which main drops without this.
-  SESSION_TABS_AUTHORITATIVE_INVENTORY_RUNTIME_CAPABILITY
+  SESSION_TABS_AUTHORITATIVE_INVENTORY_RUNTIME_CAPABILITY,
+  // Host-owned editor tabs exist only on a renderer-less host; against its own main the renderer owns them.
+  SESSION_TABS_HOST_EDITOR_TABS_RUNTIME_CAPABILITY
 ]
 
 /** Advertised to main and deliberately NOT to a remote host yet. */

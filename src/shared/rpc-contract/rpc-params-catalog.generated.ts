@@ -156,6 +156,11 @@ import {
   TypeText
 } from './computer-schemas-params'
 import {
+  DevicesRevokeParams,
+  DevicesRotateParams,
+  PairingCreateParams
+} from './device-administration-params'
+import {
   AttachParams as AttachParamsOfEmulatorParams,
   AxParams,
   ButtonParams,
@@ -784,6 +789,9 @@ export const RPC_PARAMS_BY_METHOD = {
   'computer.scroll': ScrollOfComputerSchemasParams,
   'computer.setValue': SetValue,
   'computer.typeText': TypeText,
+  'devices.list': null,
+  'devices.revoke': DevicesRevokeParams,
+  'devices.rotate': DevicesRotateParams,
   'diagnostics.memory': null,
   'emulator.attach': AttachParamsOfEmulatorParams,
   'emulator.availability': EmulatorAvailabilityParams,
@@ -1090,6 +1098,7 @@ export const RPC_PARAMS_BY_METHOD = {
   'orchestration.workerStart': WorkerStartParams,
   'orchestration.workerStop': WorkerDispatchParamsOfOrchestrationWorkerStopParams,
   'orchestration.workerTerminalUserInput': OrchestrationWorkerTerminalUserInputParams,
+  'pairing.create': PairingCreateParams,
   'pairing.getEndpoints': PairingGetEndpointsParamsSchema,
   'pairing.provisionRelay': PairingProvisionRelayParamsSchema,
   'plugins.consent': pluginConsentRequestSchema,

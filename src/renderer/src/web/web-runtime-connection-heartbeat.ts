@@ -3,6 +3,8 @@ import { installWindowVisibilityInterval } from '../lib/window-visibility-interv
 const HEARTBEAT_INTERVAL_MS = 10_000
 const HEARTBEAT_IDLE_MS = 25_000
 const HEARTBEAT_PROBE_GRACE_MS = 20_000
+// Mirrors the desktop's remote-runtime resume probe window.
+const REMOTE_RUNTIME_SOCKET_RESUME_PROBE_DEADLINE_MS = 8_000
 
 type WebRuntimeConnectionHeartbeatOptions = {
   now: () => number
@@ -18,12 +20,41 @@ export class WebRuntimeConnectionHeartbeat {
   heartbeatProbeSentAt: number | null = null
   lastHeartbeatTickAt = 0
   private cleanup: (() => void) | null = null
+  private resumeProbeTimer: ReturnType<typeof setTimeout> | null = null
+  private inboundSinceResumeProbe = false
 
   constructor(private readonly options: WebRuntimeConnectionHeartbeatOptions) {}
 
   noteInboundFrame(): void {
     this.lastInboundFrameAt = this.options.now()
     this.heartbeatProbeSentAt = null
+    this.inboundSinceResumeProbe = true
+  }
+
+  /**
+   * Why separate from the idle cadence: after a network change or page resume the socket can read
+   * OPEN with its path gone, and the idle window needs ~45 s to prove that. One probe with a short
+   * deadline settles it; a live socket answers and nothing else changes.
+   */
+  probeNow(deadlineMs = REMOTE_RUNTIME_SOCKET_RESUME_PROBE_DEADLINE_MS): void {
+    const socket = this.options.getSocket()
+    if (
+      this.resumeProbeTimer !== null ||
+      !socket ||
+      socket.readyState !== WebSocket.OPEN ||
+      !this.options.isConnected()
+    ) {
+      return
+    }
+    this.inboundSinceResumeProbe = false
+    this.options.sendProbe()
+    this.resumeProbeTimer = setTimeout(() => {
+      this.resumeProbeTimer = null
+      if (!this.inboundSinceResumeProbe && this.options.getSocket() === socket) {
+        socket.close()
+        this.options.handleDeadSocket(socket)
+      }
+    }, deadlineMs)
   }
 
   start(): void {
@@ -43,6 +74,10 @@ export class WebRuntimeConnectionHeartbeat {
     this.cleanup?.()
     this.cleanup = null
     this.heartbeatProbeSentAt = null
+    if (this.resumeProbeTimer !== null) {
+      clearTimeout(this.resumeProbeTimer)
+      this.resumeProbeTimer = null
+    }
   }
 
   runTick(): void {

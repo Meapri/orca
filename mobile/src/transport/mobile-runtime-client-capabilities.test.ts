@@ -6,6 +6,7 @@ import {
   STRUCTURED_AGENT_SESSION_HOLD_RUNTIME_CAPABILITY,
   STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY
 } from '../../../src/shared/protocol-version'
+import { SESSION_TABS_HOST_EDITOR_TABS_RUNTIME_CAPABILITY } from '../../../src/shared/host-owned-surface-capabilities'
 import {
   AGENT_LAUNCH_RUNTIME_CAPABILITY,
   AGENT_LAUNCH_TAB_CLOSED_CLIENT_CAPABILITY,
@@ -44,6 +45,12 @@ describe('mobile runtime client capabilities', () => {
         AGENT_LAUNCH_UNSTARTED_TAB_CLIENT_CAPABILITY,
         AGENT_LAUNCH_TAB_CLOSED_CLIENT_CAPABILITY
       ])
+    )
+  })
+
+  it('accepts host-owned editor tabs so a headless host opens files as session tabs', () => {
+    expect(MOBILE_RUNTIME_CLIENT_CAPABILITIES).toContain(
+      SESSION_TABS_HOST_EDITOR_TABS_RUNTIME_CAPABILITY
     )
   })
 

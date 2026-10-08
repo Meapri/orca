@@ -22,6 +22,33 @@ export class ExternalChromiumTabRegistry {
     this.initialAgentPageId = agentPageId
   }
 
+  listPages(): ExternalChromiumPageRecord[] {
+    return [...this.pagesByPublicId.values()]
+  }
+
+  hasPage(publicPageId: string): boolean {
+    return this.pagesByPublicId.has(publicPageId)
+  }
+
+  /** Drop a page whose Chromium tab was closed or lost outside this registry. */
+  forgetPage(page: ExternalChromiumPageRecord): void {
+    this.deletePage(page)
+  }
+
+  /** Keep a blanked tab as the next create's target, so the browser never runs out of tabs. */
+  parkBlankPage(page: ExternalChromiumPageRecord): void {
+    this.deletePage(page)
+    this.initialAgentPageId = page.agentPageId
+  }
+
+  parkAgentPage(agentPageId: string): void {
+    this.initialAgentPageId = agentPageId
+  }
+
+  hasParkedBlankPage(): boolean {
+    return this.initialAgentPageId !== null
+  }
+
   clear(): void {
     this.pagesByPublicId.clear()
     this.pagesByAgentId.clear()

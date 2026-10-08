@@ -5,19 +5,28 @@
 // §Phase 0). Never log terminal input/output content or tokens.
 //
 // Two hard constraints:
-//   1. FAIL-OPEN. Any error (EACCES, ENOSPC, bad path) disables logging and is
+//   1. FAIL-OPEN. Any error (EACCES, ENOSPC, bad path) suspends logging and is
 //      swallowed — logging must never throw into daemon lifecycle logic or
 //      affect startup/shutdown.
 //   2. Best-effort durability. Each line is a single synchronous appendFileSync
 //      so a process death mid-write can lose at most the last (partial) line;
 //      NDJSON readers skip a truncated trailing line.
+//
+// Rotation reads the shared file's real size rather than a per-process counter,
+// because every daemon generation appends to the same path (see
+// daemon-file-log-rotation.ts). The bound therefore holds across restarts and
+// concurrent writers: at most (maxRotatedFiles + 1) files of ~maxBytes each.
 
-import { appendFileSync, existsSync, mkdirSync, renameSync, statSync, unlinkSync } from 'node:fs'
+import { appendFileSync, mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
+import { rotateSharedLogIfNeeded } from './daemon-file-log-rotation'
 
 const DEFAULT_MAX_BYTES = 5 * 1024 * 1024 // 5 MB
 const DEFAULT_MAX_ROTATED_FILES = 2 // daemon.log + daemon.log.1 + daemon.log.2
 const PRIVATE_FILE_MODE = 0o600
+// Why suspend rather than disable: a full disk on a small VPS is usually freed by an
+// operator within minutes, and a daemon that lives for weeks should log again after.
+export const DAEMON_LOG_FAILURE_BACKOFF_MS = 60_000
 
 /** Total files in the rotated daemon-log family (active + rotated). The bundle
  *  collector passes this to `listRotatedFiles` so it reads every rotated file. */
@@ -33,6 +42,8 @@ export type DaemonFileLog = {
 export type DaemonFileLogOptions = {
   readonly maxBytes?: number
   readonly maxRotatedFiles?: number
+  /** Clock seam for the failure backoff; tests only. */
+  readonly now?: () => number
 }
 
 /** No-op logger used when the daemon was launched without `--log-file` (adopted
@@ -50,52 +61,36 @@ export function createDaemonFileLog(
 ): DaemonFileLog {
   const maxBytes = opts.maxBytes ?? DEFAULT_MAX_BYTES
   const maxRotatedFiles = opts.maxRotatedFiles ?? DEFAULT_MAX_ROTATED_FILES
+  const now = opts.now ?? Date.now
 
-  let disabled = false
-  let currentBytes = 0
+  let closed = false
+  let suspendedUntil = 0
+  let directoryReady = false
 
-  function disable(): void {
-    disabled = true
+  function suspend(): void {
+    suspendedUntil = now() + DAEMON_LOG_FAILURE_BACKOFF_MS
+    // Why re-ensure after a failure: an operator may have removed the logs dir to free space.
+    directoryReady = false
   }
 
-  try {
-    mkdirSync(dirname(filePath), { recursive: true })
-    currentBytes = existsSync(filePath) ? statSync(filePath).size : 0
-  } catch {
-    // Unwritable path — stay fail-open; the first log() no-ops via `disabled`.
-    disable()
-  }
-
-  // Cascade rename base → .1 → .2, dropping the oldest, then reset the active
-  // file. Any failure disables logging rather than risking a partial-rotation
-  // loop that keeps throwing on every subsequent line.
-  function rotate(): void {
-    // With no rotated slots there is nothing to cascade; return without the
-    // `currentBytes = 0` reset below, which would otherwise falsely report the
-    // still-growing active file as empty and defeat the overflow check forever.
-    if (maxRotatedFiles < 1) {
-      return
+  function ensureDirectory(): boolean {
+    if (directoryReady) {
+      return true
     }
     try {
-      for (let i = maxRotatedFiles; i >= 1; i--) {
-        const src = i === 1 ? filePath : `${filePath}.${i - 1}`
-        const dst = `${filePath}.${i}`
-        if (!existsSync(src)) {
-          continue
-        }
-        if (existsSync(dst)) {
-          unlinkSync(dst)
-        }
-        renameSync(src, dst)
-      }
-      currentBytes = 0
+      mkdirSync(dirname(filePath), { recursive: true })
+      directoryReady = true
+      return true
     } catch {
-      disable()
+      suspend()
+      return false
     }
   }
 
+  ensureDirectory()
+
   function log(event: string, details: Record<string, unknown> = {}): void {
-    if (disabled) {
+    if (closed || now() < suspendedUntil) {
       return
     }
     let line: string
@@ -111,18 +106,19 @@ export function createDaemonFileLog(
       // Non-serializable detail (circular ref) — drop the line, never crash.
       return
     }
-    const lineBytes = Buffer.byteLength(line, 'utf8')
-    if (currentBytes > 0 && currentBytes + lineBytes > maxBytes) {
-      rotate()
-      if (disabled) {
-        return
-      }
+    if (!ensureDirectory()) {
+      return
     }
     try {
+      rotateSharedLogIfNeeded({
+        filePath,
+        incomingBytes: Buffer.byteLength(line, 'utf8'),
+        maxBytes,
+        maxRotatedFiles
+      })
       appendFileSync(filePath, line, { mode: PRIVATE_FILE_MODE })
-      currentBytes += lineBytes
     } catch {
-      disable()
+      suspend()
     }
   }
 
@@ -131,7 +127,7 @@ export function createDaemonFileLog(
     close(): void {
       // Best-effort marker; append is synchronous so there is nothing to flush.
       log('daemon-log-closed')
-      disabled = true
+      closed = true
     }
   }
 }

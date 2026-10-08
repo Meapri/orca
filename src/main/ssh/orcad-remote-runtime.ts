@@ -9,7 +9,7 @@ import {
   orcadBunRuntimeFilename
 } from '../../shared/orcad-artifacts'
 import { assertPosixOrcadHost } from './orcad-remote-host-support'
-import { shellEscape } from './ssh-connection-utils'
+import { shellEscape } from './posix-shell-quote'
 import { joinRemotePath, remoteDirname, type RemoteHostPlatform } from './ssh-remote-platform'
 
 /** New slots start the server directly; rollback still accepts older single-entry slots. */

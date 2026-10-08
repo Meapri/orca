@@ -55,7 +55,8 @@ function buildDaemonScriptArgs(options: DaemonChildSpawnOptions): string[] {
  */
 export function spawnDaemonChildProcess(
   options: DaemonChildSpawnOptions,
-  useDurableScope: boolean
+  useDurableScope: boolean,
+  scopePropertyArgs: readonly string[] = []
 ): SpawnedProcess {
   const { forkEntryPath, relocatedExecPath, userDataPath, launchNonce } = options
   const scriptArgs = buildDaemonScriptArgs(options)
@@ -87,7 +88,9 @@ export function spawnDaemonChildProcess(
     relocatedExecPath ?? process.execPath,
     [forkEntryPath, ...scriptArgs, '--fresh-daemon-scope'],
     launchNonce,
-    daemonEnv
+    daemonEnv,
+    undefined,
+    scopePropertyArgs
   )
   return spawnProcess({
     ...childOptions,

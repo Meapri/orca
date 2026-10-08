@@ -1,6 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { createServer, type Server, type ServerResponse } from 'node:http'
-import { shell } from 'electron'
 import type { OrcaCloudAuthConfig } from './profile-cloud-auth-config'
 import {
   ORCA_CLOUD_CALLBACK_RESPONSE_HEADERS,
@@ -40,9 +39,13 @@ function closeServer(server: Server): void {
   }
 }
 
+/** Hands the authorize URL to the user: a browser on the desktop, the waiting CLI on a headless host. */
+export type OrcaCloudAuthorizeUrlOpener = (authorizeUrl: string) => Promise<void>
+
 export function beginOrcaCloudPkceFlow(
   config: OrcaCloudAuthConfig,
-  localProfileId: string
+  localProfileId: string,
+  openAuthorizeUrl: OrcaCloudAuthorizeUrlOpener
 ): Promise<OrcaCloudAuthorizationCode> {
   const codeVerifier = createCodeVerifier()
   const nonce = base64Url(randomBytes(32))
@@ -143,7 +146,7 @@ export function beginOrcaCloudPkceFlow(
       authorizeUrl.searchParams.set('code_challenge', createCodeChallenge(codeVerifier))
       authorizeUrl.searchParams.set('code_challenge_method', 'S256')
       authorizeUrl.searchParams.set('local_profile_id', localProfileId)
-      void shell.openExternal(authorizeUrl.toString()).catch((error) => {
+      void openAuthorizeUrl(authorizeUrl.toString()).catch((error: unknown) => {
         rejectFlow(
           error instanceof Error ? error : new Error('orca_cloud_auth_browser_open_failed')
         )

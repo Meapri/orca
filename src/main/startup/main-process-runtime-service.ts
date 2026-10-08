@@ -12,6 +12,7 @@ import { agentHookServer } from '../agent-hooks/server'
 import { browserManager } from '../browser/browser-manager'
 import { loadAgentSessionClaimSigner } from '../runtime/agent-session-claim-identity'
 import { getProfileUserDataPath } from '../orca-profiles/profile-storage-paths'
+import { createRuntimeHostRecordStorages } from '../runtime/runtime-host-record-storage'
 import { prepareCodexPinnedLaunchHome } from './codex-session-resume-launch'
 import {
   attachAccountServicesToRuntime,
@@ -37,6 +38,8 @@ import {
 } from '../runtime/agent-status-observed-pane-identity'
 import { startAgentStateRulesLiveUpdates } from '../runtime/agent-state-rules/agent-state-rules-live-update'
 import { recordDurableCrashBreadcrumb } from '../crash-reporting/durable-crash-breadcrumb'
+import { installFirstWorkRenameSubscription } from '../agent-hooks/first-work-rename-subscription'
+import { firstWorkRenameDeps } from '../agent-hooks/first-work-rename-runtime'
 
 export function getDesktopWindowStatus(): RuntimeDesktopWindowStatus {
   const activation = state.desktopActivationGate
@@ -79,6 +82,7 @@ export function initializeMainProcessRuntime(): OrcaRuntimeService {
   // `orca serve`, which never opens one, and the fleet path runs there too.
   const observedPaneIdentities = new AgentStatusObservedPaneIdentities()
   const runtime = new OrcaRuntimeService(store, stats, {
+    ...createRuntimeHostRecordStorages(getProfileUserDataPath()),
     agentSessionClaimSigner: loadAgentSessionClaimSigner(
       getProfileUserDataPath(),
       getProfileUserDataPath()
@@ -168,6 +172,7 @@ export function initializeMainProcessRuntime(): OrcaRuntimeService {
   agentHookServer.subscribeEnrichedStatus((enriched) =>
     recordObservedAgentStatusPaneIdentity(observedPaneIdentities, enriched.paneKey, runtime)
   )
+  installFirstWorkRenameSubscription(agentHookServer, () => firstWorkRenameDeps(store, runtime))
   // Why before anything can attach: a client host that reattaches to a restarted runtime is only
   // handed its pages back if the runtime found them first.
   runtime.rehydrateClientHostedBrowserPages()

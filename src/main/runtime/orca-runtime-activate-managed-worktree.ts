@@ -112,6 +112,8 @@ export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListM
         if (this.getAvailableAuthoritativeWindow()) {
           this.notifier?.resumeSleepingAgents?.(worktree.id)
           sleepingAgentWake = 'requested'
+        } else if (this.headlessAgentResumeHost?.wakeWorktree(worktree.id)) {
+          sleepingAgentWake = 'requested'
         } else if (
           // Why: sleeping records are partitioned by execution host; reading
           // only the local partition would miss slept agents on SSH-host

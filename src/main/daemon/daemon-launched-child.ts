@@ -7,12 +7,18 @@ import {
   type DaemonChildSpawnOptions
 } from './daemon-launched-child-spawn'
 import { parseDaemonReadyIdentity } from './daemon-ready-identity'
+import {
+  daemonScopePropertyArgs,
+  resolveDaemonScopeResourceLimits
+} from './daemon-scope-resource-limits'
+import { setTerminalResourceLimitsShortfall } from './daemon-scope-resource-limit-status'
 import { unlinkOwnedDaemonPidFile } from './daemon-spawner'
 
 const DAEMON_CHILD_TERMINATION_GRACE_MS = 5_000
 const DAEMON_CHILD_FORCE_EXIT_WAIT_MS = 1_000
 const STARTUP_STDERR_MAX_BYTES = 8192
 const DEFAULT_DAEMON_STARTUP_TIMEOUT_MS = 10_000
+const PROPERTY_REJECTION_WINDOW_MS = 5_000
 
 export class DaemonEndpointUnavailableError extends Error {
   constructor(
@@ -39,31 +45,72 @@ export type LaunchedDaemonChild = {
 export async function launchDaemonChild(
   options: DaemonChildSpawnOptions
 ): Promise<LaunchedDaemonChild> {
-  if (!isDurableDaemonScopeSupported()) {
-    return launchDaemonChildAttempt(options, false)
+  const { limits, warnings } = resolveDaemonScopeResourceLimits()
+  for (const warning of warnings) {
+    console.warn(`[daemon] ${warning}`)
   }
-  try {
-    return await launchDaemonChildAttempt(options, true)
-  } catch (error) {
-    if (error instanceof DaemonEndpointUnavailableError) {
-      // Not a scope problem: another daemon owns the endpoint and the caller adopts it, so a
-      // retry would only fork a second child to lose the same race.
-      throw error
-    }
-    console.warn(
-      '[daemon] durable cgroup-scope launch failed, retrying without cgroup isolation:',
-      error instanceof Error ? error.message : String(error)
+  if (!isDurableDaemonScopeSupported()) {
+    setTerminalResourceLimitsShortfall(
+      limits.length > 0 ? { reason: 'systemd_scope_unavailable', limits } : null
     )
     return launchDaemonChildAttempt(options, false)
   }
+  let scopeFailure: unknown
+  // Why a ladder: an older systemd rejects OOMPolicy on scopes and any systemd can reject a limit,
+  // and neither may cost the daemon the isolation a bare scope still gives it.
+  for (const scopeProperties of [daemonScopePropertyArgs(limits), []]) {
+    const attemptStartedAt = Date.now()
+    try {
+      const launched = await launchDaemonChildAttempt(options, true, scopeProperties)
+      setTerminalResourceLimitsShortfall(
+        limits.length > 0 && scopeProperties.length === 0
+          ? { reason: 'scope_properties_rejected', limits, detail: errorMessage(scopeFailure) }
+          : null
+      )
+      return launched
+    } catch (error) {
+      if (error instanceof DaemonEndpointUnavailableError) {
+        // Not a scope problem: another daemon owns the endpoint and the caller adopts it, so a
+        // retry would only fork a second child to lose the same race.
+        throw error
+      }
+      scopeFailure = error
+      if (Date.now() - attemptStartedAt > PROPERTY_REJECTION_WINDOW_MS) {
+        // A rejected property fails systemd-run at once; a slow failure is the daemon's own, and
+        // repeating it scoped would only double the startup wait before the unscoped fallback.
+        break
+      }
+      if (scopeProperties.length > 0) {
+        console.warn(
+          '[daemon] scoped launch with resource properties failed, retrying a bare scope:',
+          errorMessage(error)
+        )
+      }
+    }
+  }
+  console.warn(
+    '[daemon] durable cgroup-scope launch failed, retrying without cgroup isolation:',
+    errorMessage(scopeFailure)
+  )
+  setTerminalResourceLimitsShortfall(
+    limits.length > 0
+      ? { reason: 'systemd_scope_unavailable', limits, detail: errorMessage(scopeFailure) }
+      : null
+  )
+  return launchDaemonChildAttempt(options, false)
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
 
 async function launchDaemonChildAttempt(
   options: DaemonChildSpawnOptions,
-  useDurableScope: boolean
+  useDurableScope: boolean,
+  scopePropertyArgs: readonly string[] = []
 ): Promise<LaunchedDaemonChild> {
   const { pidPath, launchNonce } = options
-  const child = spawnDaemonChildProcess(options, useDurableScope)
+  const child = spawnDaemonChildProcess(options, useDurableScope, scopePropertyArgs)
 
   // Why: keep only the startup-window stderr tail so a crash cause is visible without unbounded memory.
   let startupStderr = ''

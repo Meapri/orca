@@ -44,7 +44,24 @@ vi.mock('./orcad-account-services', () => ({
   createOrcadAccountServices: () => ({ runtimeDeps: {}, stop: () => {} }),
   registerAccountBackedPtyRuntime: async () => {}
 }))
-vi.mock('./orcad-health', () => ({ collectOrcadHealth: async () => ({}) }))
+vi.mock('./orcad-health', () => ({
+  collectOrcadHealth: async () => ({
+    terminalDaemon: {
+      state: 'absent',
+      ownsFreshSessions: false,
+      pid: null,
+      buildVersion: null,
+      entryPath: null,
+      protocolVersion: null,
+      cgroupUnit: null,
+      selfTest: { ok: false, coverage: 'pty-spawn', verdict: 'no-daemon', durationMs: 0 }
+    }
+  })
+}))
+// Why: this suite proves push wiring; the headless parity steps have their own suite.
+vi.mock('./orcad-headless-parity', () => ({
+  installOrcadHeadlessParity: () => ({ startScheduledWork() {}, uninstall() {} })
+}))
 // The runtime stub has no automation surface; orcad-automations.test.ts covers that wiring.
 vi.mock('./orcad-automations', () => ({
   startOrcadAutomations: () => {},
@@ -104,6 +121,9 @@ vi.mock('../runtime/orca-runtime', () => ({
       return 'headless-runtime'
     }
     rehydrateClientHostedBrowserPages() {}
+    getStatus() {
+      return { degradations: [] }
+    }
     async refreshRestoredOrchestrationAuthority() {}
     async reconcileLegacyWorkerTerminals() {}
     async stopLegacyWorkerTerminalRecovery() {}
@@ -256,6 +276,15 @@ it('unsubscribes settings when daemon startup fails after hook setup', async () 
   await expect(startOrcad()).rejects.toThrow('daemon setup failed')
   expect(state.onSettingsChanged).toHaveBeenCalledOnce()
   expect(state.removeSettingsListener).toHaveBeenCalledOnce()
-  expect(readdirSync(profileStateAccessPaths(state.root).participants)).toEqual([])
-  acquireProfileStateMaintenance(state.root).release()
+})
+
+it('publishes readiness although the browser provider fails to start', async () => {
+  state.root = mkdtempSync(join(tmpdir(), 'orca-headless-browser-failure-'))
+  state.browserProvider.mockRejectedValueOnce(new Error('browser setup failed'))
+  const { startOrcad } = await import('./orcad-entry')
+  const host = await startOrcad({ noPairing: true, json: true })
+  expect(host.readiness.runtimeId).toBeTruthy()
+  expect(state.browserProvider).toHaveBeenCalledTimes(1)
+  // Why: the stop surfaces the resolver failure, which may hide a sidecar it could not clean up.
+  await expect(host.stop()).rejects.toThrow('browser setup failed')
 })

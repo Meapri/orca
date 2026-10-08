@@ -43,7 +43,7 @@ export function loadOrCreateE2EEKeypair(userDataPath: string): E2EEKeypair {
         const publicKey = Uint8Array.from(Buffer.from(raw.publicKeyB64, 'base64'))
         const secretKey = Uint8Array.from(Buffer.from(raw.secretKeyB64, 'base64'))
         if (publicKey.length === 32 && secretKey.length === 32) {
-          return { publicKey, secretKey, publicKeyB64: raw.publicKeyB64 }
+          return reconcileStoredPublicKey(filePath, raw, publicKey, secretKey)
         }
       }
     } catch (error) {
@@ -69,4 +69,32 @@ export function loadOrCreateE2EEKeypair(userDataPath: string): E2EEKeypair {
   writeSecureJsonFile(filePath, data)
 
   return { publicKey: keypair.publicKey, secretKey: keypair.secretKey, publicKeyB64 }
+}
+
+/**
+ * Why: the handshake computes with the secret key, but offers advertise the stored public key. A file
+ * whose two halves disagree made every offer pin a key no listener holds (#16086), so the secret wins
+ * and the stored half is repaired — keeping the secret keeps every existing pairing valid.
+ */
+function reconcileStoredPublicKey(
+  filePath: string,
+  raw: KeypairFile,
+  storedPublicKey: Uint8Array,
+  secretKey: Uint8Array
+): E2EEKeypair {
+  const derivedPublicKey = nacl.box.keyPair.fromSecretKey(secretKey).publicKey
+  if (Buffer.from(derivedPublicKey).equals(Buffer.from(storedPublicKey))) {
+    return { publicKey: derivedPublicKey, secretKey, publicKeyB64: raw.publicKeyB64 }
+  }
+  const publicKeyB64 = Buffer.from(derivedPublicKey).toString('base64')
+  console.warn(
+    `[runtime] E2EE keypair at ${filePath} stored a public key that does not match its secret key; advertising the derived key.`
+  )
+  try {
+    writeSecureJsonFile(filePath, { ...raw, publicKeyB64 })
+  } catch (error) {
+    // Why: the in-memory key is already correct; a failed repair only means the warning repeats next launch.
+    console.error('[runtime] Failed to repair the E2EE keypair file:', error)
+  }
+  return { publicKey: derivedPublicKey, secretKey, publicKeyB64 }
 }

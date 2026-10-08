@@ -1,5 +1,6 @@
 import type WebSocket from 'ws'
-import { decrypt, decryptBytes, encrypt } from './e2ee-crypto'
+import { decryptBytes, encrypt } from './e2ee-crypto'
+import { decryptE2EEText } from './e2ee-text-compression'
 import {
   classifyRemoteRuntimeReadyFrame,
   parseRemoteRuntimeAuthenticatedFrame,
@@ -40,7 +41,7 @@ export class RemoteRuntimeSubscriptionFrameRouter<TResult> {
       this.handleReadyFrame(frame)
       return
     }
-    const plaintext = decrypt(frame, this.options.sharedKey)
+    const plaintext = decryptE2EEText(frame, this.options.sharedKey)
     if (plaintext === null) {
       this.options.fail(
         new RemoteRuntimeClientError(

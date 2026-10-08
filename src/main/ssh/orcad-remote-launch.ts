@@ -13,7 +13,7 @@
  * still owns a running service.
  */
 import { ORCAD_LAUNCHER_FILENAME, ORCAD_SERVER_ENTRY_FILENAME } from '../../shared/orcad-artifacts'
-import { shellEscape } from './ssh-connection-utils'
+import { shellEscape } from './posix-shell-quote'
 import {
   isWindowsRemoteHost,
   joinRemotePath,

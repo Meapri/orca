@@ -2,6 +2,7 @@ import type { RuntimeCapability } from '../../../shared/protocol-version'
 import type { TerminalStreamFrame } from '../../../shared/terminal-stream-protocol'
 import type { PairingRpcContext } from './core'
 import type { RpcCallerIdentity } from './rpc-caller-identity'
+import type { DeviceAdministrationRpcContext } from './device-administration-context'
 
 export type RpcDispatchStreamingOptions = {
   authenticatedCallerFingerprint?: string
@@ -15,8 +16,11 @@ export type RpcDispatchStreamingOptions = {
   clientCapabilities?: readonly RuntimeCapability[]
   updateClientCapabilities?: (capabilities: readonly RuntimeCapability[]) => void
   pairing?: PairingRpcContext
+  deviceAdministration?: DeviceAdministrationRpcContext
   sendBinary?: (bytes: Uint8Array<ArrayBufferLike>) => boolean | void
   closeConnection?: (code: number, reason: string) => void
+  outboundBacklogBytes?: () => number
+  awaitOutboundDelivery?: (onDelivered: () => void) => () => void
   registerBinaryStreamHandler?: (
     streamId: number,
     handler: (frame: TerminalStreamFrame) => void

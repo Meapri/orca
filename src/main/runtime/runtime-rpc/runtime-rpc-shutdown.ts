@@ -1,4 +1,4 @@
-import { RuntimeRpcMobilePairing } from './runtime-rpc-mobile-pairing'
+import { RuntimeRpcDeviceAdministration } from './runtime-rpc-device-administration'
 
 export type RuntimeRpcClientActivity = {
   openConnections: number
@@ -6,7 +6,7 @@ export type RuntimeRpcClientActivity = {
   lastRequestAt: number
 }
 
-export class RuntimeRpcShutdown extends RuntimeRpcMobilePairing {
+export class RuntimeRpcShutdown extends RuntimeRpcDeviceAdministration {
   /** Why: test-only seam — runs one ownership check instead of waiting out the poll interval. */
   checkRuntimeMetadataOwnership(): Promise<void> {
     return this.metadataOwnershipWatch?.check() ?? Promise.resolve()
@@ -44,6 +44,7 @@ export class RuntimeRpcShutdown extends RuntimeRpcMobilePairing {
     )
     // Why: before-quit fences relay input; direct auth can still refresh lastSeen while these transports close.
     this.deviceRegistry?.flushPendingLastSeen()
+    this.securityEvents?.close()
     const failedStop = stopResults.find((result) => result.status === 'rejected')
     if (failedStop?.status === 'rejected') {
       throw failedStop.reason

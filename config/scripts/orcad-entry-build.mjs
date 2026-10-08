@@ -16,7 +16,8 @@ export const ORCAD_CHILD_ENTRY_POINTS = {
   foreignSqliteReader: 'src/main/foreign-sqlite-readers/foreign-sqlite-reader-entry.ts',
   portScanCommandWorker: 'src/main/ports/port-scan-command-worker-entry.ts',
   usageScanWorker: 'src/main/usage/usage-scan-worker-entry.ts',
-  claudeProfileSetupWorker: 'src/main/claude-accounts/claude-profile-setup-worker-entry.ts'
+  claudeProfileSetupWorker: 'src/main/claude-accounts/claude-profile-setup-worker-entry.ts',
+  cli: 'src/cli/index.ts'
 }
 
 export const ORCAD_EXTERNAL_MODULES = ['electron', 'node-pty', '@parcel/watcher', 'fsevents']

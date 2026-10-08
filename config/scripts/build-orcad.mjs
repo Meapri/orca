@@ -28,6 +28,7 @@ import { smokeForeignSqliteReaderWorker } from './foreign-sqlite-reader-worker-s
 import { materializeWatcherPackage } from './orcad-watcher-package.mjs'
 import { stageOrcadWindowsProcessTree } from './orcad-windows-process-tree.mjs'
 import {
+  ORCAD_CLI_BUNDLE_FILENAME,
   ORCAD_EMOJI_SHORTCODE_DATASET,
   ORCAD_FOREIGN_SQLITE_READER_ENTRY,
   ORCAD_PORT_SCAN_COMMAND_WORKER_ENTRY,
@@ -83,6 +84,9 @@ const CLAUDE_PROFILE_SETUP_WORKER_ENTRY = join(
 const CLAUDE_PROFILE_SETUP_WORKER_OUT_FILE = join(OUT_DIR, ORCAD_CLAUDE_PROFILE_SETUP_WORKER_ENTRY)
 const OUT_FILE = join(OUT_DIR, ORCAD_LAUNCHER_FILENAME)
 const SERVER_OUT_FILE = join(OUT_DIR, ORCAD_SERVER_ENTRY_FILENAME)
+// Release-only (not in ORCAD_ARTIFACTS): agents in orcad PTYs and the host installer's census
+// shell out to `orca`; pack-orcad-release ships it, SSH slots never carry it.
+const CLI_OUT_FILE = join(OUT_DIR, ORCAD_CLI_BUNDLE_FILENAME)
 const BUILD_TARGET = process.env.ORCAD_BUILD_TARGET
 if (!BUILD_TARGET) {
   throw new Error('ORCAD_BUILD_TARGET is required; run `pnpm build:orcad`')
@@ -238,6 +242,7 @@ const childResults = await Promise.all([
   buildForkedChild(PORT_SCAN_WORKER_ENTRY, PORT_SCAN_WORKER_OUT_FILE),
   buildForkedChild(USAGE_SCAN_WORKER_ENTRY, USAGE_SCAN_WORKER_OUT_FILE),
   buildForkedChild(CLAUDE_PROFILE_SETUP_WORKER_ENTRY, CLAUDE_PROFILE_SETUP_WORKER_OUT_FILE),
+  buildForkedChild(join(ROOT, ORCAD_CHILD_ENTRY_POINTS.cli), CLI_OUT_FILE),
   ...['writer', 'backup'].map((role) =>
     buildForkedChild(
       join(ROOT, ORCAD_CHILD_ENTRY_POINTS[role]),
@@ -356,6 +361,20 @@ if (graphErrors.length > 0) {
         `Expected a clean load check, got status=${daemonSmoke.status ?? 'none'} ` +
         `signal=${daemonSmoke.signal ?? 'none'} ` +
         `error=${daemonSmoke.error?.message ?? 'none'}\n${daemonSmokeOutput.slice(0, 2000)}`
+    )
+    process.exitCode = 1
+  }
+  // Why --help: it parses every command spec without dialing a runtime, so a clean exit proves
+  // the bundled CLI loads under plain Node. The PTY smoke covers dialing orcad itself.
+  const cliSmoke = spawnSync(process.execPath, [CLI_OUT_FILE, '--help'], {
+    encoding: 'utf8',
+    timeout: 60_000
+  })
+  if (cliSmoke.error || cliSmoke.signal || cliSmoke.status !== 0) {
+    console.error(
+      `[build-orcad] the bundled orca CLI lost Node load compatibility.\n` +
+        `status=${cliSmoke.status ?? 'none'} signal=${cliSmoke.signal ?? 'none'}\n` +
+        `${`${cliSmoke.stdout ?? ''}${cliSmoke.stderr ?? ''}`.slice(0, 2000)}`
     )
     process.exitCode = 1
   }

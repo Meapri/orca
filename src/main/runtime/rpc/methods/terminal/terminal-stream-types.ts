@@ -7,6 +7,7 @@ import type {
   TerminalOutputMeta
 } from '../../terminal-output-frame-chunks'
 import type { TerminalOutputBatcher } from './terminal-output-batcher'
+import type { TerminalOutputResumeLease } from './terminal-output-resume-registry'
 
 export type SnapshotFrameOptions = {
   kind: 'scrollback' | 'resized'
@@ -69,6 +70,8 @@ export type TerminalMultiplexStream = {
   ackWindowBytes: number
   supportsOutputPause: boolean
   supportsWriteUnavailable: boolean
+  // Held while the client negotiated resume, so a reconnect can replay only what it missed.
+  outputResume: TerminalOutputResumeLease | null
   outputPaused: boolean
   supportsDesktopViewportClaims: boolean
   desktopClaimTail: Promise<boolean>

@@ -25,7 +25,7 @@ import {
   serializeRemoteRuntimePayload,
   serializeRemoteRuntimeRpcRequest
 } from './remote-runtime-memory-limits'
-import { remoteRuntimeClientCapabilities } from './remote-runtime-client-capabilities'
+import { nodeRemoteRuntimeClientCapabilities } from './remote-runtime-node-client-capabilities'
 import { RemoteRuntimeSubscriptionFrameRouter } from './remote-runtime-subscription-frame-router'
 import { RemoteRuntimeSubscriptionOutbound } from './remote-runtime-subscription-outbound'
 import { RemoteRuntimeSubscriptionRequestChannel } from './remote-runtime-subscription-request-channel'
@@ -70,7 +70,7 @@ export async function subscribeRemoteRuntimeTransport<TResult>(
   const serializedAuth = serializeRemoteRuntimePayload({
     type: 'e2ee_auth',
     deviceToken: pairing.deviceToken,
-    clientCapabilities: remoteRuntimeClientCapabilities(options?.clientCapabilities)
+    clientCapabilities: nodeRemoteRuntimeClientCapabilities(options?.clientCapabilities)
   })
   return await new Promise((resolve, reject) => {
     const keyPair = generateKeyPair()

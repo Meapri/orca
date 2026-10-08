@@ -1,5 +1,6 @@
 import { withClaudeProfileTerminalEnv } from '../../../claude-accounts/claude-profile-installed-router'
 import { inheritOmpLaunchEnvironment } from '../host-env/omp-launch-environment'
+import { getCliResourcesPath } from '../../../cli/bundled-cli-launcher-path'
 import { getAppEnvironment } from '../../../../shared/app-environment'
 import type { PtySpawnResult } from '../../../providers/types'
 import { LocalPtyProvider } from '../../../providers/local-pty-provider'
@@ -266,7 +267,7 @@ export async function prepareRuntimePtySpawn(
       })
       ctx.env = buildPtyHostEnv(ctx.sessionId, ctx.env ?? {}, {
         isPackaged: getAppEnvironment().isPackaged(),
-        resourcesPath: process.resourcesPath,
+        resourcesPath: getCliResourcesPath(),
         userDataPath: getAppEnvironment().getPath('userData'),
         selectedCodexHomePath: ctx.selectedCodexHomePath,
         skipCodexHomeEnv: ctx.skipCodexHomeEnv,

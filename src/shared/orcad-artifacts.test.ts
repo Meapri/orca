@@ -10,10 +10,14 @@ import {
   ORCAD_NODE_RUNTIME_MARKER_FILENAME,
   ORCAD_RIPGREP_ARTIFACTS,
   ORCAD_RIPGREP_LICENSE_ARTIFACTS,
+  ORCAD_CLI_BUNDLE_FILENAME,
+  ORCAD_WEB_CLIENT_MANIFEST_FILENAME,
   orcadArtifactFilenames,
   orcadBunRuntimeFilename,
   orcadNodeRuntimeRelativePath,
-  orcadTemplateCommonFilenames
+  orcadTemplateCommonFilenames,
+  parseOrcadWebClientManifest,
+  serializeOrcadWebClientManifest
 } from './orcad-artifacts'
 
 describe('standalone runtime artifacts', () => {
@@ -94,5 +98,42 @@ describe('standalone runtime artifacts', () => {
       expect(specific.every((file) => !common.includes(file))).toBe(true)
       expect(common.every((file) => orcadArtifactFilenames(target).includes(file))).toBe(true)
     }
+  })
+})
+
+describe('web client manifest', () => {
+  const index = { path: 'web-index.html', size: 12, sha256: 'a'.repeat(64) }
+  const asset = { path: 'assets/web-index-abc.js', size: 3, sha256: 'b'.repeat(64) }
+
+  it.each(SERVER_TARGETS)('stays out of the %s slot SSH hosts receive', (target) => {
+    expect(orcadArtifactFilenames(target)).not.toContain(ORCAD_WEB_CLIENT_MANIFEST_FILENAME)
+    expect(orcadArtifactFilenames(target)).not.toContain(ORCAD_CLI_BUNDLE_FILENAME)
+  })
+
+  it('round-trips in a stable order', () => {
+    const text = serializeOrcadWebClientManifest([index, asset])
+    expect(serializeOrcadWebClientManifest([asset, index])).toBe(text)
+    expect(parseOrcadWebClientManifest(text)).toEqual([asset, index])
+  })
+
+  it.each(['../escape.js', 'assets/../../x', '/abs.js', 'assets//x.js', 'a\\b.js', '.hidden'])(
+    'refuses the unsafe path %s',
+    (path) => {
+      const text = serializeOrcadWebClientManifest([index, { ...asset, path }])
+      expect(() => parseOrcadWebClientManifest(text)).toThrow('invalid file entry')
+    }
+  )
+
+  it('refuses a bundle without its entry page', () => {
+    expect(() => parseOrcadWebClientManifest(serializeOrcadWebClientManifest([asset]))).toThrow(
+      'web-index.html'
+    )
+  })
+
+  it('refuses duplicate entries and malformed digests', () => {
+    const duplicate = JSON.stringify({ schemaVersion: 1, files: [index, index] })
+    expect(() => parseOrcadWebClientManifest(duplicate)).toThrow('invalid file entry')
+    const digest = serializeOrcadWebClientManifest([{ ...index, sha256: 'nope' }])
+    expect(() => parseOrcadWebClientManifest(digest)).toThrow('invalid file entry')
   })
 })

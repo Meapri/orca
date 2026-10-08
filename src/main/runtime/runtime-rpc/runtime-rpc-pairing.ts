@@ -103,7 +103,7 @@ export class RuntimeRpcPairing extends RuntimeRpcNetworkExposure {
     }
     this.mobileRelayPairingProvider?.onDemandStateChanged?.()
     this.runtime.forgetClientNavigationState(deviceId)
-    this.mobileSocketWiring?.terminateDeviceConnections(device.token)
+    this.closeRevokedDeviceConnections(device)
     return true
   }
 
@@ -113,8 +113,21 @@ export class RuntimeRpcPairing extends RuntimeRpcNetworkExposure {
       return false
     }
     this.runtime.forgetClientNavigationState(deviceId)
-    this.mobileSocketWiring?.terminateDeviceConnections(device.token)
+    this.closeRevokedDeviceConnections(device)
     return true
+  }
+
+  // Why: the registry no longer admits the token, but sockets it already authenticated stay open until closed here.
+  protected closeRevokedDeviceConnections(device: DeviceEntry): number {
+    const closedConnections = this.mobileSocketWiring?.terminateDeviceConnections(device.token) ?? 0
+    this.securityEvents?.record({
+      event: 'device.revoked',
+      deviceId: device.deviceId,
+      scope: device.scope,
+      name: device.name,
+      closedConnections
+    })
+    return closedConnections
   }
 
   getWebSocketEndpoint(): string | null {
@@ -130,6 +143,10 @@ export class RuntimeRpcPairing extends RuntimeRpcNetworkExposure {
     // Why: STA-2370 — recorded on the grant so a "This computer only" client reconnecting cannot make the
     // next launch bind every interface. Defaults to network reach, which is what every other caller means.
     reach?: RuntimePairingReach
+    // Why: set = a standalone offer that expires unclaimed; unset = the coalescing QR/link credential.
+    offerLifetimeMs?: number
+    // Why: other places this listener is reachable, tried in order by clients that know the field.
+    alternateEndpoints?: readonly string[]
   }):
     | PairingOfferUnavailable
     | {
@@ -138,6 +155,7 @@ export class RuntimeRpcPairing extends RuntimeRpcNetworkExposure {
         endpoint: string
         deviceId: string
         webClientUrl: string | null
+        offerExpiresAt: number | null
       } {
     if (this.pairingInitializationFailure) {
       return this.pairingInitializationFailure
@@ -167,20 +185,45 @@ export class RuntimeRpcPairing extends RuntimeRpcNetworkExposure {
     let device: DeviceEntry
     try {
       const reach = args.reach ?? 'network'
-      device = args.rotate
-        ? this.deviceRegistry.rotatePendingDevice(deviceName, scope, reach)
-        : this.deviceRegistry.getOrCreatePendingDevice(deviceName, scope, reach)
+      device =
+        args.offerLifetimeMs !== undefined
+          ? this.deviceRegistry.addPendingOffer(
+              deviceName,
+              scope,
+              reach,
+              Date.now() + args.offerLifetimeMs
+            )
+          : args.rotate
+            ? this.deviceRegistry.rotatePendingDevice(deviceName, scope, reach)
+            : this.deviceRegistry.getOrCreatePendingDevice(deviceName, scope, reach)
     } catch (error) {
       console.error('[runtime] Failed to persist pairing credential:', error)
       return pairingUnavailable('device_registry_unavailable', DEVICE_REGISTRY_UNAVAILABLE_GUIDANCE)
     }
+    return this.encodeDeviceOffer(device, endpoint, publicKeyB64, args.alternateEndpoints)
+  }
+
+  protected encodeDeviceOffer(
+    device: DeviceEntry,
+    endpoint: string,
+    publicKeyB64: string,
+    alternateEndpoints?: readonly string[]
+  ): {
+    available: true
+    pairingUrl: string
+    endpoint: string
+    deviceId: string
+    webClientUrl: string | null
+    offerExpiresAt: number | null
+  } {
     const pairingUrl = encodePairingOffer({
       v: PAIRING_OFFER_VERSION,
       endpoint,
       deviceToken: device.token,
       publicKeyB64,
       pairedDeviceId: device.deviceId,
-      scope
+      scope: device.scope,
+      ...pairingAlternateEndpointsField(endpoint, alternateEndpoints)
     })
     return {
       available: true,
@@ -188,7 +231,10 @@ export class RuntimeRpcPairing extends RuntimeRpcNetworkExposure {
       endpoint,
       deviceId: device.deviceId,
       webClientUrl:
-        this.webClientRoot && scope === 'runtime' ? createWebClientUrl(endpoint, pairingUrl) : null
+        this.webClientRoot && device.scope === 'runtime'
+          ? createWebClientUrl(endpoint, pairingUrl)
+          : null,
+      offerExpiresAt: device.offerExpiresAt ?? null
     }
   }
 
@@ -235,4 +281,12 @@ export class RuntimeRpcPairing extends RuntimeRpcNetworkExposure {
     }
     return true
   }
+}
+
+function pairingAlternateEndpointsField(
+  endpoint: string,
+  alternates: readonly string[] | undefined
+): { alternateEndpoints?: string[] } {
+  const distinct = [...new Set(alternates ?? [])].filter((candidate) => candidate !== endpoint)
+  return distinct.length > 0 ? { alternateEndpoints: distinct } : {}
 }

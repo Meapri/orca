@@ -6,6 +6,7 @@ import {
 import { isTerminalInputLockedForClient, sendTerminalStreamInput } from './terminal-input-delivery'
 import type { TerminalSubscriptionArgs } from './terminal-legacy-subscription-types'
 import { updateViewportForClient } from './terminal-viewport-update'
+import { chainInputGeometryClaim } from './terminal-input-geometry-claim'
 
 type LegacyBinaryControlState = {
   isClosed: () => boolean
@@ -47,6 +48,16 @@ export function registerLegacyBinaryControlFrames(
       }
       if (isTerminalInputLockedForClient(runtime, ptyId, params.client)) {
         return
+      }
+      if (!isMobile && clientId) {
+        controls.setDesktopClaimTail(
+          chainInputGeometryClaim(
+            runtime,
+            ptyId,
+            remoteDesktopSubscriptionKey,
+            controls.getDesktopClaimTail()
+          )
+        )
       }
       void controls.getDesktopClaimTail().then(async (claimed) => {
         if (!claimed || isTerminalInputLockedForClient(runtime, ptyId, params.client)) {

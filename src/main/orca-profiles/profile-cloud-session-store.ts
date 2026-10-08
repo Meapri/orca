@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
-import { safeStorage } from 'electron'
+import { getSecretStore } from '../../shared/secret-store'
 import { isUnreadableError, writeSecureJsonFile } from '../../shared/secure-file'
 import type {
   OrcaCloudCapabilities,
@@ -47,6 +47,22 @@ type PersistedPlaintextSession = {
   format: 'dev-plaintext-v1'
   savedAt: number
   session: OrcaCloudSession
+}
+
+/** An owner-only file on a host that cannot seal and whose operator opted in (orcad `--relay`). */
+type PersistedHostUnsealedSession = {
+  version: 1
+  format: 'host-unsealed-v1'
+  savedAt: number
+  session: OrcaCloudSession
+}
+
+// Why opt-in and process-wide: only a headless host with no keyring, whose operator asked for the
+// relay, may keep a refresh token unsealed — the same 0600 posture as its device tokens and E2EE key.
+let hostUnsealedPersistenceAllowed = false
+
+export function allowHostUnsealedOrcaCloudSessionPersistence(): void {
+  hostUnsealedPersistenceAllowed = true
 }
 
 type CachedOrcaCloudSession = {
@@ -124,12 +140,13 @@ export function saveOrcaCloudSession(
   session: OrcaCloudSession
 ): OrcaCloudSessionPersistence {
   const cacheKey = sessionCacheKey(profileId, userDataPath)
-  if (safeStorage.isEncryptionAvailable()) {
+  const secretStore = getSecretStore()
+  if (secretStore.isEncryptionAvailable()) {
     const encrypted: PersistedEncryptedSession = {
       version: 1,
       format: 'electron-safe-storage-v1',
       savedAt: Date.now(),
-      ciphertext: safeStorage.encryptString(JSON.stringify(session)).toString('base64')
+      ciphertext: secretStore.encryptString(JSON.stringify(session)).toString('base64')
     }
     writeSecureJsonFile(getOrcaCloudSessionPath(profileId, userDataPath), encrypted)
     rememberMemorySession(cacheKey, { session, persistence: 'encrypted' })
@@ -146,6 +163,18 @@ export function saveOrcaCloudSession(
     writeSecureJsonFile(getOrcaCloudSessionPath(profileId, userDataPath), plaintext)
     rememberMemorySession(cacheKey, { session, persistence: 'dev-plaintext' })
     return 'dev-plaintext'
+  }
+
+  if (hostUnsealedPersistenceAllowed) {
+    const unsealed: PersistedHostUnsealedSession = {
+      version: 1,
+      format: 'host-unsealed-v1',
+      savedAt: Date.now(),
+      session
+    }
+    writeSecureJsonFile(getOrcaCloudSessionPath(profileId, userDataPath), unsealed)
+    rememberMemorySession(cacheKey, { session, persistence: 'host-unsealed' })
+    return 'host-unsealed'
   }
 
   // Why: Orca account refresh tokens must not silently fall back to plaintext
@@ -205,21 +234,24 @@ export function readOrcaCloudSession(
   }
 
   try {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: only `version` and `format` are trusted before each branch validates the session with isOrcaCloudSession.
     const parsed = JSON.parse(readFileSync(path, 'utf-8')) as
       | PersistedEncryptedSession
       | PersistedPlaintextSession
+      | PersistedHostUnsealedSession
     if (parsed.version !== 1) {
       return { status: 'decrypt-failed', persistence: 'none', error: 'Unsupported session format.' }
     }
     if (parsed.format === 'electron-safe-storage-v1') {
-      if (!safeStorage.isEncryptionAvailable()) {
+      const secretStore = getSecretStore()
+      if (!secretStore.isEncryptionAvailable()) {
         return {
           status: 'decrypt-failed',
           persistence: 'none',
           error: 'OS-backed encryption is unavailable.'
         }
       }
-      const decrypted = safeStorage.decryptString(Buffer.from(parsed.ciphertext, 'base64'))
+      const decrypted = secretStore.decryptString(Buffer.from(parsed.ciphertext, 'base64'))
       const session = JSON.parse(decrypted) as OrcaCloudSession
       if (!isOrcaCloudSession(session)) {
         return { status: 'decrypt-failed', persistence: 'none', error: 'Invalid saved session.' }
@@ -233,6 +265,13 @@ export function readOrcaCloudSession(
       }
       rememberMemorySession(cacheKey, { session: parsed.session, persistence: 'dev-plaintext' })
       return { status: 'found', session: parsed.session, persistence: 'dev-plaintext' }
+    }
+    if (parsed.format === 'host-unsealed-v1' && hostUnsealedPersistenceAllowed) {
+      if (!isOrcaCloudSession(parsed.session)) {
+        return { status: 'decrypt-failed', persistence: 'none', error: 'Invalid saved session.' }
+      }
+      rememberMemorySession(cacheKey, { session: parsed.session, persistence: 'host-unsealed' })
+      return { status: 'found', session: parsed.session, persistence: 'host-unsealed' }
     }
     return { status: 'decrypt-failed', persistence: 'none', error: 'Unsafe session format.' }
   } catch (error) {

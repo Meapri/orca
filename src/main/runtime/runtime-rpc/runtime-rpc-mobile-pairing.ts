@@ -20,12 +20,18 @@ export class RuntimeRpcMobilePairing extends RuntimeRpcPairing {
     connectionMode?: MobilePairingConnectionMode
     name?: string
     rotate?: boolean
+    /** Standalone offer that expires unclaimed (administered offers); unset = the coalescing QR. */
+    offerLifetimeMs?: number
+    /** Relay is the reach (a firewalled headless host), so the listener must not be widened. */
+    reachViaRelay?: boolean
   }): Promise<MobilePairingOffer> {
     // Why: STA-2370 — creating a mobile pairing offer is the user's explicit opt-in to LAN reach, so
     // widen the loopback listener before advertising its LAN endpoint in the QR. If the widen fails the
     // listener stays on loopback, so report unavailable rather than advertise a dead LAN endpoint.
     try {
-      await this.ensureNetworkExposure()
+      if (!args.reachViaRelay) {
+        await this.ensureNetworkExposure()
+      }
     } catch (error) {
       console.error(
         '[runtime] Network exposure failed while creating a mobile pairing offer:',
@@ -80,6 +86,7 @@ export class RuntimeRpcMobilePairing extends RuntimeRpcPairing {
       connectionMode?: MobilePairingConnectionMode
       name?: string
       rotate?: boolean
+      offerLifetimeMs?: number
     },
     generation: number
   ): Promise<MobilePairingOffer> {
