@@ -1,10 +1,9 @@
 import { installWindowVisibilityInterval } from '../lib/window-visibility-interval'
+import { REMOTE_RUNTIME_SOCKET_RESUME_PROBE_DEADLINE_MS } from '../../../shared/remote-runtime-socket-liveness'
 
 const HEARTBEAT_INTERVAL_MS = 10_000
 const HEARTBEAT_IDLE_MS = 25_000
 const HEARTBEAT_PROBE_GRACE_MS = 20_000
-// Mirrors the desktop's remote-runtime resume probe window.
-const REMOTE_RUNTIME_SOCKET_RESUME_PROBE_DEADLINE_MS = 8_000
 
 type WebRuntimeConnectionHeartbeatOptions = {
   now: () => number
