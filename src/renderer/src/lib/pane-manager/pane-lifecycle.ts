@@ -9,6 +9,7 @@ import { cancelDeferredScrollRestore } from './pane-scroll'
 import { activateOrcaTerminalUnicodeProvider } from '../../../../shared/terminal-unicode-provider'
 import { attachTerminalMouseWheelMultiplier } from './pane-terminal-mouse-wheel'
 import { attachTerminalScrollIntentTracking } from './terminal-scroll-intent-dom-tracking'
+import { attachTerminalSmoothScroll } from './terminal-smooth-scroll'
 import {
   installTerminalLinkifierHoverResetOnMouseLeave,
   installTerminalLinkifierHoverResetOnWindowBlur
@@ -23,6 +24,7 @@ import { TerminalLigaturesAddon } from './terminal-ligatures-addon'
 import { attachInlineImages, detachInlineImages } from './pane-inline-images'
 import { installTerminalImeCandidateAnchor } from './terminal-ime-candidate-anchor'
 import { cancelPendingTerminalViewportPresents } from './pane-viewport-present'
+import { installTerminalAppCaretAdoption } from './terminal-app-caret-adoption'
 
 // ---------------------------------------------------------------------------
 // Pane creation, terminal open/close, addon management
@@ -69,6 +71,11 @@ export function openTerminal(
     xtermContainer,
     pane.leafId
   )
+  pane.terminalSmoothScrollDisposable = attachTerminalSmoothScroll(
+    terminal,
+    xtermContainer,
+    () => pane.terminalSmoothScrollEnabled?.() === true
+  )
   // Why: a link streamed into a visible pane under a stationary pointer would
   // otherwise stay un-underlined/un-clickable until the mouse crosses to a new
   // line; invalidate the linkifier hover cache when output lands so the next
@@ -102,8 +109,9 @@ export function openTerminal(
     () => pane.webglAddon != null
   )
 
-  // Store so disposePane() can remove it and avoid a memory leak.
+  // Store so disposePane() can remove its listeners and avoid a memory leak.
   pane.compositionHandler = installTerminalImeCandidateAnchor(terminal)
+  pane.appCaretAdoptionCleanup = installTerminalAppCaretAdoption(terminal)
 
   pane.focusClassSyncCleanup = attachDomRendererFocusClassSync(terminal.element)
   pane.domBlockFillCleanup = attachDomBlockFill(terminal)
@@ -209,6 +217,8 @@ export function disposePane(
   pane.domBlockFillCleanup = null
   pane.terminalScrollIntentDisposable?.dispose()
   pane.terminalScrollIntentDisposable = null
+  pane.terminalSmoothScrollDisposable?.dispose()
+  pane.terminalSmoothScrollDisposable = null
   pane.mouseEncodingTrackerDisposable?.dispose()
   pane.mouseEncodingTrackerDisposable = null
   pane.linkifierHoverResetDisposable?.dispose()
@@ -224,11 +234,10 @@ export function disposePane(
     /* ignore */
   }
   pane.arabicShapingJoinerCleanup = null
-  if (pane.compositionHandler) {
-    pane.terminal.element?.removeEventListener('compositionstart', pane.compositionHandler)
-    pane.terminal.element?.removeEventListener('compositionupdate', pane.compositionHandler)
-    pane.compositionHandler = null
-  }
+  pane.compositionHandler?.()
+  pane.compositionHandler = null
+  pane.appCaretAdoptionCleanup?.()
+  pane.appCaretAdoptionCleanup = null
   try {
     clearPendingSplitScrollRestore(pane)
   } catch {

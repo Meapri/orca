@@ -8755,6 +8755,10 @@
             "tui": "TUI",
             "tuiDescription": "面向全屏终端应用的离散滚轮报告。"
           },
+          "smoothScroll": {
+            "title": "平滑滚动",
+            "description": "为鼠标滚轮、Shift+Page Up/Down 和跳到最新的滚动添加动画。触控板本身已连续滚动；开启“减少动态效果”时会关闭。"
+          },
           "8dbe0bc942": "shell 参数，每行一个",
           "f58cb71f53": "--rcfile\n/path/to/rcfile",
           "48b91a3ed2": "自定义参数",
@@ -10754,6 +10758,12 @@
               "dim": "暗淡",
               "colors": "颜色"
             },
+            "smoothScroll": {
+              "title": "平滑滚动",
+              "description": "为终端回滚缓冲区中的鼠标滚轮、Shift+Page Up/Down 和跳到最新的滚动添加动画。"
+            },
+            "smooth": "平滑",
+            "animation": "动画",
             "d31ed1ac1c": "rcfile",
             "d9e29543a1": "wrapper",
             "50ba80b6dd": "登录",
@@ -18689,7 +18699,15 @@
       "TerminalContextMenu": {
         "copySessionId": "复制会话 ID",
         "copySessionIdSuccess": "已复制会话 ID",
-        "copySessionIdError": "复制会话 ID 失败"
+        "copySessionIdError": "复制会话 ID 失败",
+        "copyRaw": "复制原始文本"
+      },
+      "mouseCaptureSelectionHint": {
+        "mac": "此应用正在捕获鼠标。按住 ⌥ Option 拖动即可选择文本。",
+        "other": "此应用正在捕获鼠标。按住 Shift 拖动即可选择文本。"
+      },
+      "copyFeedback": {
+        "copied": "已复制到剪贴板"
       }
     },
     "onboarding": {
@@ -18750,7 +18768,21 @@
     "settings": {
       "TerminalInteraction": {
         "copyTrimsGutter": "修剪副本上的装订线",
-        "copyTrimsGutterDescription": "将左侧装订线智能体输出绘制在后面，因此复制的文本不会缩进。仅删除每个选定行共享的缩进。"
+        "copyTrimsGutterDescription": "将左侧装订线智能体输出绘制在后面，因此复制的文本不会缩进。仅删除每个选定行共享的缩进。",
+        "clickToMoveCursor": "点击移动光标",
+        "clickToMoveCursorDescription": "点击正在输入的行即可将光标移到该处。“在提示符处”需要 Shell 集成；“任意输入行”也适用于 Agent CLI 和 REPL。",
+        "clickToMoveOff": "关闭",
+        "clickToMoveShellPrompt": "在提示符处",
+        "clickToMoveInputLine": "任意输入行",
+        "inputSelectionEditing": "像文本框一样编辑输入行",
+        "inputSelectionEditingDescription": "在正在输入的行上选中的文本可通过输入、Backspace、Delete 或粘贴替换；Shift+方向键扩展选区，撤销可还原替换。自行处理鼠标的应用保留其自身的编辑方式。",
+        "search": {
+          "click": "点击",
+          "selection": "选区",
+          "undo": "撤销",
+          "cursor": "光标",
+          "caret": "插入符"
+        }
       },
       "terminal": {
         "clipboard": {
@@ -18768,10 +18800,50 @@
         "queueFollowUpsTitle": "将后续消息加入队列",
         "queueFollowUpsCopy": "Agent 工作时发送的消息会以卡片形式等待，你可以立即发送、编辑或删除。带图片的消息会立即发送。",
         "queueFollowUpsToggleLabel": "切换后续消息队列"
+      },
+      "TerminalRendering": {
+        "imePreeditInGrid": "在终端单元格中绘制输入法组字",
+        "imePreeditInGridDescription": "将使用输入法（韩语、日语、中文）正在组字的文本渲染为光标处的终端单元格。关闭后改用浮动叠加层。",
+        "search": {
+          "ime": "输入法",
+          "inputMethod": "输入方式",
+          "composition": "组字",
+          "preedit": "预编辑",
+          "korean": "韩语",
+          "japanese": "日语",
+          "chinese": "中文",
+          "overlay": "叠加层"
+        },
+        "fitWideGlyphs": "宽字符适配与居中",
+        "fitWideGlyphsDescription": "将由后备字体绘制的韩文、中文和日文字符放大到接近两个单元格的宽度（不超过行高），并居中显示，避免文字看起来间距过大。",
+        "fitWideGlyphsSearch": {
+          "wide": "宽字符",
+          "cjk": "cjk",
+          "korean": "韩文",
+          "hangul": "韩文字母",
+          "chinese": "中文",
+          "japanese": "日文",
+          "fallback": "后备字体",
+          "spacing": "间距",
+          "center": "居中"
+        }
       }
     },
     "agentChildRow": {
       "ended": "已结束"
+    },
+    "terminalComposer": {
+      "send": "发送",
+      "label": "终端编辑器",
+      "placeholder": "为终端编写输入。按 Enter 换行。",
+      "submitOnSend": "发送后按 Enter",
+      "cancel": "取消"
+    },
+    "terminal-pane": {
+      "jumpToLatest": {
+        "newOutput": "新输出",
+        "label": "跳到最新"
+      }
     },
     "jiraIssueAssigneeField": {
       "label": "负责人",

@@ -18845,13 +18845,35 @@
       "TerminalContextMenu": {
         "copySessionId": "Copier l'ID de session",
         "copySessionIdSuccess": "ID de session copié",
-        "copySessionIdError": "Impossible de copier l'ID de session"
+        "copySessionIdError": "Impossible de copier l'ID de session",
+        "copyRaw": "Copier le texte brut"
+      },
+      "mouseCaptureSelectionHint": {
+        "mac": "Cette application capture la souris. Maintenez ⌥ Option en faisant glisser pour sélectionner du texte.",
+        "other": "Cette application capture la souris. Maintenez Maj en faisant glisser pour sélectionner du texte."
+      },
+      "copyFeedback": {
+        "copied": "Copié dans le presse-papiers"
       }
     },
     "settings": {
       "TerminalInteraction": {
         "copyTrimsGutter": "Couper la gouttière lors de la copie",
-        "copyTrimsGutterDescription": "Déposez la sortie de l'agent de gouttière gauche qui est peinte derrière, donc le texte copié n'est pas en retrait. Seul le retrait de chaque partage de ligne sélectionnée est supprimé."
+        "copyTrimsGutterDescription": "Déposez la sortie de l'agent de gouttière gauche qui est peinte derrière, donc le texte copié n'est pas en retrait. Seul le retrait de chaque partage de ligne sélectionnée est supprimé.",
+        "clickToMoveCursor": "Cliquer pour déplacer le curseur",
+        "clickToMoveCursorDescription": "Cliquez sur la ligne en cours de saisie pour y déplacer le curseur. « Aux invites » nécessite l’intégration du shell ; « Toute ligne de saisie » fonctionne aussi dans les CLI d’agents et les REPL.",
+        "clickToMoveOff": "Désactivé",
+        "clickToMoveShellPrompt": "Aux invites",
+        "clickToMoveInputLine": "Toute ligne de saisie",
+        "inputSelectionEditing": "Modifier la saisie comme un champ de texte",
+        "inputSelectionEditingDescription": "Saisir, Retour arrière, Suppr ou coller remplace le texte sélectionné sur la ligne en cours de saisie ; Maj+flèche étend la sélection et Annuler rétablit le remplacement. Les apps qui gèrent la souris gardent leur propre édition.",
+        "search": {
+          "click": "clic",
+          "selection": "sélection",
+          "undo": "annuler",
+          "cursor": "curseur",
+          "caret": "caret"
+        }
       },
       "terminal": {
         "clipboard": {
@@ -18869,10 +18891,44 @@
         "queueFollowUpsTitle": "Mettre les messages en file d’attente",
         "queueFollowUpsCopy": "Les messages envoyés pendant que l'agent travaille attendent sous forme de cartes que vous pouvez envoyer maintenant, modifier ou supprimer. Les messages avec des images sont envoyés immédiatement.",
         "queueFollowUpsToggleLabel": "Activer ou désactiver la file d'attente"
+      },
+      "TerminalRendering": {
+        "imePreeditInGrid": "Afficher la composition IME dans les cellules du terminal",
+        "imePreeditInGridDescription": "Affiche le texte en cours de composition avec une méthode de saisie (coréen, japonais, chinois) sous forme de cellules du terminal au curseur. Désactivez pour utiliser la superposition flottante.",
+        "search": {
+          "ime": "ime",
+          "inputMethod": "méthode de saisie",
+          "composition": "composition",
+          "preedit": "pré-édition",
+          "korean": "coréen",
+          "japanese": "japonais",
+          "chinese": "chinois",
+          "overlay": "superposition"
+        },
+        "fitWideGlyphs": "Ajuster et centrer les caractères larges",
+        "fitWideGlyphsDescription": "Agrandit les caractères coréens, chinois et japonais dessinés avec une police de secours vers leur largeur de deux cellules, sans dépasser la hauteur de ligne, et les centre pour que le texte ne paraisse pas espacé.",
+        "fitWideGlyphsSearch": {
+          "wide": "large",
+          "cjk": "cjk",
+          "korean": "coréen",
+          "hangul": "hangul",
+          "chinese": "chinois",
+          "japanese": "japonais",
+          "fallback": "police de secours",
+          "spacing": "espacement",
+          "center": "centrer"
+        }
       }
     },
     "agentChildRow": {
       "ended": "Terminé"
+    },
+    "terminalComposer": {
+      "send": "Envoyer",
+      "label": "Compositeur du terminal",
+      "placeholder": "Rédigez la saisie pour le terminal. Entrée ajoute une ligne.",
+      "submitOnSend": "Appuyer sur Entrée après l’envoi",
+      "cancel": "Annuler"
     },
     "jiraIssueAssigneeField": {
       "label": "Assigné",
