@@ -71,6 +71,23 @@ describe('upstream PR trailers', () => {
     expect(upstreamPrNumbers('a\n\nnot: a trailer block\nplain prose', 'stablyai/orca')).toEqual([])
   })
 
+  it('reads Upstream-PR from a trailer paragraph split off by a blank line', () => {
+    const split = [
+      'fix(terminal): keep scroll pinned',
+      '',
+      'Body.',
+      '',
+      'Fork-Topic: terminal',
+      'Upstream-PR: stablyai/orca#23334',
+      '',
+      'Co-Authored-By: A <a@example.com>'
+    ].join('\n')
+    expect(upstreamPrNumbers(split, 'stablyai/orca')).toEqual([23334])
+    expect(
+      upstreamPrNumbers('subject\n\nprose: not a trailer\nmore prose', 'stablyai/orca')
+    ).toEqual([])
+  })
+
   it('asks GitHub about every PR in one query and reads the answer', () => {
     const query = upstreamPrQuery('stablyai/orca', [23337, 23334, 23337])
     expect(query.match(/pullRequest\(/g)).toHaveLength(2)

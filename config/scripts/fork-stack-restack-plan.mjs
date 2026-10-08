@@ -31,8 +31,22 @@ export function trailerLines(message) {
   if (paragraphs.length < 2) {
     return []
   }
-  const lines = paragraphs.at(-1).split('\n')
-  return lines.every((line) => /^[A-Za-z][\w-]*:\s/.test(line) || /^\s/.test(line)) ? lines : []
+  const linesOf = (paragraph) => {
+    const lines = paragraph.split('\n')
+    return lines.every((line) => /^[A-Za-z][\w-]*:\s/.test(line) || /^\s/.test(line)) ? lines : []
+  }
+  const last = linesOf(paragraphs.at(-1))
+  // Why: a blank line before `Co-Authored-By:` splits the block and git then reads only the
+  // attribution; the Upstream-PR trailer above it must still count or its commit is never dropped.
+  const attributionOnly =
+    last.length > 0 && last.every((line) => /^(co-authored-by|signed-off-by):\s/i.test(line))
+  if (attributionOnly && paragraphs.length >= 3) {
+    const previous = linesOf(paragraphs.at(-2))
+    if (previous.length > 0) {
+      return [...previous, ...last]
+    }
+  }
+  return last
 }
 
 /**
