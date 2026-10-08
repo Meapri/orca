@@ -88,7 +88,9 @@ export class RuntimeRpcBinaryRouting extends RuntimeRpcState {
   protected initializePairingIdentity(): PairingIdentityInitialization {
     let deviceRegistry: DeviceRegistry
     try {
-      deviceRegistry = new DeviceRegistry(this.userDataPath)
+      deviceRegistry = new DeviceRegistry(this.userDataPath, {
+        securityEvents: this.securityEvents ?? undefined
+      })
     } catch (error) {
       console.error('[runtime] Failed to initialize pairing registry:', error)
       return {
@@ -108,6 +110,12 @@ export class RuntimeRpcBinaryRouting extends RuntimeRpcState {
         ok: false,
         failure: pairingUnavailable('e2ee_key_unavailable', E2EE_KEY_UNAVAILABLE_GUIDANCE)
       }
+    }
+    try {
+      deviceRegistry.pruneExpiredOffers()
+    } catch (error) {
+      // Why: expired offers already fail validation; failing to drop the rows must not block pairing.
+      console.error('[runtime] Failed to prune expired pairing offers:', error)
     }
     return { ok: true, deviceRegistry, e2eeKeypair }
   }

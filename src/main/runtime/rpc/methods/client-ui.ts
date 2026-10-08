@@ -23,9 +23,17 @@ export const CLIENT_UI_METHODS = [
     name: 'settings.update',
     permission: 'settings-write',
     params: SettingsUpdate,
-    handler: async (params, { runtime }) => ({
-      settings: await runtime.updateClientSettings(params)
-    })
+    handler: async (params, { runtime, clientKind }) => {
+      // Why: agent launch args/env run on every agent the host starts (PATH, LD_PRELOAD), which would
+      // lift a mobile token above the allowlist that keeps it out of repo and host administration.
+      if (
+        clientKind === 'mobile' &&
+        (params.agentDefaultArgs !== undefined || params.agentDefaultEnv !== undefined)
+      ) {
+        throw new Error('Agent launch arguments and environment can only be changed from Orca.')
+      }
+      return { settings: await runtime.updateClientSettings(params) }
+    }
   }),
   defineMethod({
     name: 'settings.getTerminalQuickCommands',
