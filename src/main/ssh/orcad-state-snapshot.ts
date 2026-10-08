@@ -23,7 +23,7 @@ import {
   posixOrcadFenceOwnedTest,
   type OrcadFence
 } from './orcad-activation-fence-scope'
-import { shellEscape } from './ssh-connection-utils'
+import { shellEscape } from './posix-shell-quote'
 import { isWindowsRemoteHost, joinRemotePath, type RemoteHostPlatform } from './ssh-remote-platform'
 import type { OrcadWindowsHostStateOp } from './orcad-windows-host-state-ops'
 import {
