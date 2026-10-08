@@ -6,7 +6,7 @@
  * an empty lane, and the decision is made from the value captured *before* the
  * OAuth await because the runtime-home poll runs outside the mutation queue.
  */
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { EventEmitter } from 'node:events'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -22,12 +22,11 @@ import {
   registerCodexAccountsTestHomes,
   testState
 } from './service-test-harness'
+import { installFakeAppEnvironment } from '../../../config/scripts/vitest-host-ports-setup'
 
-vi.mock('electron', () => ({
-  app: {
-    getPath: () => testState.userDataDir
-  }
-}))
+beforeEach(() => {
+  installFakeAppEnvironment({ getPath: () => testState.userDataDir })
+})
 
 vi.mock('node:os', async () => {
   const actual = await vi.importActual<typeof import('node:os')>('node:os') // eslint-disable-line @typescript-eslint/consistent-type-imports -- vi.importActual requires inline import()

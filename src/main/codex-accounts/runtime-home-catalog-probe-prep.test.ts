@@ -14,17 +14,16 @@ import {
   testState
 } from './runtime-home-service-test-harness'
 import type { CodexRuntimeHomeService } from './runtime-home-service'
+import { installFakeAppEnvironment } from '../../../config/scripts/vitest-host-ports-setup'
 
 vi.mock('../codex/codex-daemon-socket-path-guard', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   applyCodexDaemonSocketGuard: (config: string) => config
 }))
 
-vi.mock('electron', () => ({
-  app: {
-    getPath: () => testState.userDataDir
-  }
-}))
+beforeEach(() => {
+  installFakeAppEnvironment({ getPath: () => testState.userDataDir })
+})
 
 vi.mock('node:os', async () => {
   const actual = await vi.importActual<typeof NodeOs>('node:os')

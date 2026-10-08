@@ -1,4 +1,4 @@
-import { net, session } from 'electron'
+import { getMainHttpClient } from '../network/http-client'
 import { ensureElectronProxyFromEnvironment } from '../network/proxy-settings'
 import {
   parseOpenCodeGoUsageApiPayload,
@@ -70,7 +70,7 @@ export async function fetchOpenCodeGoUsageWithApiKey(
   signal?: AbortSignal
 ): Promise<OpenCodeGoUsageApiOutcome> {
   await ensureElectronProxyFromEnvironment({
-    proxySession: session.defaultSession,
+    proxySession: getMainHttpClient().proxySession() ?? undefined,
     probeUrl: OPENCODE_GO_USAGE_API_URL
   }).catch(() => {})
 
@@ -80,7 +80,7 @@ export async function fetchOpenCodeGoUsageWithApiKey(
 
   let response: Response
   try {
-    response = await net.fetch(OPENCODE_GO_USAGE_API_URL, {
+    response = await getMainHttpClient().fetch(OPENCODE_GO_USAGE_API_URL, {
       method: 'GET',
       headers: {
         Authorization: `Bearer ${apiKey}`,

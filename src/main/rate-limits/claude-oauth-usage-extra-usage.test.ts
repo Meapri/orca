@@ -3,9 +3,12 @@ import { fetchClaudeOAuthUsage } from './claude-oauth-usage-request'
 
 const { netFetchMock } = vi.hoisted(() => ({ netFetchMock: vi.fn() }))
 
-vi.mock('electron', () => ({
-  net: { fetch: netFetchMock },
-  session: { defaultSession: {} }
+vi.mock('../network/http-client', () => ({
+  getMainHttpClient: () => ({
+    fetch: netFetchMock,
+    proxySession: () => ({}),
+    partitionSession: () => null
+  })
 }))
 
 vi.mock('../network/proxy-settings', () => ({

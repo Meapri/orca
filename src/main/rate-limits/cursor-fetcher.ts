@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { net } from 'electron'
+import { getMainHttpClient } from '../network/http-client'
 import type { ProviderRateLimits, UsageRateLimitSource } from '../../shared/rate-limit-types'
 import {
   readCursorAuthSession,
@@ -81,7 +81,7 @@ async function fetchDashboardJson(
   const requestSignal = signal
     ? AbortSignal.any([signal, AbortSignal.timeout(API_TIMEOUT_MS)])
     : AbortSignal.timeout(API_TIMEOUT_MS)
-  const res = await net.fetch(url, {
+  const res = await getMainHttpClient().fetch(url, {
     // Keep dashboard redirects visible without forwarding session credentials.
     redirect: 'manual',
     // The selected account's Cookie must not be replaced by Electron's session jar.
