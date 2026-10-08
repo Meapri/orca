@@ -47,6 +47,7 @@
 import { getAppEnvironment, hasAppEnvironment } from '../../shared/app-environment'
 import { ORCA_AGENT_SESSION_ID_ENV } from '../../shared/agent-session-caller-env'
 import { ORCA_STRUCTURED_SESSION_ENV } from '../../shared/structured-session-marker'
+import { getCliResourcesPath } from '../cli/bundled-cli-launcher-path'
 import { prependOrcaCliDirToChildPath } from '../cli/orca-cli-child-path'
 import { resolveStructuredWorkerIdentityForSession } from './structured-worker-authority'
 
@@ -81,7 +82,7 @@ function applyThisAppCli(env: Record<string, string>): void {
   const launcher = prependOrcaCliDirToChildPath(env, {
     isPackaged,
     userDataPath,
-    resourcesPath: process.resourcesPath ?? null
+    resourcesPath: getCliResourcesPath() ?? null
   })
   if (launcher) {
     env.ORCA_CLI_COMMAND = launcher

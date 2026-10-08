@@ -39,7 +39,12 @@ export type OrcaCloudCapabilities = {
   refreshedAt: number
 }
 
-export type OrcaCloudSessionPersistence = 'none' | 'encrypted' | 'memory-only' | 'dev-plaintext'
+export type OrcaCloudSessionPersistence =
+  | 'none'
+  | 'encrypted'
+  | 'memory-only'
+  | 'dev-plaintext'
+  | 'host-unsealed'
 
 export type OrcaProfileAuthState = 'local' | 'unconfigured' | 'connected' | 'reconnect-required'
 

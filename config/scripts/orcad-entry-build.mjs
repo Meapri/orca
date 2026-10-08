@@ -14,7 +14,8 @@ export const ORCAD_CHILD_ENTRY_POINTS = {
   writer: 'src/main/persistence/profile-state/profile-state-writer-worker-entry.ts',
   backup: 'src/main/persistence/profile-state/profile-state-backup-worker-entry.ts',
   foreignSqliteReader: 'src/main/foreign-sqlite-readers/foreign-sqlite-reader-entry.ts',
-  portScanCommandWorker: 'src/main/ports/port-scan-command-worker-entry.ts'
+  portScanCommandWorker: 'src/main/ports/port-scan-command-worker-entry.ts',
+  cli: 'src/cli/index.ts'
 }
 
 export const ORCAD_EXTERNAL_MODULES = ['electron', 'node-pty', '@parcel/watcher', 'fsevents']

@@ -1,4 +1,4 @@
-import { app } from 'electron'
+import { getAppEnvironment, hasAppEnvironment } from '../../shared/app-environment'
 import {
   cleanCloudServiceUrl as cleanUrl,
   cleanCloudServiceOrigin as cleanOrigin
@@ -29,7 +29,7 @@ const PRODUCTION_RELAY_DIRECTOR_URL = 'https://relay.onorca.dev'
 // only reliable production signal for gating dev-only auth escape hatches.
 function isPackagedOrcaBuild(): boolean {
   try {
-    return app?.isPackaged === true
+    return hasAppEnvironment() && getAppEnvironment().isPackaged()
   } catch {
     return false
   }
