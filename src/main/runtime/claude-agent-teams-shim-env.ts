@@ -9,6 +9,8 @@ import {
   type ClaudeAgentTeamsMode
 } from '../../shared/claude-agent-teams-tmux-compat'
 import { getOrcaCliCommandNameForPlatform } from '../../shared/orca-cli-command-name'
+import { getAppEnvironment, hasAppEnvironment } from '../../shared/app-environment'
+import { getBundledLauncherPath } from '../cli/bundled-cli-launcher-path'
 import { resolvePathEnvKey } from '../pty/windows-path-segment-merge'
 
 export type ClaudeAgentTeamsLaunchPlan = {
@@ -88,19 +90,11 @@ function defaultShimRoot(): string {
 }
 
 function bundledLauncherPath(): string | null {
-  if (!process.resourcesPath) {
-    return null
+  if (process.resourcesPath) {
+    return getBundledLauncherPath(process.platform, process.resourcesPath)
   }
-  if (process.platform === 'darwin') {
-    return join(process.resourcesPath, 'bin', 'orca')
-  }
-  if (process.platform === 'linux') {
-    return join(process.resourcesPath, 'bin', 'orca-ide')
-  }
-  if (process.platform === 'win32') {
-    return join(process.resourcesPath, 'bin', 'orca.exe')
-  }
-  return null
+  // Why: a Node host (orcad) has no resources tree; its profile-scoped launcher backs the shim instead.
+  return hasAppEnvironment() ? (getAppEnvironment().getCliLauncherPath?.() ?? null) : null
 }
 
 function findExecutableOnPath(command: string, pathValue: string | undefined): string | null {

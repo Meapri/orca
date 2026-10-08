@@ -65,6 +65,8 @@ const WATCHER_OUT_FILE = childOutFile('watcher')
 const DAEMON_OUT_FILE = childOutFile('daemon')
 const OUT_FILE = join(OUT_DIR, ORCAD_LAUNCHER_FILENAME)
 const SERVER_OUT_FILE = join(OUT_DIR, ORCAD_SERVER_ENTRY_FILENAME)
+// Agents in orcad PTYs, the service user's `~/.local/bin` link and the host installer's census run it.
+const CLI_OUT_FILE = join(OUT_DIR, ORCAD_CLI_ENTRY_FILENAME)
 const BUILD_TARGET = process.env.ORCAD_BUILD_TARGET
 if (!BUILD_TARGET) {
   throw new Error('ORCAD_BUILD_TARGET is required; run `pnpm build:orcad`')
@@ -220,7 +222,7 @@ const childResults = await Promise.all(
 )
 
 const result = await buildOrcadEntry(SERVER_OUT_FILE)
-const cliResult = await buildOrcadCli(join(OUT_DIR, ORCAD_CLI_ENTRY_FILENAME))
+const cliResult = await buildOrcadCli(CLI_OUT_FILE)
 const { version: cliVersion } = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'))
 writeFileSync(
   join(OUT_DIR, ORCAD_CLI_PACKAGE_FILENAME),
@@ -336,6 +338,20 @@ if (graphErrors.length > 0) {
         `Expected a clean load check, got status=${daemonSmoke.status ?? 'none'} ` +
         `signal=${daemonSmoke.signal ?? 'none'} ` +
         `error=${daemonSmoke.error?.message ?? 'none'}\n${daemonSmokeOutput.slice(0, 2000)}`
+    )
+    process.exitCode = 1
+  }
+  // Why --help: it parses every command spec without dialing a runtime, so a clean exit proves
+  // the bundled CLI loads under plain Node. The PTY smoke covers dialing orcad itself.
+  const cliSmoke = spawnSync(process.execPath, [CLI_OUT_FILE, '--help'], {
+    encoding: 'utf8',
+    timeout: 60_000
+  })
+  if (cliSmoke.error || cliSmoke.signal || cliSmoke.status !== 0) {
+    console.error(
+      `[build-orcad] the bundled orca CLI lost Node load compatibility.\n` +
+        `status=${cliSmoke.status ?? 'none'} signal=${cliSmoke.signal ?? 'none'}\n` +
+        `${`${cliSmoke.stdout ?? ''}${cliSmoke.stderr ?? ''}`.slice(0, 2000)}`
     )
     process.exitCode = 1
   }
