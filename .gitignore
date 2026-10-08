@@ -116,6 +116,9 @@ docs/**
 !docs/audits/crashpad-read-limit/source-hashes.json
 !docs/agent-skill-sharing-implementation-checklist.md
 !docs/mobile-terminal-shortcut-bar.md
+# Fork-carried reference docs (Meapri/orca): the fork documents the behaviour it carries.
+!docs/reference/
+!docs/reference/**
 
 # Stably CLI (only docs/ are tracked)
 .stably/*
