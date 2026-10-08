@@ -9,7 +9,6 @@ import type { PaneManager } from '@/lib/pane-manager/pane-manager'
 import { isRemoteRuntimeFileOperation } from '@/runtime/runtime-file-client'
 import {
   buildCandidateLogicalLinesForBufferPosition,
-  dedupeLogicalLines,
   openFilePathLinkAtBufferPosition
 } from './terminal-file-link-hit-testing'
 import {
@@ -19,12 +18,7 @@ import {
   shouldOpenTerminalFileWithSystemDefault,
   terminalLinkWslDistro
 } from './terminal-file-open-routing'
-import {
-  buildHardWrappedPathLogicalLineCandidates,
-  buildWrappedLogicalLine,
-  rangeForParsedFileLink,
-  type WrappedLogicalLine
-} from './wrapped-terminal-link-ranges'
+import { rangeForParsedFileLink, type WrappedLogicalLine } from './wrapped-terminal-link-ranges'
 import {
   getTerminalPathExistsCacheKey,
   readTerminalPathExistsCache,
@@ -112,11 +106,7 @@ export function createFilePathLinkProvider(
       }
 
       const buffer = pane.terminal.buffer.active
-      const softWrappedLogicalLine = buildWrappedLogicalLine(buffer, bufferLineNumber)
-      const logicalLines = dedupeLogicalLines([
-        ...buildHardWrappedPathLogicalLineCandidates(buffer, bufferLineNumber),
-        ...(softWrappedLogicalLine ? [softWrappedLogicalLine] : [])
-      ])
+      const logicalLines = buildCandidateLogicalLinesForBufferPosition(buffer, bufferLineNumber)
       if (logicalLines.every((logicalLine) => !logicalLine.text)) {
         callback(undefined)
         return
