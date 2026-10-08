@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import type * as NodeFs from 'node:fs'
 import type * as NodeOs from 'node:os'
 import { join } from 'node:path'
+import { setSecretStore } from '../../shared/secret-store'
 
 const home = vi.hoisted(() => {
   const state: { directory: string; readError: Error | null } = { directory: '', readError: null }
@@ -25,15 +26,13 @@ vi.mock('node:fs', async (importOriginal) => {
     }
   }
 })
-vi.mock('electron', () => ({
-  safeStorage: {
+beforeEach(() => {
+  setSecretStore({
     isEncryptionAvailable: () => true,
     encryptString: (key: string) => Buffer.from(`encrypted:${key}`),
-    decryptString: (bytes: Buffer) => bytes.toString().slice('encrypted:'.length)
-  }
-}))
-
-beforeEach(() => {
+    decryptString: (bytes: Buffer) => bytes.toString().slice('encrypted:'.length),
+    describeProtectionGap: () => null
+  })
   home.readError = null
   home.directory = mkdtempSync(join(tmpdir(), 'orca-go-key-store-'))
   vi.resetModules()

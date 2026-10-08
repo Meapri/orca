@@ -8,13 +8,11 @@ import {
   listLiveDaemonPtyIds
 } from '../daemon/daemon-init'
 import {
-  getCodexPaneAccount,
   hasAnyRecordedLegacyWslCodexPane,
   hasRecordedManagedHostCodexPane,
-  isCodexPaneHomeRouteProvenAwayFromSharedHome,
-  reconcileCodexPaneAccountsWithLivePtys,
-  type CodexPaneHomeRoute
+  reconcileCodexPaneAccountsWithLivePtys
 } from '../codex/codex-pane-account-registry'
+import { createCodexPaneSessionMigrationHooks } from '../codex/codex-pane-session-migration-hooks'
 import { reconcileRetainedCodexHookHomes } from '../codex/retained-codex-hook-state'
 import { codexHookService } from '../codex/hook-service'
 import {
@@ -44,45 +42,14 @@ export function emitPluginWorktreeLifecycle(event: RuntimeWorktreeLifecycleEvent
   )
 }
 
-export function handleCodexHomePtySpawned(args: {
-  id: string
-  codexHomePath: string | null
-  reattached?: boolean
-  reattachedHomeRoute?: CodexPaneHomeRoute | null
-  launchEnv?: NodeJS.ProcessEnv
-  startedAt?: Date
-  startedSequence?: number
-}): void {
-  // Why: only shared or ambiguous retained shells can create rollout logs that still need publication.
-  if (args.reattached && args.startedSequence !== undefined) {
-    const paneAccount = getCodexPaneAccount(args.id)
-    const homeRoute =
-      args.reattachedHomeRoute !== undefined
-        ? (args.reattachedHomeRoute ?? undefined)
-        : paneAccount?.homeRoute
-    if (state.codexSessionMigration && isCodexPaneHomeRouteProvenAwayFromSharedHome(homeRoute)) {
-      state.codexSessionMigration.ignoreLaunch(args.id, args.startedSequence)
-      return
-    }
-  }
-  const fullScanRequired =
-    state.codexRuntimeHome?.beginHostSystemDefaultSessionMigrationLaunch(args.codexHomePath, {
-      reattached: args.reattached,
-      launchEnv: args.launchEnv
-    }) ?? null
-  if (fullScanRequired !== null) {
-    state.codexSessionMigration?.beginLaunch(
-      args.id,
-      args.reattached === true || fullScanRequired,
-      args.startedAt,
-      args.startedSequence
-    )
-  }
-}
+const codexPaneSessionMigrationHooks = createCodexPaneSessionMigrationHooks({
+  getRuntimeHome: () => state.codexRuntimeHome,
+  getSessionMigration: () => state.codexSessionMigration
+})
 
-export function handlePtyExit(id: string, exitSequence: number): void {
-  state.codexSessionMigration?.finishLaunch(id, exitSequence)
-}
+export const handleCodexHomePtySpawned = codexPaneSessionMigrationHooks.onCodexHomePtySpawned
+
+export const handlePtyExit = codexPaneSessionMigrationHooks.onPtyExit
 
 /** A PTY that dies while Orca is down never runs the teardown that clears pane
  *  state, so hydrate can rebuild a Claude subagent roster that no later hook can

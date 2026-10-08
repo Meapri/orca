@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { join } from 'node:path'
 import { realpathSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import type * as NodeFs from 'node:fs'
@@ -16,6 +16,7 @@ import {
   createResetCreditLimits,
   createResetRateLimitState
 } from './service-reset-credit-test-fixtures'
+import { installFakeAppEnvironment } from '../../../config/scripts/vitest-host-ports-setup'
 
 const fsFaults = vi.hoisted(() => {
   const held = new Set<string>()
@@ -70,11 +71,9 @@ vi.mock('node:fs', async (importOriginal) => {
   return { ...patched, default: patched }
 })
 
-vi.mock('electron', () => ({
-  app: {
-    getPath: () => testState.userDataDir
-  }
-}))
+beforeEach(() => {
+  installFakeAppEnvironment({ getPath: () => testState.userDataDir })
+})
 
 vi.mock('node:os', async () => {
   const actual = await vi.importActual<typeof import('node:os')>('node:os') // eslint-disable-line @typescript-eslint/consistent-type-imports -- vi.importActual requires inline import()
