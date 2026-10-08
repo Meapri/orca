@@ -81,7 +81,7 @@ export class DirectRpcClient implements RpcClient {
       onTimeout: this.connectionLog.livenessTimeout
     })
     this.socketFactory = new RpcClientSocketFactory({
-      endpoint,
+      dial: { ...options, endpoint },
       deviceToken,
       serverPublicKeyB64,
       getCurrentSocket: () => this.socketSession?.socket ?? null,

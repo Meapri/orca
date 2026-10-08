@@ -9,6 +9,7 @@ import {
 } from '../../../src/shared/mobile-relay-credential-contract'
 import { NODE_PLATFORM_NAMES } from './mobile-runtime-host-platform'
 import { salvagedOptional } from '../../../src/shared/zod-salvage'
+import { PAIRING_ALTERNATE_ENDPOINTS_MAX } from '../../../src/shared/mobile-pairing-protocol-limits'
 
 export { PairingOfferSchema }
 export type { PairingOffer }
@@ -110,7 +111,10 @@ export type HostProfile = {
   /** What the desktop last called itself over status.get, kept for offline and post-restart rows. */
   lastKnownMachineName?: string
   lastKnownHostPlatform?: NodeJS.Platform
+  /** The preferred direct address: the one that last answered, or the offer's primary. */
   endpoint: string
+  /** Other addresses of the same host (tailnet, LAN), tried in order after `endpoint`. */
+  alternateEndpoints?: string[]
   deviceToken: string
   publicKeyB64: string
   lastConnected: number
@@ -137,11 +141,20 @@ const hostNameIdentityFields = {
   ).optional()
 }
 
+// Why salvaged too: an unreadable list must drop only the alternates, never the paired host.
+const hostAlternateEndpointFields = {
+  alternateEndpoints: salvagedOptional(
+    'alternateEndpoints',
+    z.array(z.string().min(1)).max(PAIRING_ALTERNATE_ENDPOINTS_MAX)
+  ).optional()
+}
+
 export const HostProfileSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   ...hostNameIdentityFields,
   endpoint: z.string().min(1),
+  ...hostAlternateEndpointFields,
   deviceToken: z.string().min(1),
   publicKeyB64: z.string().min(1),
   lastConnected: z.number().finite(),
@@ -156,6 +169,7 @@ export const StoredHostProfileSchema = z.object({
   name: z.string().min(1),
   ...hostNameIdentityFields,
   endpoint: z.string().min(1),
+  ...hostAlternateEndpointFields,
   publicKeyB64: z.string().min(1),
   lastConnected: z.number().finite()
 })

@@ -1,4 +1,5 @@
 import type { DeviceScope } from '../../../shared/runtime-types'
+import { readPairingAlternateEndpoints } from '../../../shared/pairing-endpoint-failover'
 
 const PAIRING_OFFER_VERSION = 2
 
@@ -9,6 +10,8 @@ export type WebPairingOffer = {
   publicKeyB64: string
   pairedDeviceId?: string
   scope?: DeviceScope
+  /** Other addresses of the same host, tried in order after `endpoint`; older hosts omit it. */
+  alternateEndpoints?: string[]
 }
 
 export type WebPairingStartupDecision =
@@ -104,13 +107,18 @@ function decodePairingPayload(base64url: string): WebPairingOffer | null {
     typeof parsed.pairedDeviceId === 'string' && parsed.pairedDeviceId.length > 0
       ? parsed.pairedDeviceId
       : null
+  const endpoint = normalizeWebSocketEndpoint(parsed.endpoint)
+  const alternateEndpoints = readPairingAlternateEndpoints(parsed.alternateEndpoints)
+    .map(normalizeWebSocketEndpoint)
+    .filter((alternate, index, all) => alternate !== endpoint && all.indexOf(alternate) === index)
   return {
     v: PAIRING_OFFER_VERSION,
-    endpoint: normalizeWebSocketEndpoint(parsed.endpoint),
+    endpoint,
     deviceToken: parsed.deviceToken,
     publicKeyB64: parsed.publicKeyB64,
     ...(pairedDeviceId ? { pairedDeviceId } : {}),
-    ...(scope ? { scope } : {})
+    ...(scope ? { scope } : {}),
+    ...(alternateEndpoints.length > 0 ? { alternateEndpoints } : {})
   }
 }
 
