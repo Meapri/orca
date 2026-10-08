@@ -10,6 +10,7 @@ import {
 } from './ssh-auth-resolution'
 import { configurePrivateKeyAuthentication } from './ssh-private-key-authentication'
 import { isOpenSshConfigBackedTarget } from './system-ssh-args'
+import { shellEscape } from './posix-shell-quote'
 
 export { findDefaultKeyFile, resolveAgentSocket } from './ssh-auth-resolution'
 
@@ -124,9 +125,7 @@ export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-export function shellEscape(s: string): string {
-  return `'${s.replace(/'/g, "'\\''")}'`
-}
+export { shellEscape }
 
 const REMOTE_COMMAND_CHUNK_MAX_BYTES = 1_024
 const REMOTE_COMMAND_PRINTF_ESCAPED_BYTES = new Set([0x21, 0x27, 0x5c])
