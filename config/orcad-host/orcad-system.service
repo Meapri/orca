@@ -1,0 +1,62 @@
+# Managed by orcad-install.sh (service-install renders @...@ placeholders); edit orcad.env instead.
+#
+# orcad as a *system* service running as a dedicated account. Versions under @ORCAD_BASE@
+# are root-owned, so the service cannot rewrite its own binaries or rollback targets.
+# The terminal daemon escapes this unit's cgroup through `systemd-run --user --scope`, which
+# needs the account's user manager, so enable lingering once:
+#   sudo loginctl enable-linger @ORCAD_USER@
+# Reference: docs/reference/headless-linux-server.md, docs/reference/orcad-operations.md
+[Unit]
+Description=Orca headless runtime (orcad)
+Documentation=https://github.com/stablyai/orca/blob/main/docs/reference/headless-linux-server.md
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+# Optional systemd readiness and watchdog. orcad sends READY=1 after its readiness line and
+# WATCHDOG=1 while its self-watchdog reports the runtime live, through the systemd-notify binary
+# from its own PID, hence NotifyAccess=all. If the unit never leaves `activating` (an older
+# systemd-notify), keep Type=simple and probe http://<bind>:<port>/readyz instead.
+#Type=notify
+#NotifyAccess=all
+#WatchdogSec=60
+User=@ORCAD_USER@
+WorkingDirectory=~
+Environment=ORCAD_BASE=@ORCAD_BASE@
+Environment=ORCA_USER_DATA=@ORCA_USER_DATA@
+Environment=ORCAD_BIND=127.0.0.1
+Environment=ORCAD_PORT=6768
+Environment=ORCAD_READINESS_FILE=/run/orcad/readiness.json
+# Resource governance (docs/reference/orcad-operations.md#resource-governance). Each knob is an
+# environment variable here or in orcad.env, or the same setting as `--limit <key>=<value>` in
+# ORCAD_EXTRA_ARGS. The cgroup limits bound all terminal and agent work together, in the
+# daemon's orca-daemon-*.scope, and apply only where that scope exists:
+#Environment=ORCA_TERMINAL_MEMORY_HIGH=3G
+#Environment=ORCA_TERMINAL_MEMORY_MAX=4G
+#Environment=ORCA_TERMINAL_TASKS_MAX=4096
+#Environment=ORCA_TERMINAL_HISTORY_RETENTION_DAYS=7
+#Environment=ORCA_BROWSER_MAX_TABS=4
+# Run orcad niced while terminals run at 0: the daemon resets each new PTY to nice 0, which
+# needs RLIMIT_NICE; without LimitNICE= the reset is refused and terminals stay niced.
+#Nice=10
+#LimitNICE=20
+EnvironmentFile=-@ORCAD_ENV_FILE@
+RuntimeDirectory=orcad
+# The readiness file in it carries a pairing credential.
+RuntimeDirectoryMode=0700
+ExecStart=/bin/sh @ORCAD_BASE@/orcad-current/deploy/orcad-install.sh run
+Restart=always
+RestartSec=5
+RestartPreventExitStatus=78
+TimeoutStartSec=180
+TimeoutStopSec=30
+# Preservation comes from the daemon's own scope, not from KillMode; see orcad.service.
+KillMode=mixed
+# No UMask=: the daemon and its PTYs inherit it; orcad makes its data root 0700 itself.
+# No NoNewPrivileges=: it is inherited by the daemon's PTYs and would break sudo in terminals.
+
+[Install]
+WantedBy=multi-user.target
