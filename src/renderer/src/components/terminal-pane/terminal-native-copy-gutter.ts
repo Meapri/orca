@@ -1,5 +1,6 @@
 import type { IDisposable, Terminal } from '@xterm/xterm'
 import { readTerminalClipboardSelection } from './terminal-clipboard-selection-text'
+import { showTerminalCopyFeedback } from './terminal-copy-feedback'
 
 type NativeCopyTerminal = Pick<Terminal, 'getSelection' | 'hasSelection'> & {
   element?: HTMLElement
@@ -26,6 +27,7 @@ export function installTerminalNativeCopyGutterTrim(terminal: NativeCopyTerminal
     event.clipboardData.setData('text/plain', readTerminalClipboardSelection(terminal))
     event.preventDefault()
     event.stopImmediatePropagation()
+    showTerminalCopyFeedback()
   }
   element.addEventListener('copy', onCopy, { capture: true })
   return { dispose: () => element.removeEventListener('copy', onCopy, { capture: true }) }
