@@ -83,7 +83,8 @@ describe('manifest parsing', () => {
     const text = readFileSync(path.join(import.meta.dirname, '..', 'fork-stacks.json'), 'utf8')
     const parsed = parseManifest(text)
     expect(MANIFEST_PATH).toBe('config/fork-stacks.json')
-    expect(parsed.topics.map((entry) => entry.name)).toEqual([
+    const onUpstream = parsed.topics.filter((entry) => entry.onto === 'upstream')
+    expect(onUpstream.map((entry) => entry.name)).toEqual([
       'terminal',
       'sync-automation',
       'runtime-remote',
@@ -91,7 +92,11 @@ describe('manifest parsing', () => {
       'orcad-runtime',
       'distribution'
     ])
-    expect(new Set(parsed.topics.map((entry) => entry.base)).size).toBe(1)
+    expect(new Set(onUpstream.map((entry) => entry.base)).size).toBe(1)
+    // Why: fixup topics sit on the merged stacks, so their base is that merge, not upstream.
+    expect(
+      parsed.topics.slice(onUpstream.length).every((entry) => entry.onto === 'integration')
+    ).toBe(true)
     expect(serializeManifest(parsed)).toBe(text)
   })
 })
