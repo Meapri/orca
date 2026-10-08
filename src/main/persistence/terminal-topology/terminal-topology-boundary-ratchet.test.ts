@@ -41,6 +41,8 @@ const ALLOWED_REFERENCES: Record<string, readonly string[]> = {
     'runtime/orca-runtime-persist-headless-terminal-title.ts',
     'runtime/orca-runtime-persist-terminal-surface-retirements.ts',
     'runtime/orca-runtime-pty-foreground-process-reads.ts',
+    // Sleeping-agent records only (no topology), for renderer-less hosts.
+    'runtime/orca-runtime-sleeping-agent-resume-probes.ts',
     'runtime/orca-runtime-stop-terminals-for-worktree.ts',
     'runtime/runtime-legacy-worker-terminal-recovery-persistence.ts',
     'runtime/runtime-workspace-session-controller.ts'
