@@ -7,9 +7,9 @@ import {
   encryptBytes,
   MAX_E2EE_ENCRYPTED_BASE64_CHARACTERS
 } from './e2ee-crypto'
+import { E2EE_TEXT_DEFLATE_CAPABILITY } from './e2ee-text-deflate-capability'
 
-/** A client that advertises this decodes host->client text frames compressed before encryption. */
-export const E2EE_TEXT_DEFLATE_CAPABILITY = 'e2ee.text-deflate.v1' as const
+export { E2EE_TEXT_DEFLATE_CAPABILITY }
 
 // Why 0x00: JSON text never starts with NUL, so an uncompressed frame can never be misread.
 const COMPRESSED_MARKER = 0x00
