@@ -1,16 +1,23 @@
 import { net } from 'electron'
 import { parse } from 'yaml'
+import { APP_DISTRIBUTION_RELEASES_URL as RELEASES_BASE } from '../shared/app-distribution'
 import { compareVersions, isPrereleaseVersion, isValidVersion } from './updater-fallback'
 
-const ATOM_FEED_URL = 'https://github.com/stablyai/orca/releases.atom'
-const RELEASES_DOWNLOAD_BASE = 'https://github.com/stablyai/orca/releases/download'
+const ATOM_FEED_URL = `${RELEASES_BASE}.atom`
+const RELEASES_DOWNLOAD_BASE = `${RELEASES_BASE}/download`
 const FETCH_TIMEOUT_MS = 5000
 const MAX_MANIFEST_PROBE_CANDIDATES = 6
 
 // Why: GitHub's atom feed lists every release (prerelease or stable) in a
 // single flat list. Each entry has a /releases/tag/<tag> URL we can mine
 // without any channel filtering.
-const TAG_HREF_RE = /href="https:\/\/github\.com\/stablyai\/orca\/releases\/tag\/([^"]+)"/g
+// Why case-insensitive: GitHub may render the owner in a different case than the config.
+const TAG_HREF_RE = new RegExp(`href="${escapeRegExp(RELEASES_BASE)}/tag/([^"]+)"`, 'gi')
+const RELEASE_DOWNLOAD_URL_RE = new RegExp(`^${escapeRegExp(RELEASES_DOWNLOAD_BASE)}/`, 'i')
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
 
 export function getReleaseDownloadUrl(tag: string): string {
   return `${RELEASES_DOWNLOAD_BASE}/${encodeURIComponent(tag)}`
@@ -151,9 +158,7 @@ function getGitHubReleaseAssetReadiness(assetUrl: string): Promise<ReleaseReadin
 async function getReleaseAssetReadiness(tag: string, assetName: string): Promise<ReleaseReadiness> {
   const isRelativeAsset = !/^https?:\/\//i.test(assetName)
   const isGitHubReleaseAsset =
-    process.platform === 'win32' &&
-    (isRelativeAsset ||
-      /^https:\/\/github\.com\/stablyai\/orca\/releases\/download\//i.test(assetName))
+    process.platform === 'win32' && (isRelativeAsset || RELEASE_DOWNLOAD_URL_RE.test(assetName))
   const assetUrl = isRelativeAsset
     ? getReleaseAssetUrl(tag, assetName.split('/').findLast(Boolean) ?? assetName)
     : assetName

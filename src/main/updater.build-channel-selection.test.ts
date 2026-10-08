@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { APP_DISTRIBUTION, APP_DISTRIBUTION_RELEASES_URL } from '../shared/app-distribution'
 import { loadUpdaterModule, warmUpdaterModule } from './updater-test-module-loader'
 
 const {
@@ -81,9 +82,10 @@ describe('updater', () => {
   // because a signed build verifies every installer against the publisherName
   // baked into its own app-update.yml. The picker disables this, but IPC is
   // reachable regardless.
-  it('refuses to pin a Windows dev build from a signed build, and says what to do', async () => {
-    const platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
-    try {
+  // Why: a renamed distribution must never pin an upstream-identity dev build.
+  it.runIf(!APP_DISTRIBUTION.devChannelsEnabled)(
+    'refuses dev channels outright when this distribution ships none',
+    async () => {
       appMock.getVersion.mockReturnValue('1.4.160')
       const send = vi.fn()
       const { setupAutoUpdater, checkForUpdatesFromMenu } = await loadUpdaterModule()
@@ -91,49 +93,76 @@ describe('updater', () => {
         getLastUpdateCheckAt: () => Date.now()
       })
 
-      checkForUpdatesFromMenu({ channel: 'adhoc', targetTag: 'v1.4.160-adhoc.20260728140533' })
+      checkForUpdatesFromMenu({ channel: 'hourly', targetTag: 'v1.4.160-hourly.202607281400' })
 
-      expect(send).toHaveBeenCalledWith('updater:status', {
-        state: 'error',
-        message: expect.stringContaining('Download the installer from the release page'),
-        userInitiated: true
-      })
+      expect(send).toHaveBeenCalledWith(
+        'updater:status',
+        expect.objectContaining({ state: 'error', userInitiated: true })
+      )
+      expect(autoUpdaterMock.setFeedURL).not.toHaveBeenCalledWith(
+        expect.objectContaining({ url: expect.stringContaining('stablyai/orca-hourly') })
+      )
       expect(autoUpdaterMock.checkForUpdates).not.toHaveBeenCalled()
-    } finally {
-      platformSpy.mockRestore()
     }
-  })
+  )
 
-  // The way out of a dev channel must stay in-app: an unsigned build carries no
-  // publisherName, so electron-updater skips verification entirely.
-  it.each([
-    ['another dev build', 'adhoc', 'v1.4.160-adhoc.20260728140533'],
-    ['back to stable', 'stable', 'v1.4.160']
-  ] as const)(
-    'still pins %s from an unsigned Windows dev build',
-    async (_label, channel, targetTag) => {
+  it.runIf(APP_DISTRIBUTION.devChannelsEnabled)(
+    'refuses to pin a Windows dev build from a signed build, and says what to do',
+    async () => {
       const platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
       try {
-        appMock.getVersion.mockReturnValue('1.4.160-hourly.202607281400')
+        appMock.getVersion.mockReturnValue('1.4.160')
         const send = vi.fn()
         const { setupAutoUpdater, checkForUpdatesFromMenu } = await loadUpdaterModule()
         setupAutoUpdater({ webContents: { send } } as never, {
           getLastUpdateCheckAt: () => Date.now()
         })
 
-        checkForUpdatesFromMenu({ channel, targetTag })
+        checkForUpdatesFromMenu({ channel: 'adhoc', targetTag: 'v1.4.160-adhoc.20260728140533' })
 
-        expect(send).not.toHaveBeenCalledWith('updater:status', {
+        expect(send).toHaveBeenCalledWith('updater:status', {
           state: 'error',
-          message: expect.stringContaining('Download the installer'),
+          message: expect.stringContaining('Download the installer from the release page'),
           userInitiated: true
         })
-        expect(autoUpdaterMock.allowDowngrade).toBe(true)
+        expect(autoUpdaterMock.checkForUpdates).not.toHaveBeenCalled()
       } finally {
         platformSpy.mockRestore()
       }
     }
   )
+
+  // The way out of a dev channel must stay in-app: an unsigned build carries no
+  // publisherName, so electron-updater skips verification entirely.
+  it.each(
+    (
+      [
+        ['another dev build', 'adhoc', 'v1.4.160-adhoc.20260728140533'],
+        ['back to stable', 'stable', 'v1.4.160']
+      ] as const
+    ).filter(([, channel]) => APP_DISTRIBUTION.devChannelsEnabled || channel === 'stable')
+  )('still pins %s from an unsigned Windows dev build', async (_label, channel, targetTag) => {
+    const platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
+    try {
+      appMock.getVersion.mockReturnValue('1.4.160-hourly.202607281400')
+      const send = vi.fn()
+      const { setupAutoUpdater, checkForUpdatesFromMenu } = await loadUpdaterModule()
+      setupAutoUpdater({ webContents: { send } } as never, {
+        getLastUpdateCheckAt: () => Date.now()
+      })
+
+      checkForUpdatesFromMenu({ channel, targetTag })
+
+      expect(send).not.toHaveBeenCalledWith('updater:status', {
+        state: 'error',
+        message: expect.stringContaining('Download the installer'),
+        userInitiated: true
+      })
+      expect(autoUpdaterMock.allowDowngrade).toBe(true)
+    } finally {
+      platformSpy.mockRestore()
+    }
+  })
 
   it.runIf(process.platform === 'darwin')(
     'allows a validated local build to downgrade through the normal updater lifecycle',
@@ -225,7 +254,7 @@ describe('updater', () => {
       expect(autoUpdaterMock.disableDifferentialDownload).toBe(false)
       expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
         provider: 'generic',
-        url: 'https://github.com/stablyai/orca/releases/latest/download'
+        url: `${APP_DISTRIBUTION_RELEASES_URL}/latest/download`
       })
     }
   )
@@ -268,7 +297,7 @@ describe('updater', () => {
       })
       expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
         provider: 'generic',
-        url: 'https://github.com/stablyai/orca/releases/latest/download'
+        url: `${APP_DISTRIBUTION_RELEASES_URL}/latest/download`
       })
     }
   )
@@ -308,7 +337,7 @@ describe('updater', () => {
       })
       expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
         provider: 'generic',
-        url: 'https://github.com/stablyai/orca/releases/latest/download'
+        url: `${APP_DISTRIBUTION_RELEASES_URL}/latest/download`
       })
     }
   )
@@ -365,7 +394,7 @@ describe('updater', () => {
       expect(send).toHaveBeenCalledWith('updater:status', { state: 'not-available' })
       expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
         provider: 'generic',
-        url: 'https://github.com/stablyai/orca/releases/latest/download'
+        url: `${APP_DISTRIBUTION_RELEASES_URL}/latest/download`
       })
     }
   )
@@ -411,7 +440,7 @@ describe('updater', () => {
       })
       expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
         provider: 'generic',
-        url: 'https://github.com/stablyai/orca/releases/latest/download'
+        url: `${APP_DISTRIBUTION_RELEASES_URL}/latest/download`
       })
     }
   )
@@ -479,7 +508,7 @@ describe('updater', () => {
       })
       expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
         provider: 'generic',
-        url: 'https://github.com/stablyai/orca/releases/download/v1.3.18-rc.1'
+        url: `${APP_DISTRIBUTION_RELEASES_URL}/download/v1.3.18-rc.1`
       })
       expect(autoUpdaterMock.checkForUpdates).toHaveBeenCalledTimes(1)
     })
@@ -506,7 +535,7 @@ describe('updater', () => {
       })
       expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
         provider: 'generic',
-        url: 'https://github.com/stablyai/orca/releases/download/v1.4.121-rc.6.perf'
+        url: `${APP_DISTRIBUTION_RELEASES_URL}/download/v1.4.121-rc.6.perf`
       })
       expect(autoUpdaterMock.checkForUpdates).toHaveBeenCalledTimes(1)
     })
@@ -573,7 +602,7 @@ describe('updater', () => {
       })
       expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
         provider: 'generic',
-        url: 'https://github.com/stablyai/orca/releases/download/v1.4.121'
+        url: `${APP_DISTRIBUTION_RELEASES_URL}/download/v1.4.121`
       })
     })
   })

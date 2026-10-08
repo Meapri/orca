@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
+  APP_DISTRIBUTION,
+  APP_DISTRIBUTION_RELEASE_REPO,
+  APP_DISTRIBUTION_RELEASES_URL
+} from './app-distribution'
+import {
   findInstallerAssetName,
   getReleaseNotesUrlForVersion,
   getReleaseRepoForChannel,
@@ -42,8 +47,10 @@ describe('release channel', () => {
     // Why adhoc gets its own repo rather than sharing hourly's: an unlanded
     // branch build must never surface to someone who only meant to ride main.
     expect(getReleaseRepoForChannel('adhoc')).toBe('stablyai/orca-adhoc')
-    expect(getReleaseRepoForChannel('stable')).toBe('stablyai/orca')
-    expect(getReleaseRepoForChannel('rc')).toBe('stablyai/orca')
+    // Why: stable/rc follow this distribution's own repo, never the official one.
+    expect(getReleaseRepoForChannel('stable')).toBe(APP_DISTRIBUTION_RELEASE_REPO)
+    expect(getReleaseRepoForChannel('rc')).toBe(APP_DISTRIBUTION_RELEASE_REPO)
+    expect(getReleaseRepoForChannel('stable')).not.toBe('stablyai/orca')
   })
 
   it('marks exactly the dev channels as having their own repo', () => {
@@ -64,15 +71,15 @@ describe('release channel', () => {
       'https://github.com/stablyai/orca-daily/releases/tag/v1.4.160-daily.202607281300'
     )
     expect(getReleaseNotesUrlForVersion('1.4.160')).toBe(
-      'https://github.com/stablyai/orca/releases/tag/v1.4.160'
+      `${APP_DISTRIBUTION_RELEASES_URL}/tag/v1.4.160`
     )
     expect(getReleaseNotesUrlForVersion('v1.4.160-rc.3')).toBe(
-      'https://github.com/stablyai/orca/releases/tag/v1.4.160-rc.3'
+      `${APP_DISTRIBUTION_RELEASES_URL}/tag/v1.4.160-rc.3`
     )
     expect(getReleaseNotesUrlForVersion('1.4.160-adhoc.20260728140533')).toBe(
       'https://github.com/stablyai/orca-adhoc/releases/tag/v1.4.160-adhoc.20260728140533'
     )
-    expect(getReleaseNotesUrlForVersion(null)).toBe('https://github.com/stablyai/orca/releases')
+    expect(getReleaseNotesUrlForVersion(null)).toBe(APP_DISTRIBUTION_RELEASES_URL)
   })
 
   it('round-trips an hourly version stamp as UTC', () => {
@@ -162,10 +169,15 @@ describe('release channel', () => {
   // channel.
   it('offers the dev channels on macOS and Windows but not Linux', () => {
     for (const channel of ['hourly', 'daily', 'adhoc'] as const) {
-      expect(isChannelSupportedOnPlatform(channel, 'darwin')).toBe(true)
-      expect(isChannelSupportedOnPlatform(channel, 'win32')).toBe(true)
+      expect(isChannelSupportedOnPlatform(channel, 'darwin')).toBe(
+        APP_DISTRIBUTION.devChannelsEnabled
+      )
+      expect(isChannelSupportedOnPlatform(channel, 'win32')).toBe(
+        APP_DISTRIBUTION.devChannelsEnabled
+      )
       expect(isChannelSupportedOnPlatform(channel, 'linux')).toBe(false)
     }
+    expect(isChannelSupportedOnPlatform('stable', 'darwin')).toBe(true)
   })
 
   // The whole Windows story in one test. electron-updater verifies a downloaded
