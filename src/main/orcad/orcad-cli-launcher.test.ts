@@ -1,88 +1,96 @@
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-  statSync,
-  writeFileSync
-} from 'node:fs'
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { ORCAD_CLI_BUNDLE_FILENAME } from '../../shared/orcad-artifacts'
-import { buildOrcadCliLauncherScript, prepareOrcadCliLauncher } from './orcad-cli-launcher'
+import { dirname, join } from 'node:path'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { runProcess } from '../../shared/child-process/run-process'
+import { ORCAD_CLI_ENTRY_FILENAME } from '../../shared/orcad-artifacts'
+import { getOrcadCliLauncherPath, prepareOrcadCliLauncher } from './orcad-cli-launcher'
 
-let root = ''
-let dataRoot = ''
-let installRoot = ''
+const roots = vi.hoisted(() => ({ install: '', profile: '' }))
+vi.mock('./orcad-app-paths', () => ({
+  resolveOrcadInstallRoot: () => roots.install,
+  resolveUserDataPath: () => roots.profile
+}))
 
-beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), 'orcad-cli-launcher-'))
-  dataRoot = join(root, 'data')
-  installRoot = join(root, 'install')
-  mkdirSync(installRoot, { recursive: true })
+let directory = ''
+const platformDescriptor = Object.getOwnPropertyDescriptor(process, 'platform')!
+
+beforeEach(async () => {
+  directory = await mkdtemp(join(tmpdir(), 'orca-node-cli-'))
+  roots.install = join(directory, "server ' slot")
+  roots.profile = join(directory, "profile ' data")
 })
 
-afterEach(() => {
-  rmSync(root, { recursive: true, force: true })
+afterEach(async () => {
+  Object.defineProperty(process, 'platform', platformDescriptor)
+  await rm(directory, { recursive: true, force: true })
 })
 
-function shipBundle(): void {
-  writeFileSync(join(installRoot, ORCAD_CLI_BUNDLE_FILENAME), '// cli')
+async function writeCli(): Promise<void> {
+  const path = join(roots.install, ...ORCAD_CLI_ENTRY_FILENAME.split('/'))
+  await mkdir(dirname(path), { recursive: true })
+  await writeFile(
+    path,
+    'console.log(JSON.stringify({profile:process.env.ORCA_USER_DATA_PATH, args:process.argv.slice(2), electron:process.env.ELECTRON_RUN_AS_NODE}))'
+  )
 }
 
-describe('prepareOrcadCliLauncher', () => {
-  it.each([
-    ['linux', 'orca-ide'],
-    ['darwin', 'orca']
-  ] as const)('writes the %s launcher under the data root', (platform, launcherName) => {
-    shipBundle()
-    const resourcesPath = prepareOrcadCliLauncher({
-      platform,
-      dataRoot,
-      installRoot,
-      runtimePath: '/opt/runtimes/node-abc/bin/node'
-    })
-
-    expect(resourcesPath).toBe(join(dataRoot, 'cli'))
-    const launcherPath = join(dataRoot, 'cli', 'bin', launcherName)
-    expect(readFileSync(launcherPath, 'utf8')).toBe(
-      buildOrcadCliLauncherScript({
-        runtimePath: '/opt/runtimes/node-abc/bin/node',
-        cliEntryPath: realpathSync(join(installRoot, ORCAD_CLI_BUNDLE_FILENAME)),
-        dataRoot
+describe('orcad profile CLI launcher', () => {
+  it.skipIf(process.platform === 'win32')(
+    'launches pinned Node with intact arguments and the execution host profile',
+    async () => {
+      await writeCli()
+      await prepareOrcadCliLauncher()
+      const launcher = getOrcadCliLauncherPath()
+      expect(launcher).toBe(join(roots.profile, 'cli', 'bin', 'orca'))
+      if (!launcher) {
+        throw new Error('CLI launcher is missing')
+      }
+      const args = ['orchestration', 'send', 'a body\nwith "quotes" and $HOME']
+      const result = await runProcess({
+        program: launcher,
+        args,
+        env: {
+          ...process.env,
+          ORCA_USER_DATA_PATH: '/another/owner',
+          ELECTRON_RUN_AS_NODE: '1',
+          NODE_OPTIONS: '--require /missing/inherited/preload'
+        },
+        timeoutMs: 5000
       })
-    )
-    expect(statSync(launcherPath).mode & 0o111).not.toBe(0)
+      expect(result.code).toBe(0)
+      expect(JSON.parse(result.stdout)).toEqual({ profile: roots.profile, args })
+    }
+  )
+
+  it.skipIf(process.platform === 'win32')(
+    'refreshes the launcher when the host switches server slots',
+    async () => {
+      await writeCli()
+      await prepareOrcadCliLauncher()
+      roots.install = join(directory, 'updated server')
+      await writeCli()
+      await prepareOrcadCliLauncher()
+      const launcher = getOrcadCliLauncherPath()
+      if (!launcher) {
+        throw new Error('CLI launcher is missing')
+      }
+      expect(await readFile(launcher, 'utf8')).toContain(roots.install)
+    }
+  )
+
+  it('leaves old slots without a CLI usable and clears a previous launcher', async () => {
+    await writeCli()
+    await prepareOrcadCliLauncher()
+    roots.install = join(directory, 'old server')
+    await prepareOrcadCliLauncher()
+    expect(getOrcadCliLauncherPath()).toBeNull()
   })
 
-  it('repoints an existing launcher at the current install', () => {
-    shipBundle()
-    const options = { platform: 'linux' as const, dataRoot, installRoot, runtimePath: '/old' }
-    prepareOrcadCliLauncher(options)
-    prepareOrcadCliLauncher({ ...options, runtimePath: '/new' })
-
-    expect(readFileSync(join(dataRoot, 'cli', 'bin', 'orca-ide'), 'utf8')).toContain("exec '/new'")
-  })
-
-  it('offers no launcher without the bundle or on Windows', () => {
-    const options = { dataRoot, installRoot, runtimePath: '/runtime' }
-    expect(prepareOrcadCliLauncher({ ...options, platform: 'linux' })).toBeNull()
-    shipBundle()
-    expect(prepareOrcadCliLauncher({ ...options, platform: 'win32' })).toBeNull()
-  })
-})
-
-describe('buildOrcadCliLauncherScript', () => {
-  it('pins the data root so an inherited one cannot retarget the CLI', () => {
-    const script = buildOrcadCliLauncherScript({
-      runtimePath: "/it's/node",
-      cliEntryPath: '/install/orca-cli.js',
-      dataRoot: '/home/orca/.orca'
-    })
-    expect(script).toContain("export ORCA_USER_DATA_PATH='/home/orca/.orca'\n")
-    expect(script).toContain(`exec '/it'"'"'s/node' '/install/orca-cli.js' "$@"`)
-    expect(script).toContain('unset NODE_OPTIONS')
+  it('does not create a cmd.exe message proxy on Windows', async () => {
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+    await writeCli()
+    await prepareOrcadCliLauncher()
+    expect(getOrcadCliLauncherPath()).toBeNull()
   })
 })

@@ -41,12 +41,15 @@ export function createOrcadServerAdminMethods(deps: OrcadServerAdminDeps) {
   return [
     defineMethod({
       name: SERVER_HEALTH_METHOD,
+      // Same reach as before permissions existed: the host and its paired runtime clients.
+      permission: 'host-admin',
       params: ServerHealthParams,
       handler: async (params): Promise<OrcadServerHealth | { probe: 'ok' }> =>
         params.probe ? { probe: 'ok' } : await deps.serverHealth({ fresh: params.fresh === true })
     }),
     defineMethod({
       name: SERVER_PAIRING_OFFER_METHOD,
+      permission: 'pairing-admin',
       params: ServerPairingOfferParams,
       handler: async (params, ctx): Promise<ServePairingReadiness> => {
         // Why local only: minting a pairing credential stays with the host's own OS account.

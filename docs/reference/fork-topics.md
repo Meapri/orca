@@ -16,12 +16,20 @@ The stacks were rebuilt on 2026-10-08 from the 223 fork commits (190 non-merge) 
 | Order | Topic                | Branch                     | Commits (before → after) | Upstream PRs                                                   |
 | ----- | -------------------- | -------------------------- | ------------------------ | -------------------------------------------------------------- |
 | 1     | `terminal`           | `stack/terminal`           | 70 → 13                  | #23330 #23331 #23334 #23337 #23338 #23340 #23342               |
-| 2     | `sync-automation`    | `stack/sync-automation`    | 1 → 12                   |                                                                |
+| 2     | `sync-automation`    | `stack/sync-automation`    | 1 → 15                   |                                                                |
 | 3     | `runtime-remote`     | `stack/runtime-remote`     | 15 → 6                   | #23356 #23357 #23358 #23359 (+ upstream #26200, cherry-picked) |
 | 4     | `accounts`           | `stack/accounts`           | 5 → 3                    |                                                                |
 | 5     | `orcad-runtime`      | `stack/orcad-runtime`      | 91 → 15                  |                                                                |
 | 6     | `distribution`       | `stack/distribution`       | 8 → 6                    |                                                                |
 | 7     | `integration-fixups` | `stack/integration-fixups` | — → 2                    |                                                                |
+
+**2026-10-09 re-stack.** Upstream #26483 (Phase 3.5) and #26847 (Phase 3.7) forced a manual
+re-stack of runtime-remote, accounts, orcad-runtime and terminal; `config/fork-stacks.json` on
+main names the current refs (`stack-sync/2026-10-09*/<topic>`). Dropped or shrunk because upstream
+now has them: the #26200 ws patch cherry-pick (runtime-remote), the sleeping-agent ratchet entry
+(upstream deleted that ratchet), and orcad's own `orca` CLI bundle and launcher (upstream #26539
+ships the CLI on every orcad; the fork keeps only the opt-in `--register-cli` link in the service
+user's `~/.local/bin`). Every terminal commit was kept.
 
 Commit hashes below are the stack commits at the time of writing; the daily sync re-creates them
 under `stack-sync/<date>/<topic>`, so look a commit up by subject when the hash has moved.

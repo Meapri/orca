@@ -3,6 +3,7 @@ import {
   TerminalStreamOpcode,
   decodeTerminalStreamFrame,
   decodeTerminalStreamJson,
+  decodeTerminalStreamText,
   encodeTerminalStreamFrame,
   encodeTerminalStreamJson,
   encodeTerminalStreamText
@@ -27,7 +28,9 @@ type SubscribePayload = {
     outputPause?: 1
     outputResume?: 1
     writeUnavailable?: 1
+    inputAck?: 1
   }
+  inputSessionId?: string
   resume?: { token: string; seq: number }
 }
 
@@ -108,6 +111,21 @@ export function createTerminalStreamFixtures(bindings: {
     )
   }
 
+  function inputFrameTexts(): string[] {
+    return bindings.sendBinary.mock.calls.flatMap(([bytes]) => {
+      const frame = decodeTerminalStreamFrame(bytes)
+      return frame?.opcode === TerminalStreamOpcode.Input
+        ? [decodeTerminalStreamText(frame.payload)]
+        : []
+    })
+  }
+
+  function subscribeFrameCount(): number {
+    return bindings.sendBinary.mock.calls.filter(
+      ([bytes]) => decodeTerminalStreamFrame(bytes)?.opcode === TerminalStreamOpcode.Subscribe
+    ).length
+  }
+
   function latestFrameForOpcode(opcode: TerminalStreamOpcode) {
     return bindings.sendBinary.mock.calls
       .map((call) => decodeTerminalStreamFrame(call[0]))
@@ -139,6 +157,8 @@ export function createTerminalStreamFixtures(bindings: {
     emitOutput,
     emitSnapshot,
     latestFrameForOpcode,
+    inputFrameTexts,
+    subscribeFrameCount,
     emitSnapshotFrame
   }
 }

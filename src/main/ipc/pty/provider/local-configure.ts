@@ -1,5 +1,4 @@
 import { inheritOmpLaunchEnvironment } from '../host-env/omp-launch-environment'
-import { getCliResourcesPath } from '../../../cli/bundled-cli-launcher-path'
 import { getAppEnvironment } from '../../../../shared/app-environment'
 import type { OrcaRuntimeService } from '../../../runtime/orca-runtime'
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
@@ -11,6 +10,7 @@ import {
   stampWslOrchestrationCompatibilityHost
 } from '../../../pty/wsl-orca-env'
 import type { CodexAccountSelectionTarget } from '../../../codex-accounts/runtime-selection'
+import { markClaudePtyExited } from '../../../claude-accounts/live-pty-gate'
 import { buildPtyHostEnv } from '../host-env/assembly'
 import {
   getCompatibleSelectedCodexHomePath,
@@ -77,7 +77,7 @@ export function configureLocalPtyProvider(args: {
       })
       const env = buildPtyHostEnv(id, baseEnv, {
         isPackaged: getAppEnvironment().isPackaged(),
-        resourcesPath: getCliResourcesPath(),
+        resourcesPath: process.resourcesPath,
         userDataPath: getAppEnvironment().getPath('userData'),
         selectedCodexHomePath,
         skipCodexHomeEnv,
@@ -126,6 +126,7 @@ export function configureLocalPtyProvider(args: {
       }
       clearProviderPtyState(id)
       ptyOwnership.delete(id)
+      markClaudePtyExited(id)
       runtime?.onPtyExit(id, code, incarnationId, {
         providerExitObserved: true,
         ...(cause ? { cause } : {})

@@ -1,6 +1,5 @@
 import { withClaudeProfileTerminalEnv } from '../../../claude-accounts/claude-profile-installed-router'
 import { inheritOmpLaunchEnvironment } from '../host-env/omp-launch-environment'
-import { getCliResourcesPath } from '../../../cli/bundled-cli-launcher-path'
 import { getAppEnvironment } from '../../../../shared/app-environment'
 import type { PtySpawnResult } from '../../../providers/types'
 import { LocalPtyProvider } from '../../../providers/local-pty-provider'
@@ -24,8 +23,10 @@ import {
 } from '../host-env/fresh-spawn-routing'
 import { stripRemotePaneEnvWhenHooksDisabled } from '../provider/liveness'
 import { isTuiAgent } from '../../../../shared/tui-agent-config'
+import { isClaudeAuthSwitchInProgress } from '../../../claude-accounts/live-pty-gate'
 import {
   CLAUDE_AUTH_ENV_CONFLICT_MESSAGE,
+  CLAUDE_AUTH_SWITCH_IN_PROGRESS_MESSAGE,
   hasClaudeAuthEnvConflict
 } from '../../../claude-accounts/environment'
 import {
@@ -69,6 +70,9 @@ export async function prepareRuntimePtySpawn(
   }
   ctx.isClaudeLaunch =
     !ctx.preAdoptedStablePane && !args.connectionId && isClaudeLaunchCommand(args.command)
+  if (ctx.isClaudeLaunch && isClaudeAuthSwitchInProgress()) {
+    throw new Error(CLAUDE_AUTH_SWITCH_IN_PROGRESS_MESSAGE)
+  }
   // Why: runtime-created terminals carry no renderer-computed projectRuntime; resolve from worktreeId to honor the project's Windows runtime.
   // `args.shellOverride` is the per-request pick (`terminal create --shell`), read here the way
   // the renderer twin (ipc/spawn-preflight.ts) reads a tab's override. Without it a runtime create
@@ -147,6 +151,9 @@ export async function prepareRuntimePtySpawn(
     ctx.isClaudeLaunch && ctx.deps.prepareClaudeAuth
       ? await ctx.deps.prepareClaudeAuth(ctx.codexSelectionTarget)
       : null
+  if (ctx.isClaudeLaunch && isClaudeAuthSwitchInProgress()) {
+    throw new Error(CLAUDE_AUTH_SWITCH_IN_PROGRESS_MESSAGE)
+  }
   if (ctx.claudeAuth?.stripAuthEnv && hasClaudeAuthEnvConflict(args.env)) {
     throw new Error(CLAUDE_AUTH_ENV_CONFLICT_MESSAGE)
   }
@@ -267,7 +274,7 @@ export async function prepareRuntimePtySpawn(
       })
       ctx.env = buildPtyHostEnv(ctx.sessionId, ctx.env ?? {}, {
         isPackaged: getAppEnvironment().isPackaged(),
-        resourcesPath: getCliResourcesPath(),
+        resourcesPath: process.resourcesPath,
         userDataPath: getAppEnvironment().getPath('userData'),
         selectedCodexHomePath: ctx.selectedCodexHomePath,
         skipCodexHomeEnv: ctx.skipCodexHomeEnv,

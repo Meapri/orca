@@ -2,12 +2,33 @@
  * Registers orcad's `orca` launcher in `~/.local/bin` the way `orca serve` registers the
  * desktop's, through the same installer and conflict checks. Best-effort and idempotent.
  */
+import { existsSync, lstatSync, symlinkSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import type { CliInstallStatus } from '../../shared/cli-install-types'
 import { CliInstaller } from '../cli/cli-installer'
 import { isPathInsideOrEqual } from '../cli/cli-install-path-format'
 import { installLinuxBareOrcaDispatcher } from '../cli/linux-bare-orca-dispatcher'
+import { getBundledLauncherPath } from '../cli/bundled-cli-launcher-path'
+
+/** The root whose `bin/` holds upstream's profile launcher (`<userData>/cli/bin/orca`). */
+export function orcadCliResourcesPath(launcherPath: string): string {
+  return dirname(dirname(launcherPath))
+}
+
+/** Why: the Linux installer links `bin/orca-ide`, but orcad's launcher is `bin/orca`; alias it in place. */
+function ensureInstallerLauncherName(platform: NodeJS.Platform, resourcesPath: string): void {
+  const expected = getBundledLauncherPath(platform, resourcesPath)
+  const launcher = join(resourcesPath, 'bin', 'orca')
+  if (!expected || expected === launcher || !existsSync(launcher)) {
+    return
+  }
+  try {
+    lstatSync(expected)
+  } catch {
+    symlinkSync('orca', expected)
+  }
+}
 
 export type OrcadCliRegistrationResult =
   | { state: 'installed'; commandPath: string | null; pathConfigured: boolean | null }
@@ -41,6 +62,7 @@ export async function registerOrcadCli(options: {
   pathEnv?: string
 }): Promise<OrcadCliRegistrationResult> {
   const homePath = options.homePath ?? homedir()
+  ensureInstallerLauncherName(options.platform, options.resourcesPath)
   const installer = new CliInstaller({
     platform: options.platform,
     isPackaged: true,

@@ -243,14 +243,14 @@ read as alive). A record belonging to a different identity is never reclaimed.
 What orcad keeps there for agent accounts is what the desktop keeps in its own userData, written
 by the same code:
 
-| Path                                                 | Contents                                                                                                 |
-| ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `claude-accounts/<id>/`                              | managed Claude accounts: `oauth-account.json`, and on Linux `.credentials.json` (macOS: login keychain)  |
-| `claude-runtime-auth/`                               | the system-default Claude credentials snapshot taken before a managed account is swapped in              |
-| `codex-accounts/<id>/home/`                          | managed Codex homes (`auth.json`, config mirror); a PTY for the selected account gets it as `CODEX_HOME` |
-| `codex-runtime-home/`                                | Codex routing metadata, and `home/`, the system-default mirror used when `~/.codex` cannot host hooks    |
-| `orca-claude-usage.json`, `orca-codex-usage.json`    | usage scan caches; automation runs read their token and cost figures from them                           |
-| `cli/bin/orca` (macOS) or `cli/bin/orca-ide` (Linux) | the [`orca` CLI launcher](#the-orca-cli-on-orcad-hosts)                                                  |
+| Path                                                | Contents                                                                                                 |
+| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `claude-accounts/<id>/`                             | managed Claude accounts: `oauth-account.json`, and on Linux `.credentials.json` (macOS: login keychain)  |
+| `claude-runtime-auth/`                              | the system-default Claude credentials snapshot taken before a managed account is swapped in              |
+| `codex-accounts/<id>/home/`                         | managed Codex homes (`auth.json`, config mirror); a PTY for the selected account gets it as `CODEX_HOME` |
+| `codex-runtime-home/`                               | Codex routing metadata, and `home/`, the system-default mirror used when `~/.codex` cannot host hooks    |
+| `orca-claude-usage.json`, `orca-codex-usage.json`   | usage scan caches; automation runs read their token and cost figures from them                           |
+| `cli/bin/orca` (plus the `orca-ide` alias on Linux) | the [`orca` CLI launcher](#the-orca-cli-on-orcad-hosts)                                                  |
 
 On Linux these credentials are plain files inside the `0700` root, exactly as the desktop stores
 them there; nothing is sealed, because this host's secret store has no keyring. Adding an account
@@ -852,20 +852,19 @@ is down. It exits 1 on any failure.
 
 ### The `orca` CLI on orcad hosts
 
-Release tarballs ship the CLI as `orca-cli.js` beside the slot (it is not an ORCAD_ARTIFACT, so
-slots Orca deploys over SSH do not carry it and keep their own remote-CLI path). When the bundle is
-present, on macOS and Linux every orcad start (re)writes a launcher under the data root —
-`cli/bin/orca-ide` on Linux, `cli/bin/orca` on macOS — that runs that bundle on orcad's own
-runtime (the pinned Node the slot references) and pins
-`ORCA_USER_DATA_PATH` to this data root, so it always dials this orcad. Because the data root
-does not move between versions, links to the launcher survive upgrades and rollbacks.
+Every orcad slot ships the CLI as `out/cli/index.js` (an ORCAD_ARTIFACT since upstream #26539,
+so SSH-deployed slots carry it too). On macOS and Linux every orcad start (re)writes upstream's
+launcher `cli/bin/orca` under the data root, which runs that bundle on orcad's own pinned Node and
+pins `ORCA_USER_DATA_PATH` to this data root, so it always dials this orcad. A missing bundle or an
+unwritable launcher only logs a warning; the server still starts.
 
-- **Inside orcad's terminals** bare `orca` resolves to this launcher on every start: the same PTY
-  `PATH` step the packaged desktop uses (a bare-`orca` shim under the data root on Linux, the
-  launcher directory on macOS). Agents, orchestration workers and scripts need nothing on the
-  service user's `PATH`.
-- **For the service user**, after RPC is up orcad registers the launcher with the desktop's CLI
-  installer: `~/.local/bin/orca-ide` plus the bare `~/.local/bin/orca` dispatcher on Linux, and
+- **Inside orcad's terminals** bare `orca` resolves to this launcher: upstream prepends its
+  directory to every PTY and structured-session `PATH` and sets `ORCA_CLI_COMMAND`. Agents,
+  orchestration workers and scripts need nothing on the service user's `PATH`.
+- **For the service user**, only with `--register-cli` (the installer's `run` passes it; managed
+  SSH launches never do), after RPC is up orcad registers the launcher with the desktop's CLI
+  installer (on Linux it first aliases `cli/bin/orca-ide` to `cli/bin/orca`, the name the installer
+  links): `~/.local/bin/orca-ide` plus the bare `~/.local/bin/orca` dispatcher on Linux, and
   `~/.local/bin/orca` on macOS (never `/usr/local/bin`: a headless host cannot ask for
   elevation). It claims only an empty slot or its own earlier link. An unrelated command, and a
   desktop app's registration, are left alone and logged as `orca CLI registration skipped`. The
@@ -926,11 +925,10 @@ Named here so nothing reads as implemented that is not:
   `webClientAlternateUrls`.
 - **State-schema rollback rules.**
 - **A census before the CLI is registered.** The self-managed installer reads live terminals
-  through `~/.local/bin/orca-ide terminal list --json`, which orcad now
-  [registers](#the-orca-cli-on-orcad-hosts) on every start. A host whose orcad never started
-  with this build, or whose `orca-ide` slot holds an unrelated command, still has no census and
-  can prove a stop safe only through daemon scope isolation (or `ORCAD_CENSUS_COMMAND` pointing
-  at `<data-root>/cli/bin/orca-ide`).
+  through `~/.local/bin/orca-ide terminal list --json`, which orcad
+  [registers](#the-orca-cli-on-orcad-hosts) on every start under the installer, and falls back to
+  `<data-root>/cli/bin/orca`. A host whose orcad never started with this build has no census and
+  can prove a stop safe only through daemon scope isolation (or `ORCAD_CENSUS_COMMAND`).
 - **Interactive agent logins on the host.** Accounts are added from a login already made on the
   host; interactive Claude/Codex logins and MiniMax / OpenCode Go cookie sign-in remain desktop
   flows (their API-key paths work).

@@ -2,7 +2,10 @@ import type { GlobalSettings } from '../../shared/global-settings-types'
 import type { OrcaRuntimeService } from '../runtime/orca-runtime'
 import type { ClaudeRuntimeAuthService } from '../claude-accounts/runtime-auth-service'
 import type { CodexRuntimeHomeService } from '../codex-accounts/runtime-home-service'
-import type { CodexRuntimeHomeLaunchPreparation } from '../codex/codex-runtime-home-launch-preparation'
+import {
+  createCodexStructuredLaunchHomeResolvers,
+  type CodexRuntimeHomeLaunchPreparation
+} from '../codex/codex-runtime-home-launch-preparation'
 import type { CodexPinnedLaunchHomePreparation } from '../codex/codex-session-resume-launch-preparation'
 import { prepareCodexAiVaultSessionResume } from '../codex/codex-ai-vault-session-resume'
 import { resolveHostCodexSessionSourceHome } from '../codex/codex-session-source-home'
@@ -49,17 +52,10 @@ export function createAccountBackedRuntimeDeps(deps: {
         systemCodexHomePath: resolveHostCodexSessionSourceHome(deps.getSettings()),
         preparePinnedLaunchHome: (home) => deps.prepareCodexPinnedLaunchHome(home)
       }),
-    prepareCodexStructuredLaunch: ({ launchEnv }) =>
-      deps.prepareCodexRuntimeHomeForLaunch(undefined, launchEnv),
-    // Why throw like prepare does: a null from an uninitialized service would
-    // map to the system home and key a catalog read to the wrong account.
-    resolveCodexStructuredLaunchHome: ({ launchEnv }) => {
-      const runtimeHome = deps.getCodexRuntimeHome()
-      if (!runtimeHome) {
-        throw new Error('Codex runtime home service is not initialized')
-      }
-      return runtimeHome.resolveHostCodexHomePathForLaunchReadOnly(launchEnv)
-    },
+    ...createCodexStructuredLaunchHomeResolvers({
+      getRuntimeHome: deps.getCodexRuntimeHome,
+      prepareCodexRuntimeHomeForLaunch: deps.prepareCodexRuntimeHomeForLaunch
+    }),
     prepareCodexCatalogProbeHome: (homePath) =>
       deps
         .getCodexRuntimeHome()

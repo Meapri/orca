@@ -20,6 +20,7 @@ import type {
   RuntimeEnvironmentSubscriptionHandle
 } from './remote-runtime-terminal-multiplexer-types'
 import { getRuntimeEnvironmentRevision } from './runtime-environment-revision'
+import { refreshRuntimeEnvironmentsAfterPairingChange } from './runtime-environment-pairing-refresh'
 import { readRemoteTerminalResumePoint } from './remote-runtime-terminal-resume'
 
 export abstract class RemoteRuntimeTerminalMultiplexerBase {
@@ -50,6 +51,10 @@ export abstract class RemoteRuntimeTerminalMultiplexerBase {
 
   closeForEnvironmentReplacement(): void {
     this.handleClose('Runtime environment pairing changed.')
+  }
+
+  closeForEnvironmentRetirement(): void {
+    this.handleClose('Runtime environment was removed or replaced by another machine.', false)
   }
 
   protected allocateStreamId(): number {
@@ -115,12 +120,14 @@ export abstract class RemoteRuntimeTerminalMultiplexerBase {
           this.subscription = subscription
           this.resolveReadyIfConnected()
         })
-        .catch((error) => {
+        .catch(async (error) => {
           if (this.connectPromise === connectPromise) {
             this.connectPromise = null
             this.readyResolver = null
             this.readyRejecter = null
           }
+          // Why: a pane retries on this rejection; it must find the re-read pairing, not the stale one.
+          await refreshRuntimeEnvironmentsAfterPairingChange(error)
           reject(error instanceof Error ? error : new Error(String(error)))
         })
     })
@@ -131,13 +138,14 @@ export abstract class RemoteRuntimeTerminalMultiplexerBase {
   protected sendFrame(
     streamId: number,
     opcode: TerminalStreamOpcode,
-    payload: Uint8Array<ArrayBufferLike> = new Uint8Array()
+    payload: Uint8Array<ArrayBufferLike> = new Uint8Array(),
+    seq = 0
   ): boolean {
     if (!this.matchesCurrentEnvironmentRevision() || !this.ready || !this.subscription) {
       return false
     }
     try {
-      this.subscription.sendBinary(encodeTerminalStreamFrame({ opcode, streamId, seq: 0, payload }))
+      this.subscription.sendBinary(encodeTerminalStreamFrame({ opcode, streamId, seq, payload }))
       recordE2eRemoteStreamFrame(opcode)
       return true
     } catch (error) {

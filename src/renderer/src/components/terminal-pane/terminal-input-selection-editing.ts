@@ -54,6 +54,19 @@ export function getTerminalInputSelectionEditing(
   return terminal ? editingByTerminal.get(terminal) : undefined
 }
 
+/** Lets a selection on the input line consume a keydown, cancelling the event when it does. */
+export function consumeTerminalInputSelectionKeyDown(
+  terminal: Terminal | null | undefined,
+  event: KeyboardEvent
+): boolean {
+  if (!getTerminalInputSelectionEditing(terminal)?.handleKeyDown(event)) {
+    return false
+  }
+  event.preventDefault()
+  event.stopImmediatePropagation()
+  return true
+}
+
 const MODIFIER_KEYS = new Set(['Shift', 'Meta', 'Control', 'Alt'])
 
 function isPrintableKey(event: TerminalInputEditingKeyEvent): boolean {

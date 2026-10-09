@@ -6,6 +6,8 @@ import type { DeviceAdministrationRpcContext } from '../rpc/device-administratio
 import { errorResponse } from '../rpc/errors'
 import { RuntimeRpcBinaryRouting } from './runtime-rpc-binary-routing'
 import { classifyRuntimeLongPoll, type RuntimeLongPollClass } from './runtime-rpc-long-poll'
+import { OWNER_RPC_CALLER_SCOPE, type RpcCallerScope } from '../rpc/rpc-caller-scope'
+import { sshBridgeCredentials } from '../rpc/ssh-bridge-credentials'
 
 export class RuntimeRpcRequestAdmission extends RuntimeRpcBinaryRouting {
   // Why: Unix socket dispatch is one-shot and auths via the shared token from the 0o600 metadata file. See §3.1.
@@ -22,7 +24,7 @@ export class RuntimeRpcRequestAdmission extends RuntimeRpcBinaryRouting {
     if ('error' in parsed) {
       return parsed.error
     }
-    const request = parsed.request
+    const { request, callerScope } = parsed
 
     // Why: long-poll admission fence; short RPCs bypass the counter. See §7 risk #2.
     const longPoll = classifyRuntimeLongPoll(request)
@@ -38,8 +40,10 @@ export class RuntimeRpcRequestAdmission extends RuntimeRpcBinaryRouting {
     try {
       return await this.dispatcher.dispatch(request, {
         signal: longPoll ? context?.signal : undefined,
-        // Why: only this transport proves the caller read the owner-only metadata token.
-        deviceAdministration: this.getDeviceAdministrationContext()
+        callerScope,
+        // Why: only the owner metadata token proves host-local administration; a bridged SSH CLI never gets it.
+        deviceAdministration:
+          callerScope.kind === 'owner' ? this.getDeviceAdministrationContext() : undefined
       })
     } finally {
       this.releaseLongPoll(longPoll)
@@ -114,7 +118,9 @@ export class RuntimeRpcRequestAdmission extends RuntimeRpcBinaryRouting {
     }
   }
 
-  protected parseAndAuth(rawMessage: string): { request: RpcRequest } | { error: RpcResponse } {
+  protected parseAndAuth(
+    rawMessage: string
+  ): { request: RpcRequest; callerScope: RpcCallerScope } | { error: RpcResponse } {
     let request: RpcRequest
     try {
       request = JSON.parse(rawMessage) as RpcRequest
@@ -131,16 +137,20 @@ export class RuntimeRpcRequestAdmission extends RuntimeRpcBinaryRouting {
     if (typeof request.authToken !== 'string' || request.authToken.length === 0) {
       return { error: this.buildError(request.id, 'unauthorized', 'Missing auth token') }
     }
-    if (request.authToken !== this.authToken) {
-      this.securityEvents?.record({
-        event: 'auth.failed',
-        transport: 'local-socket',
-        reason: 'Invalid auth token'
-      })
-      return { error: this.buildError(request.id, 'unauthorized', 'Invalid auth token') }
+    if (request.authToken === this.authToken) {
+      return { request, callerScope: OWNER_RPC_CALLER_SCOPE }
     }
-
-    return { request }
+    // Why: a bridged SSH CLI holds only its invocation's credential, scoped to that SSH target.
+    const bridgeScope = sshBridgeCredentials.resolve(request.authToken)
+    if (bridgeScope) {
+      return { request, callerScope: bridgeScope }
+    }
+    this.securityEvents?.record({
+      event: 'auth.failed',
+      transport: 'local-socket',
+      reason: 'Invalid auth token'
+    })
+    return { error: this.buildError(request.id, 'unauthorized', 'Invalid auth token') }
   }
 
   // Why: the administration layer overrides this; without it host-only admin RPCs stay unreachable.

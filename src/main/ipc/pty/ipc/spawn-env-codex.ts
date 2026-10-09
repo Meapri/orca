@@ -1,5 +1,4 @@
 import { inheritOmpLaunchEnvironment } from '../host-env/omp-launch-environment'
-import { getCliResourcesPath } from '../../../cli/bundled-cli-launcher-path'
 import { getAppEnvironment } from '../../../../shared/app-environment'
 import { isTuiAgent } from '../../../../shared/tui-agent-config'
 import { isAgentStatusHooksEnabled } from '../../../agent-hooks/managed-agent-hook-controls'
@@ -139,7 +138,7 @@ export async function assemblePtyIpcSpawnCodexEnv(ctx: PtyIpcSpawnState): Promis
       })
       buildPtyHostEnv(sessionIdForEnv, ctx.env, {
         isPackaged: getAppEnvironment().isPackaged(),
-        resourcesPath: getCliResourcesPath(),
+        resourcesPath: process.resourcesPath,
         userDataPath: getAppEnvironment().getPath('userData'),
         selectedCodexHomePath: ctx.selectedCodexHomePath,
         skipCodexHomeEnv: ctx.skipCodexHomeEnv,

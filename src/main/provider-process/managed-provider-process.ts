@@ -3,7 +3,8 @@ import { RetryableProcessExitProof } from '../../shared/child-process/retryable-
 import type { ProviderProcessLaunch } from './provider-process-launch'
 import {
   PROVIDER_SUPERVISOR_MAX_STOP_MS,
-  createProviderSpawnSpec
+  createProviderSpawnSpec,
+  type ProviderSupervisorLifetime
 } from './provider-process-supervisor'
 import {
   terminateProviderProcessTree,
@@ -38,6 +39,10 @@ type ManagedProviderProcessOptions = {
   inheritedEnv?: NodeJS.ProcessEnv
   /** Defaults to "the root is gone". */
   acceptClose?: (result: ProviderProcessCloseResult) => boolean
+  /** Defaults to `session`; a one-shot's stdin end completes its request instead of stopping it. */
+  lifetime?: ProviderSupervisorLifetime
+  /** Any stdout or stderr chunk: the child is doing something. */
+  onOutput?: () => void
 }
 
 export type ManagedProviderProcess = {
@@ -71,7 +76,8 @@ export function spawnManagedProviderProcess(
   const closePolicy = options.policy ?? rootOnlyProviderClosePolicy
   const spec = createProviderSpawnSpec(launch, options.inheritedEnv ?? process.env, platform, {
     // A gone owner gets the close this provider's own close would make under the supervisor.
-    closeRequest: closePolicy(true).signalSupervisorOnClose ? 'stdin-end-and-sigterm' : 'stdin-end'
+    closeRequest: closePolicy(true).signalSupervisorOnClose ? 'stdin-end-and-sigterm' : 'stdin-end',
+    ...(options.lifetime ? { lifetime: options.lifetime } : {})
   })
   const policy = closePolicy(spec.supervised)
   if (spec.supervised && !(policy.gracefulExitMs >= PROVIDER_SUPERVISOR_MAX_STOP_MS)) {
@@ -97,7 +103,11 @@ export function spawnManagedProviderProcess(
   // An undrained stderr pipe blocks the child once it fills.
   child.stderr.setEncoding('utf8').on('data', (chunk: string) => {
     stderrTail = (stderrTail + chunk).slice(-STDERR_TAIL_MAX_CHARS)
+    options.onOutput?.()
   })
+  if (options.onOutput) {
+    observeReaderOutput(child.stdout, options.onOutput)
+  }
   let resolveExit = (): void => {}
   const exitPromise = new Promise<void>((resolve) => {
     resolveExit = resolve
@@ -182,4 +192,21 @@ export function spawnManagedProviderProcess(
       })
     }
   }
+}
+
+/** Watches stdout only once its reader subscribes: a listener of our own would start the stream
+ *  flowing and drop whatever arrived before a reader that subscribes late. */
+function observeReaderOutput(
+  stdout: Pick<NodeJS.ReadableStream, 'on' | 'removeListener'>,
+  onOutput: () => void
+): void {
+  const onSubscribe = (event: string | symbol): void => {
+    if (event !== 'data' && event !== 'readable') {
+      return
+    }
+    stdout.removeListener('newListener', onSubscribe)
+    // After the reader's own listener lands; no chunk can arrive before a microtask runs.
+    queueMicrotask(() => stdout.on('data', onOutput))
+  }
+  stdout.on('newListener', onSubscribe)
 }

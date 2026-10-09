@@ -52,6 +52,11 @@ describe('parseArgs', () => {
     expect(() => parseArgs(['--project-root'])).toThrow('--project-root expects a value')
   })
 
+  it('registers the CLI in ~/.local/bin only when --register-cli asks for it', () => {
+    expect(parseArgs(['--register-cli'])).toEqual({ registerCli: true })
+    expect(parseArgs([]).registerCli).toBeUndefined()
+  })
+
   it('fails closed on a taken --port only when --require-port asks for it', () => {
     expect(parseArgs(['--port', '6768', '--require-port'])).toEqual({
       port: 6768,

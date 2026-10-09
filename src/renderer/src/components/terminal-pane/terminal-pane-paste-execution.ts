@@ -97,7 +97,7 @@ export function createTerminalPanePasteExecution(
         getTerminalInputSelectionEditing(pane.terminal)?.replaceSelectionBeforeInsert(text)
         return pasteTerminalText(pane.terminal, pasteText, pasteOptions)
       },
-      writePty: (data) => writeTerminalPastePtyInput(transport, data, 'driving'),
+      writePty: (data, signal) => writeTerminalPastePtyInput(transport, data, 'driving', signal),
       isTargetCurrent: () => {
         if (!isPanePasteTargetMounted(pane, transport, ptyId)) {
           return false

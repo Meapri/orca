@@ -24,6 +24,8 @@ export class RemoteRuntimeTerminalMultiplexer extends RemoteRuntimeTerminalBinar
     terminal: string
     client: { id: string; type: 'desktop' | 'mobile' }
     viewport?: { cols: number; rows: number }
+    /** Stable across this pane's reattaches so the host can dedupe replayed input. */
+    inputSessionId?: string
     callbacks: RemoteRuntimeMultiplexedTerminalCallbacks
     // Only from a caller whose view still shows every byte up to this point.
     resumeFrom?: RemoteRuntimeTerminalResumePoint
@@ -37,6 +39,8 @@ export class RemoteRuntimeTerminalMultiplexer extends RemoteRuntimeTerminalBinar
       acknowledgeOutput: true,
       acknowledgeOutputSourceRanges: false,
       supportsOutputPause: false,
+      supportsInputAck: false,
+      inputLedgerId: null,
       outputPaused: false,
       streamGeneration: null,
       resumeToken: null,
@@ -88,7 +92,10 @@ export class RemoteRuntimeTerminalMultiplexer extends RemoteRuntimeTerminalBinar
 
     const stream: RemoteRuntimeMultiplexedTerminal = {
       streamId,
-      sendInput: (text) => this.isRegisteredStream(state) && this.sendInput(state, text),
+      sendInput: (text, inputSeq) =>
+        this.isRegisteredStream(state) && this.sendInput(state, text, inputSeq),
+      acknowledgesInput: () => this.isRegisteredStream(state) && state.supportsInputAck,
+      inputLedgerId: () => (this.isRegisteredStream(state) ? state.inputLedgerId : null),
       resize: (cols, rows) =>
         this.isRegisteredStream(state) &&
         this.sendFrame(
@@ -150,8 +157,10 @@ export class RemoteRuntimeTerminalMultiplexer extends RemoteRuntimeTerminalBinar
             outputPause: 1,
             outputResume: 1,
             writeUnavailable: 1,
-            ...(args.client.type === 'desktop' ? { desktopViewportClaims: 1 } : {})
+            ...(args.client.type === 'desktop' ? { desktopViewportClaims: 1 } : {}),
+            ...(args.inputSessionId ? { inputAck: 1 } : {})
           },
+          ...(args.inputSessionId ? { inputSessionId: args.inputSessionId } : {}),
           ...(args.resumeFrom ? { resume: args.resumeFrom } : {})
         })
       )

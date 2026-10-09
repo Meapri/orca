@@ -10,7 +10,8 @@ import type { WebSocketTransport } from '../rpc/ws-transport'
 import type { DeviceScope } from '../device-registry'
 import { RuntimeRpcRequestAdmission } from './runtime-rpc-request-admission'
 import { classifyRuntimeLongPoll } from './runtime-rpc-long-poll'
-import { MOBILE_RPC_METHOD_ALLOWLIST } from './runtime-rpc-mobile-method-allowlist'
+import type { RpcCallerScope } from '../rpc/rpc-caller-scope'
+import { limitRuntimeRpcReplySize } from './runtime-rpc-reply-size-limit'
 import { closeWebSocketWithinFlushBound } from '../rpc/ws-bounded-close'
 import { COMPRESSIBLE_RUNTIME_RPC_METHODS } from './runtime-rpc-compressible-methods'
 import type { E2EETextReply } from '../../../shared/e2ee-text-compression'
@@ -76,18 +77,11 @@ export class RuntimeRpcWebSocketDispatch extends RuntimeRpcRequestAdmission {
       reply(JSON.stringify(this.buildError(request.id, 'unauthorized', 'Invalid device token')))
       return
     }
-    if (device.scope === 'mobile' && !MOBILE_RPC_METHOD_ALLOWLIST.has(request.method)) {
-      reply(
-        JSON.stringify(
-          this.buildError(
-            request.id,
-            'forbidden',
-            `Method '${request.method}' is not available to mobile clients`
-          )
-        )
-      )
-      return
-    }
+    // Why: the dispatcher enforces this scope's permissions; it never trusts a request field.
+    const callerScope: RpcCallerScope =
+      device.scope === 'mobile'
+        ? { kind: 'mobile' }
+        : { kind: 'runtime-paired', grants: device.grants ?? [] }
 
     // Why: bind deviceToken to this socket so ws.on('close') knows which mobile client disconnected.
     if (wsTransport && ws) {
@@ -108,10 +102,16 @@ export class RuntimeRpcWebSocketDispatch extends RuntimeRpcRequestAdmission {
       ? { compressible: true }
       : undefined
     // Why: older pairings may lack scope metadata, so stamp the authenticated scope onto status.get.
+    // Why: the size bound is on plaintext, matching the channel's own pre-compression check.
+    const boundedReply = limitRuntimeRpcReplySize(
+      request.id,
+      (response) => reply(response, replyOptions),
+      (id, code, message) => this.buildError(id, code, message)
+    )
     const replyForRequest =
       request.method === 'status.get'
-        ? (response: string): void => reply(injectDeviceScope(response, device.scope), replyOptions)
-        : (response: string): void => reply(response, replyOptions)
+        ? (response: string): void => boundedReply(injectDeviceScope(response, device.scope))
+        : boundedReply
 
     const connectionId = ws ? this.mobileSocketWiring?.getConnectionId(ws) : undefined
     const pairingProvider = this.mobileRelayPairingProvider
@@ -147,6 +147,7 @@ export class RuntimeRpcWebSocketDispatch extends RuntimeRpcRequestAdmission {
         pairedDeviceId: device.deviceId,
         // Why: gates the mobile-only payload diet so full-screen web/desktop clients aren't truncated.
         clientKind: device.scope,
+        callerScope,
         clientCapabilities: authenticatedSocket?.clientCapabilities,
         updateClientCapabilities:
           authenticatedSocket && device.scope === 'mobile'

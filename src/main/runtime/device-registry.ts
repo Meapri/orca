@@ -10,10 +10,22 @@ import { DEVICE_REGISTRY_FILENAME } from './mobile-pairing-files'
 import type { RelayDeviceBinding } from './relay/relay-revoke-outbox'
 import type { MobilePairingConnectionMode } from '../../shared/mobile-pairing-connection-mode'
 import type { RuntimePairingReach } from '../../shared/runtime-pairing-reach'
+import type { RuntimeDeviceGrant } from './rpc/rpc-method-permission'
 import type { MobilePushRegistration } from '../../shared/mobile-push-contract'
 import type { SecurityEventSink } from './security-event-log'
-import { isExpiredOffer, isOpenEndedPendingDevice } from './device-registry-entry-parsing'
+import {
+  isExpiredOffer,
+  isOpenEndedPendingDevice,
+  sameDeviceGrants,
+  validDeviceGrants
+} from './device-registry-entry-parsing'
 import { DeviceRegistryFile } from './device-registry-file'
+import {
+  mobilePairingConnectionModeOf,
+  withMobilePairingConnectionMode,
+  withPushRegistration,
+  withRelayBinding
+} from './device-registry-entry-updates'
 
 export type { DeviceScope }
 
@@ -32,6 +44,8 @@ export type DeviceEntry = {
   // Why: survives a desktop restart so the host can keep pushing without the phone
   // re-registering. Absent on every registry written before background push existed.
   pushRegistration?: MobilePushRegistration
+  // Why: administrative permissions are granted only when pairing; absent on older rows means none.
+  grants?: RuntimeDeviceGrant[]
   // Why: a minted offer is a bearer credential not yet claimed; past this instant it stops authenticating.
   offerExpiresAt?: number
 }
@@ -66,9 +80,10 @@ export class DeviceRegistry {
   addDevice(
     name: string,
     scope: DeviceScope = 'mobile',
-    pairingReach: RuntimePairingReach = 'network'
+    pairingReach: RuntimePairingReach = 'network',
+    grants: readonly RuntimeDeviceGrant[] = []
   ): DeviceEntry {
-    return this.createAndPersistDevice(this.devices, name, scope, pairingReach)
+    return this.createAndPersistDevice(this.devices, name, scope, pairingReach, grants)
   }
 
   /** Mints a standalone offer that the coalescing QR/link flows never reuse, rotate, or extend. */
@@ -76,10 +91,18 @@ export class DeviceRegistry {
     name: string,
     scope: DeviceScope,
     pairingReach: RuntimePairingReach,
-    offerExpiresAt: number
+    offerExpiresAt: number,
+    grants: readonly RuntimeDeviceGrant[] = []
   ): DeviceEntry {
     this.pruneExpiredOffers()
-    return this.createAndPersistDevice(this.devices, name, scope, pairingReach, offerExpiresAt)
+    return this.createAndPersistDevice(
+      this.devices,
+      name,
+      scope,
+      pairingReach,
+      grants,
+      offerExpiresAt
+    )
   }
 
   private createAndPersistDevice(
@@ -87,8 +110,10 @@ export class DeviceRegistry {
     name: string,
     scope: DeviceScope,
     pairingReach: RuntimePairingReach,
+    grants: readonly RuntimeDeviceGrant[],
     offerExpiresAt?: number
   ): DeviceEntry {
+    const validatedGrants = validDeviceGrants(grants, scope)
     const entry: DeviceEntry = {
       deviceId: randomUUID(),
       name,
@@ -97,6 +122,7 @@ export class DeviceRegistry {
       pairedAt: this.now(),
       lastSeenAt: 0,
       pairingReach,
+      ...(validatedGrants ? { grants: validatedGrants } : {}),
       ...(offerExpiresAt !== undefined ? { offerExpiresAt } : {})
     }
     const nextDevices = [...existingDevices, entry]
@@ -122,9 +148,16 @@ export class DeviceRegistry {
   getOrCreatePendingDevice(
     name: string,
     scope: DeviceScope = 'mobile',
-    pairingReach: RuntimePairingReach = 'network'
+    pairingReach: RuntimePairingReach = 'network',
+    grants: readonly RuntimeDeviceGrant[] = []
   ): DeviceEntry {
-    const existing = this.devices.find((d) => isOpenEndedPendingDevice(d) && d.scope === scope)
+    // Why: a pending token is reused only for the same grants, so re-advertising never widens one.
+    const existing = this.devices.find(
+      (d) =>
+        isOpenEndedPendingDevice(d) &&
+        d.scope === scope &&
+        sameDeviceGrants(d, validDeviceGrants(grants, scope) ?? [])
+    )
     if (existing) {
       // Why: the same pending token can be re-advertised at a broader reach; widen it but never narrow it,
       // or a link already handed out for off-host use would stop being served after the next launch.
@@ -132,7 +165,7 @@ export class DeviceRegistry {
         ? this.setPairingReach(existing, 'network')
         : existing
     }
-    return this.addDevice(name, scope, pairingReach)
+    return this.addDevice(name, scope, pairingReach, grants)
   }
 
   private setPairingReach(existing: DeviceEntry, pairingReach: RuntimePairingReach): DeviceEntry {
@@ -156,11 +189,12 @@ export class DeviceRegistry {
   rotatePendingDevice(
     name: string,
     scope: DeviceScope = 'mobile',
-    pairingReach: RuntimePairingReach = 'network'
+    pairingReach: RuntimePairingReach = 'network',
+    grants: readonly RuntimeDeviceGrant[] = []
   ): DeviceEntry {
     const superseded = this.devices.filter((d) => isOpenEndedPendingDevice(d) && d.scope === scope)
     const retainedDevices = this.devices.filter((d) => !superseded.includes(d))
-    const entry = this.createAndPersistDevice(retainedDevices, name, scope, pairingReach)
+    const entry = this.createAndPersistDevice(retainedDevices, name, scope, pairingReach, grants)
     for (const device of superseded) {
       this.securityEvents?.record({ event: 'pairing.superseded', deviceId: device.deviceId, scope })
     }
@@ -226,61 +260,20 @@ export class DeviceRegistry {
   }
 
   setRelayBinding(deviceId: string, binding: RelayDeviceBinding): boolean {
-    const index = this.devices.findIndex((candidate) => candidate.deviceId === deviceId)
-    if (index === -1 || binding.relayDeviceId !== deviceId) {
-      return false
-    }
-    const nextDevices = this.devices.map((device, candidateIndex) =>
-      candidateIndex === index ? { ...device, relayBinding: binding } : device
-    )
-    this.save(nextDevices)
-    this.devices = nextDevices
-    return true
+    return this.commitUpdate(withRelayBinding(this.devices, deviceId, binding))
   }
 
   /** Passing null clears the registration (unregister, or a token the gateway reported dead). */
   setPushRegistration(deviceId: string, registration: MobilePushRegistration | null): boolean {
-    const index = this.devices.findIndex((candidate) => candidate.deviceId === deviceId)
-    if (index === -1 || this.devices[index]?.scope !== 'mobile') {
-      return false
-    }
-    const nextDevices = this.devices.map((device, candidateIndex) => {
-      if (candidateIndex !== index) {
-        return device
-      }
-      const { pushRegistration: _dropped, ...rest } = device
-      return registration ? { ...rest, pushRegistration: registration } : rest
-    })
-    // Why: persist before the memory swap so a failed write cannot leave the dispatcher
-    // pushing to a registration disk says is gone (or vice versa on reload).
-    this.save(nextDevices)
-    this.devices = nextDevices
-    return true
+    return this.commitUpdate(withPushRegistration(this.devices, deviceId, registration))
   }
 
   setMobilePairingConnectionMode(deviceId: string, mode: MobilePairingConnectionMode): boolean {
-    const index = this.devices.findIndex((candidate) => candidate.deviceId === deviceId)
-    if (index === -1 || this.devices[index]?.scope !== 'mobile') {
-      return false
-    }
-    // Why: persist before swapping memory so a failed write does not leave a
-    // mode the UI/runtime believe was stored.
-    const nextDevices = this.devices.map((device, candidateIndex) =>
-      candidateIndex === index ? { ...device, mobilePairingConnectionMode: mode } : device
-    )
-    this.save(nextDevices)
-    this.devices = nextDevices
-    return true
+    return this.commitUpdate(withMobilePairingConnectionMode(this.devices, deviceId, mode))
   }
 
   getMobilePairingConnectionMode(deviceId: string): MobilePairingConnectionMode | null {
-    const device = this.devices.find((candidate) => candidate.deviceId === deviceId)
-    if (!device || device.scope !== 'mobile') {
-      return null
-    }
-    // Why: pairings created before this preference existed used automatic
-    // direct-first Relay fallback, so missing state must preserve that behavior.
-    return device.mobilePairingConnectionMode === 'local-only' ? 'local-only' : 'automatic'
+    return mobilePairingConnectionModeOf(this.getDevice(deviceId))
   }
 
   listDevices(): readonly DeviceEntry[] {
@@ -367,6 +360,16 @@ export class DeviceRegistry {
       clearTimeout(this.pendingLastSeenFlush)
       this.pendingLastSeenFlush = null
     }
+  }
+
+  // Why: persist before the memory swap so a failed write never leaves memory and disk disagreeing.
+  private commitUpdate(nextDevices: DeviceEntry[] | null): boolean {
+    if (!nextDevices) {
+      return false
+    }
+    this.save(nextDevices)
+    this.devices = nextDevices
+    return true
   }
 
   private save(devices: DeviceEntry[]): void {

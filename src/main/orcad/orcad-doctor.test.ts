@@ -209,6 +209,10 @@ describe('host doctor checks', () => {
       status: 'warn',
       fix: expect.stringContaining('loginctl enable-linger')
     })
+    expect(checkDaemonScopeSupport('linux', () => 'user_manager_ends_with_session')).toMatchObject({
+      status: 'warn',
+      fix: expect.stringContaining('loginctl enable-linger')
+    })
     expect(checkDaemonScopeSupport('linux', () => 'supported').status).toBe('pass')
   })
 

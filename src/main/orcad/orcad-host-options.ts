@@ -21,6 +21,8 @@ export type OrcadHostOptions = {
   browser?: OrcadBrowserMode
   /** Serve phones through Orca Relay (outbound only); see orcad-relay.ts. */
   relay?: boolean
+  /** `--register-cli`: link this runtime's `orca` into the service user's `~/.local/bin`. */
+  registerCli?: boolean
 }
 
 export function prepareOrcadHostProcess(options: OrcadHostOptions): {

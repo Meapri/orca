@@ -26,6 +26,8 @@ export function parseArgs(argv: string[]): OrcadOptions {
       options.noPairing = true
     } else if (arg === '--mobile-pairing') {
       options.mobilePairing = true
+    } else if (arg === '--grant-desktop-control') {
+      options.grantDesktopControl = true
     } else if (arg === '--recipe-json') {
       options.recipeJson = true
     } else if (arg === '--project-root') {
@@ -39,6 +41,8 @@ export function parseArgs(argv: string[]): OrcadOptions {
       options.relay = true
     } else if (arg === '--require-port') {
       options.requirePort = true
+    } else if (arg === '--register-cli') {
+      options.registerCli = true
     } else if (arg === '--bind') {
       const value = argv[i + 1]
       if (value === undefined) {
@@ -73,6 +77,9 @@ export function parseArgs(argv: string[]): OrcadOptions {
     } else {
       throw new Error(`Unknown argument: ${arg}`)
     }
+  }
+  if (options.grantDesktopControl && (options.noPairing || options.mobilePairing)) {
+    throw new Error('--grant-desktop-control applies only to the default runtime pairing offer')
   }
   if (options.requirePort && options.port === undefined) {
     throw new Error('--require-port requires --port')

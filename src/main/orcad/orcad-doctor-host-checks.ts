@@ -32,7 +32,7 @@ function accountName(): string {
 export function checkDaemonScopeSupport(
   platform: NodeJS.Platform,
   support: () => DurableDaemonScopeSupport = () =>
-    describeDurableDaemonScopeSupport(process.env, platform)
+    describeDurableDaemonScopeSupport({ env: process.env, platform })
 ): OrcadDoctorCheck {
   const id = 'systemd-user-scope'
   const verdict = support()
@@ -53,6 +53,14 @@ export function checkDaemonScopeSupport(
         summary:
           "No reachable systemd user bus, so the terminal daemon falls back into orcad's service cgroup and a unit restart kills live terminals.",
         fix: `sudo loginctl enable-linger ${accountName()}  # then: systemctl --user status`
+      }
+    case 'user_manager_ends_with_session':
+      return {
+        id,
+        status: 'warn',
+        summary:
+          "The systemd user manager ends with this login session (linger is off), so the terminal daemon falls back into orcad's service cgroup and a unit restart kills live terminals.",
+        fix: `sudo loginctl enable-linger ${accountName()}`
       }
     case 'systemd_run_unavailable':
       return {

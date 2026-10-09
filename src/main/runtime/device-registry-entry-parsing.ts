@@ -1,6 +1,33 @@
 import type { DeviceEntry } from './device-registry'
 import type { RelayDeviceBinding } from './relay/relay-revoke-outbox'
 import { parseMobilePushRegistration } from '../../shared/mobile-push-contract'
+import type { DeviceScope } from '../../shared/runtime-types'
+import { RUNTIME_DEVICE_GRANTS, type RuntimeDeviceGrant } from './rpc/rpc-method-permission'
+
+const GRANTABLE: ReadonlySet<string> = new Set(RUNTIME_DEVICE_GRANTS)
+
+function isRuntimeDeviceGrant(value: unknown): value is RuntimeDeviceGrant {
+  return typeof value === 'string' && GRANTABLE.has(value)
+}
+
+export function validDeviceGrants(
+  value: unknown,
+  scope: DeviceScope
+): RuntimeDeviceGrant[] | undefined {
+  if (scope !== 'runtime' || !Array.isArray(value)) {
+    return undefined
+  }
+  const grants = [...new Set(value.filter(isRuntimeDeviceGrant))].sort()
+  return grants.length > 0 ? grants : undefined
+}
+
+export function sameDeviceGrants(
+  entry: DeviceEntry,
+  grants: readonly RuntimeDeviceGrant[]
+): boolean {
+  const current = entry.grants ?? []
+  return current.length === grants.length && current.every((grant) => grants.includes(grant))
+}
 
 function validRelayBinding(value: unknown, deviceId: string): RelayDeviceBinding | undefined {
   if (!value || typeof value !== 'object') {
@@ -33,11 +60,13 @@ function validOfferExpiry(device: DeviceEntry): number | undefined {
 export function normalizeLoadedDeviceEntry(device: DeviceEntry): DeviceEntry {
   const { offerExpiresAt: _raw, ...rest } = device
   const offerExpiresAt = validOfferExpiry(device)
+  // Why: older registries only existed for phone pairing. Treat missing
+  // scope as mobile so legacy device tokens do not gain new CLI powers.
+  const scope = device.scope === 'runtime' ? 'runtime' : 'mobile'
   return {
     ...rest,
-    // Why: older registries only existed for phone pairing. Treat missing
-    // scope as mobile so legacy device tokens do not gain new CLI powers.
-    scope: device.scope === 'runtime' ? 'runtime' : 'mobile',
+    scope,
+    grants: validDeviceGrants(device.grants, scope),
     relayBinding: validRelayBinding(device.relayBinding, device.deviceId),
     mobilePairingConnectionMode:
       device.mobilePairingConnectionMode === 'local-only' ? 'local-only' : 'automatic',

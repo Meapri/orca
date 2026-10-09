@@ -1,5 +1,6 @@
 import type { TerminalSnapshotUnavailableReason } from '../../../shared/terminal-snapshot-unavailability'
 import type { TerminalStreamEndVerdict } from '../../../shared/terminal-stream-end-verdict'
+import type { TerminalInputAckKind } from '../../../shared/terminal-stream-protocol'
 import type { RemoteTerminalStreamWatchdog } from './remote-terminal-stream-watchdog'
 
 export type RuntimeEnvironmentSubscriptionHandle = {
@@ -13,7 +14,8 @@ export type TerminalMultiplexEvent =
       type: 'subscribed'
       streamId: number
       streamGeneration?: string
-      capabilities?: { ackOutputSourceRanges?: 1; outputPause?: 1; outputResume?: 1 }
+      capabilities?: { ackOutputSourceRanges?: 1; outputPause?: 1; inputAck?: 1; outputResume?: 1 }
+      inputLedgerId?: string
       resumeToken?: string
       resumed?: { fromSeq?: number }
     }
@@ -50,6 +52,8 @@ export type RemoteRuntimeMultiplexedTerminalCallbacks = {
        *  it, which must read as unknown so replay keeps the pane's own grid. */
       cols?: number
       rows?: number
+      /** The host folded history above the screen (scrollbackRows > 0). */
+      carriesHistory?: boolean
     }
   ) => void
   // `resumed`: the host replayed only the missed tail, so the view kept its own contents.
@@ -66,6 +70,8 @@ export type RemoteRuntimeMultiplexedTerminalCallbacks = {
     driver: { kind: 'idle' } | { kind: 'desktop' } | { kind: 'mobile'; clientId: string }
   ) => void
   onWriteUnavailable?: () => void
+  /** Cumulative host ack of sequenced input through `appliedSeq` (negotiated streams only). */
+  onInputAck?: (appliedSeq: number, kind: TerminalInputAckKind) => void
   onTransportClose?: (event: {
     recoverable: boolean
     retryWithBackoff?: boolean
@@ -141,7 +147,12 @@ export type RemoteRuntimeSnapshotOutcome = {
 
 export type RemoteRuntimeMultiplexedTerminal = {
   streamId: number
-  sendInput: (text: string) => boolean
+  /** `inputSeq` is honored only once the host negotiated `inputAck`; see `acknowledgesInput`. */
+  sendInput: (text: string, inputSeq?: number) => boolean
+  // Why: until the host echoes `inputAck`, delivery of a sent byte is unknown and must never be replayed.
+  acknowledgesInput: () => boolean
+  /** The host ledger that dedupes this stream's input; a different one has no record of earlier sends. */
+  inputLedgerId: () => string | null
   resize: (cols: number, rows: number) => boolean
   claimViewport: (cols: number, rows: number) => boolean
   setOutputPaused: (paused: boolean) => boolean
@@ -163,6 +174,8 @@ export type RemoteRuntimeMultiplexedTerminalState = {
   acknowledgeOutput: boolean
   acknowledgeOutputSourceRanges: boolean
   supportsOutputPause: boolean
+  supportsInputAck: boolean
+  inputLedgerId: string | null
   outputPaused: boolean
   streamGeneration: string | null
   // Set only when the host echoed outputResume; names the host's sequence run for this view.
@@ -206,6 +219,8 @@ export type RemoteRuntimeSnapshotInfo = {
   requestId?: number
   truncated?: boolean
   unavailable?: TerminalSnapshotUnavailableReason
+  /** History rows above the screen; absent from hosts that predate the field. */
+  scrollbackRows?: number
   // Why: a mid-escape tail the emulator could not serialize; the transport
   // must write it AFTER the replay reset so the next live chunk completes it
   // instead of rendering literally (#7329).

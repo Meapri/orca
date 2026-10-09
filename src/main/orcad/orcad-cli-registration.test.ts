@@ -12,29 +12,23 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { CliInstallStatus } from '../../shared/cli-install-types'
-import { ORCAD_CLI_BUNDLE_FILENAME } from '../../shared/orcad-artifacts'
-import { prepareOrcadCliLauncher } from './orcad-cli-launcher'
-import { isOrcadOwnedCliSlot, registerOrcadCli } from './orcad-cli-registration'
+import {
+  isOrcadOwnedCliSlot,
+  orcadCliResourcesPath,
+  registerOrcadCli
+} from './orcad-cli-registration'
 
 let root = ''
 let homePath = ''
 let dataRoot = ''
 let resourcesPath = ''
 
-function prepare(platform: NodeJS.Platform): void {
-  const installRoot = join(root, 'install')
-  mkdirSync(installRoot, { recursive: true })
-  writeFileSync(join(installRoot, ORCAD_CLI_BUNDLE_FILENAME), '// cli')
-  const prepared = prepareOrcadCliLauncher({
-    platform,
-    dataRoot,
-    installRoot,
-    runtimePath: '/runtime'
-  })
-  if (!prepared) {
-    throw new Error('launcher was not prepared')
-  }
-  resourcesPath = prepared
+// Mirrors prepareOrcadCliLauncher's output: `<userData>/cli/bin/orca` on every Unix platform.
+function prepare(_platform: NodeJS.Platform): void {
+  const launcherPath = join(dataRoot, 'cli', 'bin', 'orca')
+  mkdirSync(join(dataRoot, 'cli', 'bin'), { recursive: true })
+  writeFileSync(launcherPath, '#!/usr/bin/env sh\n', { mode: 0o700 })
+  resourcesPath = orcadCliResourcesPath(launcherPath)
 }
 
 beforeEach(() => {

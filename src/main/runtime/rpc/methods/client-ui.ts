@@ -15,11 +15,13 @@ import { TerminalQuickCommandsUpdate } from './terminal-quick-command-rpc-schema
 export const CLIENT_UI_METHODS = [
   defineMethod({
     name: 'settings.get',
+    permission: 'workspace',
     params: null,
     handler: (_params, { runtime }) => ({ settings: runtime.getClientSettings() })
   }),
   defineMethod({
     name: 'settings.update',
+    permission: 'settings-write',
     params: SettingsUpdate,
     handler: async (params, { runtime, clientKind }) => {
       // Why: agent launch args/env run on every agent the host starts (PATH, LD_PRELOAD), which would
@@ -35,6 +37,7 @@ export const CLIENT_UI_METHODS = [
   }),
   defineMethod({
     name: 'settings.getTerminalQuickCommands',
+    permission: 'workspace',
     params: null,
     // Why: command bodies can total ~240 KB, so keep unrelated settings reads
     // from carrying them over every paired/relay connection.
@@ -44,6 +47,7 @@ export const CLIENT_UI_METHODS = [
   }),
   defineMethod({
     name: 'settings.updateTerminalQuickCommands',
+    permission: 'settings-write',
     params: TerminalQuickCommandsUpdate,
     handler: (params, { runtime }) => ({
       terminalQuickCommands: runtime.updateClientTerminalQuickCommands(params.mutation)
@@ -51,6 +55,7 @@ export const CLIENT_UI_METHODS = [
   }),
   defineMethod({
     name: 'settings.updatePRBotAuthorOverride',
+    permission: 'settings-write',
     params: PRBotAuthorOverrideUpdate,
     handler: (params, { runtime }) => ({
       settings: runtime.updateClientPRBotAuthorOverride(params)
@@ -58,6 +63,7 @@ export const CLIENT_UI_METHODS = [
   }),
   defineMethod({
     name: 'settings.mutateNativeChatSessionOptions',
+    permission: 'settings-write',
     params: NativeChatSessionOptionsMutation,
     handler: (params, { runtime }) => {
       runtime.updateClientNativeChatSessionOptions(params)
@@ -66,11 +72,13 @@ export const CLIENT_UI_METHODS = [
   }),
   defineMethod({
     name: 'ui.get',
+    permission: 'workspace',
     params: null,
     handler: (_params, { runtime }) => ({ ui: omitPairingLocalUiFields(runtime.getUIState()) })
   }),
   defineMethod({
     name: 'ui.set',
+    permission: 'workspace',
     params: UiUpdate,
     // Why the fields are dropped here rather than removed from the schema: UiUpdate is strict, so
     // an unlisted key would make the dispatcher reject an old client's ENTIRE payload.
@@ -82,6 +90,7 @@ export const CLIENT_UI_METHODS = [
   }),
   defineMethod({
     name: 'ui.recordFeatureInteraction',
+    permission: 'workspace',
     params: FeatureInteractionIdParam,
     handler: (params, { runtime }) => ({
       ui: omitPairingLocalUiFields(runtime.recordFeatureInteraction(params))

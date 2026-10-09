@@ -56,6 +56,7 @@ export async function initializeMultiplexStream(
     ackWindowBytes: TERMINAL_MULTIPLEX_ACK_STREAM_INITIAL_WINDOW_BYTES,
     supportsOutputPause: request.capabilities?.outputPause === 1,
     supportsWriteUnavailable: request.capabilities?.writeUnavailable === 1,
+    inputSessionId: request.capabilities?.inputAck === 1 ? (request.inputSessionId ?? null) : null,
     outputResume:
       request.capabilities?.outputResume === 1
         ? getTerminalOutputResumeRegistry(runtime).acquire(ptyId)
@@ -72,6 +73,7 @@ export async function initializeMultiplexStream(
     ackPendingOutputBytes: 0,
     ackPendingOutputOverflowed: false,
     ackRecoverySnapshotInFlight: false,
+    ackRecoveryHistoryOwed: false,
     pendingOutput: [],
     pendingOutputBytes: 0,
     pendingOutputOverflowed: false,

@@ -26,7 +26,7 @@ vi.mock('electron', () => ({
 
 import { PACKAGED_MAC_COMMAND_NAME } from './cli-install-constants'
 import { CliInstaller } from './cli-installer'
-import { buildUnixDevLauncher } from './cli-dev-launcher'
+import { buildUnixCliLauncher } from './cli-dev-launcher'
 
 const createdRoots: string[] = []
 const protectedDirectories: string[] = []
@@ -141,7 +141,7 @@ describe.skipIf(process.platform !== 'darwin' || process.getuid?.() === 0)(
       const oldCliPath = join(fixture.root, 'old', 'out', 'cli', 'index.js')
       await writeFile(
         fixture.commandPath,
-        buildUnixDevLauncher('/Applications/Old.app/Contents/MacOS/Orca', oldCliPath, 'user-data')
+        buildUnixCliLauncher('/Applications/Old.app/Contents/MacOS/Orca', oldCliPath, 'user-data')
       )
       const foreignContent = 'foreign command written into the inspected inode'
       let raced = false

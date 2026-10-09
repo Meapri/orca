@@ -32,12 +32,12 @@ Nothing else: the release carries its own runtime, file watcher and ripgrep.
 
 A release is three files per target plus the installer:
 
-| File                                          | What it is                                                                                                                                         |
-| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `orcad-<version>-<target>.tar.gz`             | `orcad-<version>/` (the SSH deploy's slot plus the release-only `orca` CLI and browser client) and the pinned Node under `runtimes/node-<sha256>/` |
-| `orcad-<version>-<target>.tar.gz.sha256`      | its checksum, `sha256sum -c` format                                                                                                                |
-| `orcad-<version>-<target>.json`               | version, target and both checksums                                                                                                                 |
-| `orcad-install.sh`, `orcad-install.sh.sha256` | the installer, also shipped inside every tarball under `deploy/`                                                                                   |
+| File                                          | What it is                                                                                                                                                          |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `orcad-<version>-<target>.tar.gz`             | `orcad-<version>/` (the SSH deploy's slot, which includes the `orca` CLI, plus the release-only browser client) and the pinned Node under `runtimes/node-<sha256>/` |
+| `orcad-<version>-<target>.tar.gz.sha256`      | its checksum, `sha256sum -c` format                                                                                                                                 |
+| `orcad-<version>-<target>.json`               | version, target and both checksums                                                                                                                                  |
+| `orcad-install.sh`, `orcad-install.sh.sha256` | the installer, also shipped inside every tarball under `deploy/`                                                                                                    |
 
 `<version>` is content-hashed (`0.1.0+5f23baf0c093`), so two different builds never
 share a name. `<target>` is `linux-x64-glibc`, `linux-arm64-glibc`, `linux-x64-musl` or

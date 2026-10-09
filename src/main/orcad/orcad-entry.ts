@@ -16,6 +16,7 @@ import { setSecretStore } from '../../shared/secret-store'
 import { createNodeSecretStore } from './orcad-node-secret-store'
 import type { ServeReadiness } from '../server/serve-readiness'
 import { resolveOrcadInstallRoot, resolveOrcadPath, resolveUserDataPath } from './orcad-app-paths'
+import { getOrcadCliLauncherPath, prepareOrcadCliLauncher } from './orcad-cli-launcher'
 import { describeOrcadBindExposure, resolveOrcadBindHost } from './orcad-bind-address'
 import {
   flushOrcadProfileStoreForShutdown,
@@ -68,6 +69,7 @@ function createNodeAppEnvironment(): AppEnvironment {
     // posture. Layout questions must ask whether the app root is an asar archive
     // instead (see parcel-watcher-entry-path.ts).
     isPackaged: () => true,
+    getCliLauncherPath: getOrcadCliLauncherPath,
     onWillQuit: (handler) => quitHandlers.push(handler),
     exit: (code = 0) => process.exit(code),
     // Why []: there are no Chromium processes on this host to measure.
@@ -87,6 +89,8 @@ export type OrcadOptions = {
   pairingAddress?: string
   /** Desktop `orca serve` parity: a mobile-scoped offer with a terminal QR. */
   mobilePairing?: boolean
+  /** Lets the paired runtime client drive this machine's desktop (computer.*). */
+  grantDesktopControl?: boolean
   /** Desktop `orca serve` parity: print only the ephemeral-VM recipe line. */
   recipeJson?: boolean
   projectRoot?: string
@@ -146,7 +150,6 @@ async function startOrcadRuntime(
   const { startOrcadDaemon, stopOrcadDaemon } = await import('./orcad-daemon-supervision')
   const { daemonOwnsFreshPersistentPtys } = await import('../daemon/daemon-init')
   const { createOrcadServeSurfaces } = await import('./orcad-serve-surfaces')
-  const { installOrcadHeadlessParity } = await import('./orcad-headless-parity')
   // Why importable here: the singleton's module tree never reaches Electron, and orcad supplies
   // its persistence and endpoint paths explicitly below.
   const { agentHookServer } = await import('../agent-hooks/server')
@@ -186,6 +189,10 @@ async function startOrcadRuntime(
   const { resolvePushGatewayOrigin } = await import('../runtime/push/push-gateway-origin')
 
   const runtimeUserDataPath = getAppEnvironment().getPath('userData')
+  // A missing `orca` command must never keep the server from starting.
+  await prepareOrcadCliLauncher().catch((error: unknown) => {
+    console.warn('[orcad] Could not prepare the profile CLI launcher', error)
+  })
   const idleExitStartup = beginOrcadIdleExit(runtimeUserDataPath)
   const { store: profileStore, authority: profileStateAuthority } =
     await createOrcadProfileStateStartup(runtimeUserDataPath)
@@ -315,16 +322,6 @@ async function startOrcadRuntime(
   // A retry armed during recovery would otherwise write after the final profile flush.
   registerCleanup(() => runtime.stopLegacyWorkerTerminalRecovery())
 
-  // Notifications, first-work rename, sleeping-agent restore and the CLI launcher. Why before
-  // the RPC server binds: the first PTY's PATH must already reach this runtime's `orca`.
-  const headlessParity = installOrcadHeadlessParity({
-    runtime,
-    store: profileStore,
-    agentHookServer
-  })
-  // Why before the final flush: no scheduled step may start work the flush cannot record.
-  registerCleanup(() => headlessParity.uninstall())
-
   // Recovery binds terminal and dispatch identities; only now can startup observations be fenced.
   observedStatusCapture.attach(runtime)
   // Why before the RPC server binds: like `--serve`, the first client must find a ready graph.
@@ -337,7 +334,8 @@ async function startOrcadRuntime(
     profileStateAuthority,
     previousIdleStop: idleExitStartup.previousIdleStop,
     systemdNotify,
-    registerCleanup
+    registerCleanup,
+    parity: { runtime, store: profileStore, agentHookServer }
   })
   const rpc = new OrcaRuntimeRpcServer({
     runtime,
@@ -356,7 +354,6 @@ async function startOrcadRuntime(
   await rpc.start()
   const pairing = await surfaces.attach(rpc, runtime, bindHost)
   startOrcadAutomations(runtime, profileStore, registerCleanup, accounts)
-  headlessParity.startScheduledWork()
   const pushService = DesktopPushService.create({
     runtime,
     runtimeRpc: rpc,

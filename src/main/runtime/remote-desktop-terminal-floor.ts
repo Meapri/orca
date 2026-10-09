@@ -26,6 +26,8 @@ export class RemoteDesktopTerminalFloor {
   private readonly hostReclaimTargets = new Map<string, Viewport>()
   // Why: an in-flight host reclaim must not consume a target after a newer viewer mutation.
   private readonly viewerRevisions = new Map<string, number>()
+  // Why: a reaped owner's client re-registers passively after an outage; it resumes ownership unless anyone claimed since.
+  private readonly orphanedOwnerClientIds = new Map<string, string>()
   private activity = 0
   private readonly lastInputByPty = new Map<string, { subscriptionKey: string; at: number }>()
 
@@ -91,6 +93,7 @@ export class RemoteDesktopTerminalFloor {
     this.owners.delete(ptyId)
     this.hostReclaimTargets.delete(ptyId)
     this.viewerRevisions.delete(ptyId)
+    this.orphanedOwnerClientIds.delete(ptyId)
   }
 
   async applyLayout(ptyId: string): Promise<boolean> {
@@ -131,7 +134,9 @@ export class RemoteDesktopTerminalFloor {
     claim = true
   ): Promise<boolean> {
     const viewport = clampTerminalViewport(cols, rows)
-    if (claim) {
+    const claims =
+      claim || (!this.owners.has(ptyId) && this.orphanedOwnerClientIds.get(ptyId) === clientId)
+    if (claims) {
       this.ensureHostReclaimTarget(ptyId)
     }
     let viewers = this.viewers.get(ptyId)
@@ -143,9 +148,9 @@ export class RemoteDesktopTerminalFloor {
     if (
       prior?.cols === viewport.cols &&
       prior.rows === viewport.rows &&
-      (!claim || this.owners.get(ptyId) === subscriptionKey)
+      (!claims || this.owners.get(ptyId) === subscriptionKey)
     ) {
-      if (claim && this.owners.get(ptyId) === subscriptionKey) {
+      if (claims && this.owners.get(ptyId) === subscriptionKey) {
         const size = this.dependencies.getTerminalSize(ptyId)
         if (size?.cols !== viewport.cols || size.rows !== viewport.rows) {
           return this.applyLayout(ptyId)
@@ -153,11 +158,11 @@ export class RemoteDesktopTerminalFloor {
       }
       return true
     }
-    const activity = claim ? ++this.activity : (prior?.activity ?? 0)
+    const activity = claims ? ++this.activity : (prior?.activity ?? 0)
     viewers.set(subscriptionKey, { clientId, ...viewport, activity })
     this.bumpRevision(ptyId)
-    if (claim) {
-      this.owners.set(ptyId, subscriptionKey)
+    if (claims) {
+      this.setOwner(ptyId, subscriptionKey)
       return this.applyLayout(ptyId)
     }
     return true
@@ -176,7 +181,7 @@ export class RemoteDesktopTerminalFloor {
     }
     this.ensureHostReclaimTarget(ptyId)
     viewer.activity = ++this.activity
-    this.owners.set(ptyId, subscriptionKey)
+    this.setOwner(ptyId, subscriptionKey)
     this.bumpRevision(ptyId)
     return this.applyLayout(ptyId)
   }
@@ -204,6 +209,7 @@ export class RemoteDesktopTerminalFloor {
   }
 
   claimHost(ptyId: string, cols: number, rows: number): Promise<boolean> {
+    this.orphanedOwnerClientIds.delete(ptyId)
     this.lastInputByPty.set(ptyId, {
       subscriptionKey: HOST_INPUT_KEY,
       at: (this.dependencies.now ?? Date.now)()
@@ -218,15 +224,22 @@ export class RemoteDesktopTerminalFloor {
     return this.applyLayout(ptyId)
   }
 
+  // Why: host typing after a reap must cancel the orphan's resume, even though no fit override prompts a renderer claim.
+  noteHostInput(ptyId: string): void {
+    this.orphanedOwnerClientIds.delete(ptyId)
+  }
+
   unregisterViewers(ptyId: string, subscriptionKeys: Iterable<string>): Promise<boolean> {
     const viewers = this.viewers.get(ptyId)
     if (!viewers) {
       return Promise.resolve(false)
     }
     let changed = false
-    let removedOwner = false
+    let removedOwnerClientId: string | null = null
     for (const subscriptionKey of subscriptionKeys) {
-      removedOwner = this.owners.get(ptyId) === subscriptionKey || removedOwner
+      if (this.owners.get(ptyId) === subscriptionKey) {
+        removedOwnerClientId = viewers.get(subscriptionKey)?.clientId ?? null
+      }
       changed = viewers.delete(subscriptionKey) || changed
     }
     if (!changed) {
@@ -235,21 +248,29 @@ export class RemoteDesktopTerminalFloor {
     if (viewers.size === 0) {
       this.viewers.delete(ptyId)
     }
-    if (removedOwner) {
+    if (removedOwnerClientId !== null) {
+      // Why: the owner's own replacement stream (same client, re-subscribed after a reconnect) continues its ownership.
+      let successor: { key: string; viewer: Viewer } | null = null
       let fallback: { key: string; activity: number } | null = null
       for (const [key, viewer] of viewers) {
-        if (viewer.activity > 0 && (!fallback || viewer.activity > fallback.activity)) {
+        if (viewer.clientId === removedOwnerClientId) {
+          successor = { key, viewer }
+        } else if (viewer.activity > 0 && (!fallback || viewer.activity > fallback.activity)) {
           fallback = { key, activity: viewer.activity }
         }
       }
-      if (fallback) {
-        this.owners.set(ptyId, fallback.key)
+      if (successor) {
+        successor.viewer.activity = ++this.activity
+        this.setOwner(ptyId, successor.key)
+      } else if (fallback) {
+        this.setOwner(ptyId, fallback.key)
       } else {
         this.owners.delete(ptyId)
+        this.orphanedOwnerClientIds.set(ptyId, removedOwnerClientId)
       }
     }
     this.bumpRevision(ptyId)
-    return removedOwner ? this.applyLayout(ptyId) : Promise.resolve(true)
+    return removedOwnerClientId !== null ? this.applyLayout(ptyId) : Promise.resolve(true)
   }
 
   refreshViewer(
@@ -275,7 +296,7 @@ export class RemoteDesktopTerminalFloor {
       const activity = claim ? ++this.activity : viewer.activity
       viewers.set(subscriptionKey, { ...viewer, ...viewport, activity })
       if (claim) {
-        this.owners.set(ptyId, subscriptionKey)
+        this.setOwner(ptyId, subscriptionKey)
       }
       changed = true
     }
@@ -294,6 +315,11 @@ export class RemoteDesktopTerminalFloor {
     if (!this.hostReclaimTargets.has(ptyId)) {
       this.hostReclaimTargets.set(ptyId, this.resolveHostReclaimTarget(ptyId))
     }
+  }
+
+  private setOwner(ptyId: string, subscriptionKey: string): void {
+    this.owners.set(ptyId, subscriptionKey)
+    this.orphanedOwnerClientIds.delete(ptyId)
   }
 
   private bumpRevision(ptyId: string): void {

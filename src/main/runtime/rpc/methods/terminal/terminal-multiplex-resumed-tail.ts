@@ -4,25 +4,32 @@ import type {
 } from './terminal-multiplex-connection'
 import type { MultiplexPublishedInitialState } from './terminal-multiplex-initial-snapshot'
 import type { TerminalMultiplexStream } from './terminal-stream-types'
+import { getTerminalInputSequenceLedger } from './terminal-input-sequence-ledger'
 
 type SubscribedNegotiation = {
-  capabilities?: { ackOutputSourceRanges?: 1; outputPause?: 1; outputResume?: 1 }
+  capabilities?: { ackOutputSourceRanges?: 1; outputPause?: 1; inputAck?: 1; outputResume?: 1 }
   streamGeneration?: string
+  inputLedgerId?: string
   resumeToken?: string
 }
 
 /** What the `subscribed` event echoes; each capability only to a client that asked for it. */
 export function multiplexSubscribedNegotiation(
-  stream: TerminalMultiplexStream
+  stream: TerminalMultiplexStream,
+  runtime: TerminalMultiplexConnection['runtime']
 ): SubscribedNegotiation {
   const capabilities = {
     ...(stream.ackOutputSourceRanges ? { ackOutputSourceRanges: 1 as const } : {}),
     ...(stream.supportsOutputPause ? { outputPause: 1 as const } : {}),
+    ...(stream.inputSessionId !== null ? { inputAck: 1 as const } : {}),
     ...(stream.outputResume ? { outputResume: 1 as const } : {})
   }
   return {
     ...(Object.keys(capabilities).length > 0 ? { capabilities } : {}),
     ...(stream.ackOutputSourceRanges ? { streamGeneration: stream.streamGeneration } : {}),
+    ...(stream.inputSessionId !== null
+      ? { inputLedgerId: getTerminalInputSequenceLedger(runtime).id }
+      : {}),
     ...(stream.outputResume ? { resumeToken: stream.outputResume.ring.resumeToken } : {})
   }
 }
@@ -57,7 +64,7 @@ export function publishMultiplexResumedTail(
     rows: size?.rows,
     displayMode,
     seq: runtime.getLayout(stream.ptyId)?.seq,
-    ...multiplexSubscribedNegotiation(stream),
+    ...multiplexSubscribedNegotiation(stream, runtime),
     truncated: false,
     resumed: { fromSeq: resume.seq }
   })

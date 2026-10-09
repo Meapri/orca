@@ -9,6 +9,7 @@ import type { ServePairingReadiness } from '../server/serve-readiness'
 import { DEVICE_REGISTRY_UNAVAILABLE_GUIDANCE } from '../runtime/runtime-rpc/runtime-rpc-pairing-types'
 import { createAlternateWebClientUrls } from '../runtime/runtime-rpc/web-client-alternate-urls'
 import { renderTerminalPairingQr } from '../../shared/terminal-pairing-qr'
+import type { RuntimeDeviceGrant } from '../runtime/rpc/rpc-method-permission'
 
 export type OrcadPairingScope = 'runtime' | 'mobile'
 
@@ -20,6 +21,8 @@ export type OrcadPairingOptions = {
   alternateEndpoints: readonly string[] | undefined
   /** Unset: the coalescing credential `orca serve` prints, valid until claimed. */
   offerLifetimeMs: number | undefined
+  /** Runtime only: administrative grants the claiming client gets (`--grant-desktop-control`). */
+  grants?: readonly RuntimeDeviceGrant[]
   /** Mobile only: `direct` matches `orca serve --mobile-pairing`; `administered` is the CLI path. */
   mobileMint?: 'direct' | 'administered'
 }
@@ -81,6 +84,7 @@ export function createOrcadPairingOffer(options: OrcadPairingOptions) {
       address: options.pairingAddress,
       name: `${options.scope === 'mobile' ? 'Mobile' : 'CLI'} ${new Date().toLocaleDateString()}`,
       scope: options.scope,
+      grants: options.grants ?? [],
       alternateEndpoints: options.alternateEndpoints,
       // Set by `--pairing-expires`: a journaled URL must not stay a live credential.
       offerLifetimeMs: options.offerLifetimeMs

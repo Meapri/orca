@@ -23,9 +23,8 @@ import { cancelHistoryGc, scheduleHistoryGc } from '../terminal-history-gc'
 import { getKnownWorktreeIdsForHistoryGc } from '../window/history-gc-worktree-ids'
 import { collectWorktreeTrashSweepRoots, sweepStaleWorktreeTrash } from '../worktree-trash'
 import { getAppEnvironment } from '../../shared/app-environment'
-import { setHostCliResourcesPath } from '../cli/bundled-cli-launcher-path'
-import { prepareOrcadCliLauncher } from './orcad-cli-launcher'
-import { registerOrcadCli } from './orcad-cli-registration'
+import { getOrcadCliLauncherPath } from './orcad-cli-launcher'
+import { orcadCliResourcesPath, registerOrcadCli } from './orcad-cli-registration'
 
 export type OrcadHeadlessParity = {
   /** Serve arms these only once its RPC transport is up; orcad keeps that order. */
@@ -40,12 +39,11 @@ export function installOrcadHeadlessParity(options: {
     HeadlessSleepingAgentStatusSource
   /** Uninstalls before the final profile flush, so no scheduled step starts work it cannot record. */
   registerCleanup?: (cleanup: () => void) => void
+  /** `--register-cli`: self-managed hosts only; managed SSH slots never touch `~/.local/bin`. */
+  registerCli?: boolean
 }): OrcadHeadlessParity {
   const { runtime, store, agentHookServer } = options
   const dataRoot = getAppEnvironment().getPath('userData')
-  // Why before RPC binds: the first PTY's PATH must already reach this runtime's `orca`.
-  const cliResourcesPath = prepareOrcadCliLauncherSafely(dataRoot)
-  setHostCliResourcesPath(cliResourcesPath)
   const uninstallRename = installFirstWorkRenameSubscription(agentHookServer, () =>
     firstWorkRenameDeps(store, runtime)
   )
@@ -77,8 +75,10 @@ export function installOrcadHeadlessParity(options: {
           console.warn('[agent-hooks] failed to reconcile managed hooks on startup:', error)
         })
       }
-      if (cliResourcesPath) {
-        void registerOrcadCliAtStartup(dataRoot, cliResourcesPath)
+      // Upstream's startOrcadRuntime already wrote the launcher and put it on every PTY's PATH.
+      const cliLauncherPath = getOrcadCliLauncherPath()
+      if (options.registerCli && cliLauncherPath) {
+        void registerOrcadCliAtStartup(dataRoot, orcadCliResourcesPath(cliLauncherPath))
       }
       // A quit mid-delete leaves tombstoned history and trashed checkouts that only this reclaims.
       scheduleAllPendingHistoryTreeRemovals()
@@ -104,20 +104,6 @@ export function installOrcadHeadlessParity(options: {
   }
   options.registerCleanup?.(() => parity.uninstall())
   return parity
-}
-
-function prepareOrcadCliLauncherSafely(dataRoot: string): string | null {
-  try {
-    return prepareOrcadCliLauncher({
-      platform: process.platform,
-      dataRoot,
-      installRoot: getAppEnvironment().getAppPath(),
-      runtimePath: process.execPath
-    })
-  } catch (error) {
-    console.warn('[orcad] orca CLI launcher unavailable:', error)
-    return null
-  }
 }
 
 async function registerOrcadCliAtStartup(dataRoot: string, resourcesPath: string): Promise<void> {

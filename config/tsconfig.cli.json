@@ -105,6 +105,8 @@
     "../src/main/windows/windows-process-table-timeout-error.ts",
     "../src/main/daemon/daemon-process-start-time.ts",
     "../src/main/daemon/daemon-cgroup-scope.ts",
+    "../src/main/daemon/daemon-user-manager-lifetime.ts",
+    "../src/main/pty/chromium-session-bus-env.ts",
     "../src/main/orcad/native-host-abi.ts",
     "../src/main/orcad/orcad-app-paths.ts",
     "../src/main/orcad/orcad-bind-address.ts",

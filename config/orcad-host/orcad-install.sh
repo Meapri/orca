@@ -235,7 +235,8 @@ await_gate() {
 
 default_census_command() {
   # In system mode the CLI registration lives in the service account's home, not root's.
-  for candidate in orca-ide orca "${service_home:-$HOME}/.local/bin/orca-ide"; do
+  # The last candidate is orcad's own launcher, present even before --register-cli links it.
+  for candidate in orca-ide orca "${service_home:-$HOME}/.local/bin/orca-ide" ${ORCA_USER_DATA:+"$ORCA_USER_DATA/cli/bin/orca"}; do
     if command -v "$candidate" >/dev/null 2>&1; then
       echo "$candidate terminal list --json"
       return 0
@@ -844,7 +845,8 @@ cmd_run() {
   export ORCA_VERSION ORCA_USER_DATA
   runtime=$(slot_runtime "$dir") || die "$dir names no pinned runtime"
   # --require-port: a supervised host's clients dial exactly this port, so never fall back.
-  set -- "$runtime" "$dir/orcad.js" --json --bind "${ORCAD_BIND:-127.0.0.1}" --port "${ORCAD_PORT:-6768}" --require-port
+  # --register-cli: this host's service user gets `orca` in ~/.local/bin (managed SSH slots never do).
+  set -- "$runtime" "$dir/orcad.js" --json --bind "${ORCAD_BIND:-127.0.0.1}" --port "${ORCAD_PORT:-6768}" --require-port --register-cli
   if [ -n "${ORCAD_PAIRING_ADDRESS:-}" ]; then set -- "$@" --pairing-address "$ORCAD_PAIRING_ADDRESS"; fi
   # The readiness line lands in the journal, so its unclaimed offer must not stay a live credential.
   set -- "$@" --pairing-expires "${ORCAD_PAIRING_EXPIRES:-15m}"

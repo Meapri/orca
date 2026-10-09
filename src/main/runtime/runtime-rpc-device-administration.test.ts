@@ -17,7 +17,7 @@ import {
   sendEncryptedWsRequest,
   waitForWsClose
 } from './runtime-rpc-mobile-ws-test-harness'
-import { HOST_ONLY_DEVICE_ADMINISTRATION_MESSAGE } from './rpc/methods/device-administration'
+import { sshBridgeCredentials } from './rpc/ssh-bridge-credentials'
 
 const MintedOffer = z.object({
   result: z.object({ pairingUrl: z.string(), deviceId: z.string() }).passthrough()
@@ -32,6 +32,7 @@ vi.mock('../git/worktree', () => ({
 type Harness = {
   server: OrcaRuntimeRpcServer
   securityLogPath: string
+  endpoint: string
   host: (method: string, params?: unknown) => Promise<Record<string, unknown>>
 }
 
@@ -56,7 +57,7 @@ async function startHarness(options: { pinnedBindHost?: string } = {}): Promise<
       method,
       ...(params === undefined ? {} : { params })
     })
-  return { server, securityLogPath, host }
+  return { server, securityLogPath, endpoint: metadata.transports[0]!.endpoint, host }
 }
 
 async function mintRuntimeOffer(harness: Harness): Promise<{ url: string; deviceId: string }> {
@@ -148,6 +149,30 @@ describe('host-only device administration', () => {
     }
   }, 15_000)
 
+  it('refuses administration to a bridged SSH CLI on the local socket, even when opted in', async () => {
+    const harness = await startHarness()
+    const credential = sshBridgeCredentials.mint({
+      kind: 'ssh-bridge',
+      targetId: 'ssh-target',
+      remoteCliControl: true
+    })
+    try {
+      for (const method of ['devices.list', 'pairing.create']) {
+        const response = await sendRequest(harness.endpoint, {
+          id: method,
+          authToken: credential.token,
+          method,
+          ...(method === 'pairing.create' ? { params: { scope: 'runtime' } } : {})
+        })
+        expect(response).toMatchObject({ ok: false, error: { code: 'forbidden' } })
+      }
+      expect(harness.server.getDeviceRegistry()?.listDevices()).toHaveLength(0)
+    } finally {
+      credential.revoke()
+      await harness.server.stop()
+    }
+  }, 15_000)
+
   it('refuses administration from a paired runtime client over WebSocket', async () => {
     const harness = await startHarness()
     try {
@@ -163,9 +188,13 @@ describe('host-only device administration', () => {
             ...(method === 'pairing.create' ? { params: { scope: 'runtime' } } : {})
           })
           const response = await reader.next(method)
+          // Upstream's dispatcher refuses first: no pairing grant ever carries 'pairing-admin'.
           expect(response).toMatchObject({
             ok: false,
-            error: expect.objectContaining({ message: HOST_ONLY_DEVICE_ADMINISTRATION_MESSAGE })
+            error: expect.objectContaining({
+              code: 'forbidden',
+              message: expect.stringContaining("'pairing-admin' permission")
+            })
           })
         }
         expect(harness.server.getDeviceRegistry()?.listDevices()).toHaveLength(1)

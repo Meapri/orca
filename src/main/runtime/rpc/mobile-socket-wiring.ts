@@ -42,7 +42,7 @@ export type AuthenticatedMobileSocket = {
   device: E2EEAuthenticatedDevice
   clientCapabilities: readonly RuntimeCapability[]
   transport: MobileSocketTransportMetadata
-  outboundBacklogBytes: () => number
+  outboundBacklogBytes?: () => number
   awaitOutboundDelivery?: (onDelivered: () => void) => () => void
 }
 

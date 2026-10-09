@@ -21,21 +21,25 @@ export function requireHostAdministration(ctx: RpcContext): DeviceAdministration
 export const DEVICE_ADMINISTRATION_METHODS = [
   defineMethod({
     name: 'devices.list',
+    permission: 'pairing-admin',
     params: null,
     handler: (_params, ctx) => requireHostAdministration(ctx).listDevices()
   }),
   defineMethod({
     name: 'devices.revoke',
+    permission: 'pairing-admin',
     params: DevicesRevokeParams,
     handler: async (params, ctx) => requireHostAdministration(ctx).revokeDevice(params.deviceId)
   }),
   defineMethod({
     name: 'devices.rotate',
+    permission: 'pairing-admin',
     params: DevicesRotateParams,
     handler: (params, ctx) => requireHostAdministration(ctx).rotateDevice(params)
   }),
   defineMethod({
     name: 'pairing.create',
+    permission: 'pairing-admin',
     params: PairingCreateParams,
     handler: async (params, ctx) => requireHostAdministration(ctx).createPairingOffer(params)
   })

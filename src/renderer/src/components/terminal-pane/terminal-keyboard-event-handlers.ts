@@ -1,4 +1,4 @@
-import type { KeybindingPlatform } from '../../../../shared/keybindings'
+import { keybindingMatchesAction, type KeybindingPlatform } from '../../../../shared/keybindings'
 import type { KeyboardHandlersDeps } from './terminal-keyboard-dependencies'
 import type { createTerminalKeyboardRuntime } from './terminal-keyboard-runtime'
 import { normalizeSelectedTextForFileSearch } from '@/lib/file-search-selection'
@@ -20,7 +20,8 @@ import { dispatchTerminalShortcutAction } from './terminal-keyboard-action-dispa
 import { getLayoutCharacterForCode } from '@/lib/keyboard-layout/layout-base-character'
 import { createTerminalKeyboardReleaseHandlers } from './terminal-keyboard-release-handlers'
 import { synchronizeTerminalKeyboardPane } from './terminal-keyboard-pane-resolution'
-import { getTerminalInputSelectionEditing } from './terminal-input-selection-editing'
+import { isInsideNativeChatCover } from './native-chat-covered-pane'
+import { consumeTerminalInputSelectionKeyDown } from './terminal-input-selection-editing'
 
 const MAX_OBSERVED_ENTER_KEYDOWNS_PER_CODE = 8
 
@@ -210,10 +211,8 @@ export function createTerminalKeyboardEventHandlers(context: EventContext) {
     // Why: before the policy, so a selection on the input line wins over Cmd+Backspace's Ctrl+U.
     if (
       !hasPendingImeComposition &&
-      getTerminalInputSelectionEditing(keyboardPane?.terminal)?.handleKeyDown(e)
+      consumeTerminalInputSelectionKeyDown(keyboardPane?.terminal, e)
     ) {
-      e.preventDefault()
-      e.stopImmediatePropagation()
       return
     }
 
@@ -231,6 +230,15 @@ export function createTerminalKeyboardEventHandlers(context: EventContext) {
     }
     const action = resolveShortcutEvent(shortcutEvent)
     if (!action) {
+      return
+    }
+    // The chat covering this pane owns find, on whatever chord it is bound to; the hidden
+    // terminal buffer is not what the user sees.
+    if (
+      isInsideNativeChatCover(e.target) &&
+      (action.type === 'toggleSearch' ||
+        keybindingMatchesAction('chat.find', e, shortcutPlatform, keybindings))
+    ) {
       return
     }
 

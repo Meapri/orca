@@ -10,7 +10,7 @@ import {
   ORCAD_NODE_RUNTIME_MARKER_FILENAME,
   ORCAD_RIPGREP_ARTIFACTS,
   ORCAD_RIPGREP_LICENSE_ARTIFACTS,
-  ORCAD_CLI_BUNDLE_FILENAME,
+  ORCAD_CLI_ENTRY_FILENAME,
   ORCAD_WEB_CLIENT_MANIFEST_FILENAME,
   orcadArtifactFilenames,
   orcadBunRuntimeFilename,
@@ -107,7 +107,8 @@ describe('web client manifest', () => {
 
   it.each(SERVER_TARGETS)('stays out of the %s slot SSH hosts receive', (target) => {
     expect(orcadArtifactFilenames(target)).not.toContain(ORCAD_WEB_CLIENT_MANIFEST_FILENAME)
-    expect(orcadArtifactFilenames(target)).not.toContain(ORCAD_CLI_BUNDLE_FILENAME)
+    // The CLI is upstream's slot artifact (#26539); only the browser client stays release-only.
+    expect(orcadArtifactFilenames(target)).toContain(ORCAD_CLI_ENTRY_FILENAME)
   })
 
   it('round-trips in a stable order', () => {

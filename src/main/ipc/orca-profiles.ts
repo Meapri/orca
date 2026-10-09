@@ -1,6 +1,7 @@
-import { app, ipcMain, shell, type WebContents } from 'electron'
+import { ipcMain, shell, type WebContents } from 'electron'
 import type { Store } from '../persistence'
 import { relaunchApp, type AppRelaunchReason } from '../app-relaunch'
+import { quitProcess } from '../startup/process-quit-request'
 import type {
   CreateLocalOrcaProfileArgs,
   CreateLocalOrcaProfileResult,
@@ -149,9 +150,11 @@ function scheduleProfileRelaunch(reason: ProfileRelaunchReason, sender: WebConte
     // Why: app.quit() (not app.exit) so before-quit/will-quit still run —
     // renderer scrollback capture, PTY kill, stats flush, and daemon final
     // checkpoints must not be skipped on a profile switch.
-    app.quit()
+    quitProcess()
   }, 150)
 }
+
+const openAuthorizeUrl = (url: string): Promise<void> => shell.openExternal(url)
 
 export function registerOrcaProfileHandlers(
   store: Store,
@@ -274,9 +277,7 @@ export function registerOrcaProfileHandlers(
   ipcMain.handle(
     'orcaProfiles:connectCurrent',
     async (): Promise<ConnectCurrentOrcaProfileResult> => {
-      const result = await connectCurrentOrcaProfile(getProfileUserDataPath(), {
-        openAuthorizeUrl: (url) => shell.openExternal(url)
-      })
+      const result = await connectCurrentOrcaProfile(getProfileUserDataPath(), { openAuthorizeUrl })
       if (result.status === 'connected') {
         options.onAuthMutation?.()
       }

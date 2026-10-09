@@ -69,3 +69,27 @@ export function createCodexRuntimeHomeLaunchPreparation(deps: {
     return runtimeHomePath
   }
 }
+
+/** The runtime's structured Codex home resolvers: a launch prepares the home that a record-less
+ *  catalog read resolves without side effects, so a new chat's picker and the chat share one key. */
+export function createCodexStructuredLaunchHomeResolvers(deps: {
+  getRuntimeHome: () => CodexRuntimeHomeService | null
+  prepareCodexRuntimeHomeForLaunch: CodexRuntimeHomeLaunchPreparation
+}): {
+  prepareCodexStructuredLaunch: (args: { launchEnv: NodeJS.ProcessEnv }) => Promise<string | null>
+  resolveCodexStructuredLaunchHome: (args: { launchEnv: NodeJS.ProcessEnv }) => string | null
+} {
+  return {
+    prepareCodexStructuredLaunch: ({ launchEnv }) =>
+      deps.prepareCodexRuntimeHomeForLaunch(undefined, launchEnv),
+    // Why throw like prepare does: a null from an uninitialized service would
+    // map to the system home and key a catalog read to the wrong account.
+    resolveCodexStructuredLaunchHome: ({ launchEnv }) => {
+      const runtimeHome = deps.getRuntimeHome()
+      if (!runtimeHome) {
+        throw new Error('Codex runtime home service is not initialized')
+      }
+      return runtimeHome.resolveHostCodexHomePathForLaunchReadOnly(launchEnv)
+    }
+  }
+}

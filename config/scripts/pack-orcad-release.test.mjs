@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
-  ORCAD_CLI_BUNDLE_FILENAME,
+  ORCAD_CLI_ENTRY_FILENAME,
   ORCAD_SERVER_TARGET_FILENAME,
   orcadArtifactFilenames
 } from '../../src/shared/orcad-artifacts.ts'
@@ -23,7 +23,7 @@ afterEach(() => {
 function bundle(target, { omit } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'pack-orcad-'))
   dirs.push(dir)
-  for (const name of [...orcadArtifactFilenames(target), ORCAD_CLI_BUNDLE_FILENAME]) {
+  for (const name of orcadArtifactFilenames(target)) {
     if (name !== omit) {
       mkdirSync(dirname(join(dir, name)), { recursive: true })
       writeFileSync(join(dir, name), name)
@@ -55,10 +55,10 @@ describe('pack-orcad-release', () => {
     expect(() =>
       assertReleasableBundle(bundle('linux-x64-glibc', { omit: 'daemon-entry.js' }))
     ).toThrow(/daemon-entry\.js/)
-    // Release-only: SSH slots never carry it, but a release must.
+    // The CLI is a slot artifact since upstream #26539; a release without it is torn.
     expect(() =>
-      assertReleasableBundle(bundle('linux-x64-glibc', { omit: ORCAD_CLI_BUNDLE_FILENAME }))
-    ).toThrow(/orca-cli\.js/)
+      assertReleasableBundle(bundle('linux-x64-glibc', { omit: ORCAD_CLI_ENTRY_FILENAME }))
+    ).toThrow(/out\/cli\/index\.js/)
     expect(() => assertReleasableBundle(bundle('linux-arm64-glibc'), 'linux-x64-glibc')).toThrow(
       /built for linux-arm64-glibc/
     )

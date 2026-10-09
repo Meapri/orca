@@ -12,13 +12,16 @@
  * manager and execs the command into it, so the daemon's cgroup becomes a *sibling* of the
  * unit's that no unit-scoped kill reaches; `--collect` drops the unit once it exits.
  *
- * That needs systemd as PID 1 and a reachable `--user` manager (a login session, or
- * `loginctl enable-linger <user>` for a service account). Everywhere else keeps the direct-fork
+ * That needs systemd as PID 1, a reachable `--user` manager, and one that outlives the caller:
+ * `loginctl enable-linger <user>`, unless the caller already runs inside that manager (see
+ * daemon-user-manager-lifetime.ts). Everywhere else keeps the direct-fork
  * launch, so this module fails closed to "not supported" rather than guessing.
  */
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { runProcessSync, type ProcessResult } from '../../shared/child-process/run-process'
+import { removeChromiumDisabledSessionBus } from '../pty/chromium-session-bus-env'
+import { cgroupPathFromProcLine, userManagerOutlivesCaller } from './daemon-user-manager-lifetime'
 
 const SYSTEMD_RUN_BINARY = 'systemd-run'
 const UNIT_NAME_PREFIX = 'orca-daemon-'
@@ -105,13 +108,24 @@ function runSystemdRunVersionProbe(
   binary: string,
   timeoutMs: number
 ): Pick<ProcessResult, 'code' | 'timedOut'> {
-  const { code, timedOut } = runProcessSync({
-    program: binary,
-    args: ['--version'],
-    stdio: 'ignore',
-    timeoutMs
-  })
-  return { code, timedOut }
+  return runProcessSync({ program: binary, args: ['--version'], stdio: 'ignore', timeoutMs })
+}
+
+/** Test seams shared by the scope probe and the legacy migration; each defaults to the real host. */
+type ScopeProbeDeps = {
+  env?: NodeJS.ProcessEnv
+  platform?: NodeJS.Platform
+  canonicalRuntimeDir?: string | null
+  systemdBootPath?: string
+  runVersionProbe?: SystemdRunVersionProbe
+  outlivesCaller?: () => boolean
+}
+
+// Why not `??`: an explicit null means "no canonical dir", not "use the real one".
+function resolveCanonicalRuntimeDir(deps: ScopeProbeDeps): string | null {
+  return deps.canonicalRuntimeDir !== undefined
+    ? deps.canonicalRuntimeDir
+    : CANONICAL_USER_RUNTIME_DIR
 }
 
 /** Why the durable scope is or is not available; `orca serve doctor` turns each into a fix. */
@@ -120,15 +134,20 @@ export type DurableDaemonScopeSupport =
   | 'not_linux'
   | 'no_systemd'
   | 'no_user_bus'
+  | 'user_manager_ends_with_session'
   | 'systemd_run_unavailable'
 
 export function describeDurableDaemonScopeSupport(
-  env: NodeJS.ProcessEnv = process.env,
-  platform: NodeJS.Platform = process.platform,
-  canonicalRuntimeDir: string | null = CANONICAL_USER_RUNTIME_DIR,
-  systemdBootPath: string = SYSTEMD_BOOT_PATH,
-  runVersionProbe: SystemdRunVersionProbe = runSystemdRunVersionProbe
+  deps: ScopeProbeDeps = {}
 ): DurableDaemonScopeSupport {
+  const {
+    env = process.env,
+    platform = process.platform,
+    systemdBootPath = SYSTEMD_BOOT_PATH,
+    runVersionProbe = runSystemdRunVersionProbe,
+    outlivesCaller = userManagerOutlivesCaller
+  } = deps
+  const canonicalRuntimeDir = resolveCanonicalRuntimeDir(deps)
   if (platform !== 'linux') {
     return 'not_linux'
   }
@@ -142,6 +161,10 @@ export function describeDurableDaemonScopeSupport(
     // systemd-run --user would just fail to connect.
     return 'no_user_bus'
   }
+  if (!outlivesCaller()) {
+    // A bus only proves a login session is open now; without linger the scope dies at logout.
+    return 'user_manager_ends_with_session'
+  }
   try {
     const probe = runVersionProbe(SYSTEMD_RUN_BINARY, SYSTEMD_RUN_PROBE_TIMEOUT_MS)
     // A non-zero exit is data here rather than a throw, and a timeout kill leaves an exit behind
@@ -153,22 +176,8 @@ export function describeDurableDaemonScopeSupport(
   }
 }
 
-export function isDurableDaemonScopeSupported(
-  env: NodeJS.ProcessEnv = process.env,
-  platform: NodeJS.Platform = process.platform,
-  canonicalRuntimeDir: string | null = CANONICAL_USER_RUNTIME_DIR,
-  systemdBootPath: string = SYSTEMD_BOOT_PATH,
-  runVersionProbe: SystemdRunVersionProbe = runSystemdRunVersionProbe
-): boolean {
-  return (
-    describeDurableDaemonScopeSupport(
-      env,
-      platform,
-      canonicalRuntimeDir,
-      systemdBootPath,
-      runVersionProbe
-    ) === 'supported'
-  )
+export function isDurableDaemonScopeSupported(deps: ScopeProbeDeps = {}): boolean {
+  return describeDurableDaemonScopeSupport(deps) === 'supported'
 }
 
 export type DurableDaemonScopeCommand = {
@@ -185,11 +194,8 @@ function cgroupPathFromProc(contents: string): string | null {
   const paths: { path: string; priority: number }[] = []
   for (const line of contents.split('\n')) {
     const fields = line.split(':')
-    if (fields.length < 3) {
-      continue
-    }
-    const path = fields.slice(2).join(':').trim()
-    if (path) {
+    const path = cgroupPathFromProcLine(line)
+    if (fields.length >= 3 && path) {
       const controllers = fields[1]?.split(',') ?? []
       const priority = fields[0] === '0' ? 0 : controllers.includes('name=systemd') ? 1 : 2
       paths.push({ path, priority })
@@ -297,31 +303,25 @@ export function isOwnDaemonScopeUnit(unit: string | null): unit is string {
 export function migrateLegacyDaemonScope(
   pid: number,
   launchNonce: string,
-  env: NodeJS.ProcessEnv = process.env,
-  platform: NodeJS.Platform = process.platform,
-  canonicalRuntimeDir: string | null = CANONICAL_USER_RUNTIME_DIR,
-  readProcesses: typeof readLegacyDaemonScopeProcesses = readLegacyDaemonScopeProcesses,
-  systemdBootPath: string = SYSTEMD_BOOT_PATH,
-  runVersionProbe: SystemdRunVersionProbe = runSystemdRunVersionProbe,
-  runMigration: SystemdScopeMigrationRunner = (command, timeoutMs) =>
-    runProcessSync({
-      program: command.command,
-      args: command.args,
-      env: command.env,
-      timeoutMs,
-      stdio: 'ignore'
-    })
+  deps: ScopeProbeDeps & {
+    readProcesses?: typeof readLegacyDaemonScopeProcesses
+    runMigration?: SystemdScopeMigrationRunner
+  } = {}
 ): boolean {
-  if (
-    platform !== 'linux' ||
-    !isDurableDaemonScopeSupported(
-      env,
-      platform,
-      canonicalRuntimeDir,
-      systemdBootPath,
-      runVersionProbe
-    )
-  ) {
+  const {
+    env = process.env,
+    platform = process.platform,
+    readProcesses = readLegacyDaemonScopeProcesses,
+    runMigration = (command, timeoutMs) =>
+      runProcessSync({
+        program: command.command,
+        args: command.args,
+        env: command.env,
+        timeoutMs,
+        stdio: 'ignore'
+      })
+  } = deps
+  if (platform !== 'linux' || !isDurableDaemonScopeSupported(deps)) {
     return false
   }
   const legacy = readProcesses(pid)
@@ -330,7 +330,12 @@ export function migrateLegacyDaemonScope(
   }
   try {
     const result = runMigration(
-      buildLegacyScopeMigrationCommand(launchNonce, legacy.pids, env, canonicalRuntimeDir),
+      buildLegacyScopeMigrationCommand(
+        launchNonce,
+        legacy.pids,
+        env,
+        resolveCanonicalRuntimeDir(deps)
+      ),
       SYSTEMD_SCOPE_MIGRATION_TIMEOUT_MS
     )
     return result.code === 0 && !result.timedOut
@@ -353,6 +358,11 @@ export function buildDurableDaemonScopeCommand(
   scopePropertyArgs: readonly string[] = []
 ): DurableDaemonScopeCommand {
   const runtimeDir = resolveUserRuntimeDir(env, canonicalRuntimeDir)
+  const scopeEnv: NodeJS.ProcessEnv = runtimeDir
+    ? { ...env, XDG_RUNTIME_DIR: runtimeDir }
+    : { ...env }
+  // sd-bus prefers this over XDG_RUNTIME_DIR and refuses Chromium's marker (#25580).
+  removeChromiumDisabledSessionBus(scopeEnv)
   return {
     command: SYSTEMD_RUN_BINARY,
     args: [
@@ -370,7 +380,7 @@ export function buildDurableDaemonScopeCommand(
     // Explicit, not inherited: the daemon must land in the same user manager the resolution
     // above just confirmed is reachable, regardless of what this spread `env`'s own
     // `XDG_RUNTIME_DIR` says (see `resolveUserRuntimeDir` for why that value can be wrong).
-    env: runtimeDir ? { ...env, XDG_RUNTIME_DIR: runtimeDir } : { ...env }
+    env: scopeEnv
   }
 }
 

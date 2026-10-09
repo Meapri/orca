@@ -14,6 +14,7 @@ import { SECURITY_LOG_FILENAME } from '../runtime/security-event-log'
 import { resolveOrcadInstallRoot } from './orcad-app-paths'
 import { createOrcadHealthSurface } from './orcad-health-surface'
 import { startOrcadPairing } from './orcad-pairing-startup'
+import { installOrcadHeadlessParity } from './orcad-headless-parity'
 import { createOrcadRelayControl } from './orcad-relay'
 import { resolveOrcadWebClientRoot } from './orcad-web-client-root'
 import type { OrcadOptions } from './orcad-entry'
@@ -27,8 +28,16 @@ export async function createOrcadServeSurfaces(input: {
   previousIdleStop: OrcadIdleStopRecord | null | undefined
   systemdNotify: SystemdNotifyEnvironment | null
   registerCleanup: (cleanup: OrcadRuntimeCleanup) => void
+  /** Notifications, first-work rename, sleeping-agent restore, hook reconcile, disk reclamation. */
+  parity: Omit<Parameters<typeof installOrcadHeadlessParity>[0], 'registerCleanup' | 'registerCli'>
 }) {
   const { options } = input
+  // Uninstalls before the final flush, so no scheduled step starts work the flush cannot record.
+  const headlessParity = installOrcadHeadlessParity({
+    ...input.parity,
+    registerCleanup: input.registerCleanup,
+    registerCli: options.registerCli === true
+  })
   const userDataPath = getAppEnvironment().getPath('userData')
   const buildVersion = getAppEnvironment().getVersion()
   const healthSurface = createOrcadHealthSurface({ ...input, userDataPath, buildVersion })
@@ -63,6 +72,8 @@ export async function createOrcadServeSurfaces(input: {
         listLocalTerminals: () => getLocalPtyProvider().listProcesses(),
         pairingOffer: pairing.offer
       })
+      // Serve arms scheduled work only once its RPC transport is up; orcad keeps that order.
+      headlessParity.startScheduledWork()
       return pairing
     },
     collectInitialHealth: () => healthSurface.collectInitialHealth(),

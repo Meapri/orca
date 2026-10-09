@@ -33,8 +33,21 @@ import { normalizeCodexRuntimeSelection } from '../codex-accounts/runtime-select
 import { normalizeClaudeRuntimeSelection } from '../claude-accounts/runtime-selection'
 import { agentHookServer } from '../agent-hooks/server'
 import { resolveHostCodexSessionSourceHome } from '../codex/codex-session-source-home'
+import { prewarmStructuredAgentModelCatalogs } from '../runtime/structured-agent-model-catalog-wiring'
 import { agentModelCatalogStore } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
-import { expireAgentModelCatalogFailuresForSettings } from '../native-chat/agent-model-catalog/agent-model-catalog-account-expiry'
+import { createAgentModelCatalogSettingsExpiry } from '../native-chat/agent-model-catalog/agent-model-catalog-account-expiry'
+
+// Settings that change which account or binary a new chat's agent runs under.
+const MODEL_CATALOG_ACCOUNT_SETTINGS = [
+  'activeCodexManagedAccountId',
+  'activeCodexManagedAccountIdsByRuntime',
+  'codexManagedAccounts',
+  'activeClaudeManagedAccountId',
+  'activeClaudeManagedAccountIdsByRuntime',
+  'claudeManagedAccounts',
+  'agentDefaultEnv',
+  'agentCmdOverrides'
+] as const
 
 export type AccountServices = {
   rateLimits: RateLimitService
@@ -82,12 +95,20 @@ export function createAccountServices(options: {
     rateLimits,
     store.getSettings()
   )
+  const expireModelCatalogs = createAgentModelCatalogSettingsExpiry(
+    agentModelCatalogStore,
+    store.getSettings()
+  )
   store.onSettingsChanged((updates, settings) => {
-    expireAgentModelCatalogFailuresForSettings(agentModelCatalogStore, updates)
+    expireModelCatalogs(updates, settings)
     // Why: auto is a live policy; retarget only providers whose settings-derived runtime changed.
     void syncAccountRuntimeTargets(updates, settings).catch((error) =>
       console.warn('[rate-limits] Failed to apply account runtime target:', error)
     )
+    // An account switch would otherwise leave the next chat's picker on a cold catalog.
+    if (MODEL_CATALOG_ACCOUNT_SETTINGS.some((key) => key in updates)) {
+      prewarmStructuredAgentModelCatalogs()
+    }
     if ('opencodeSessionCookie' in updates || 'opencodeWorkspaceId' in updates) {
       rateLimits.invalidateOpenCodeGoCredentialState()
       void rateLimits.refresh().catch((error: unknown) => {
@@ -172,6 +193,7 @@ export function createAccountServices(options: {
       .filter((account) => !activeIds.has(account.id))
       .map((account) => ({
         id: account.id,
+        managedAuthPath: account.managedAuthPath,
         managedAuthRuntime: account.managedAuthRuntime,
         wslDistro: account.wslDistro,
         wslLinuxAuthPath: account.wslLinuxAuthPath

@@ -62,6 +62,11 @@ vi.mock('react', async () => {
   }
 })
 
+// The menu's session lookup is covered by its own tests; this file only drives rename.
+vi.mock('./TabSessionSurfaceSwitchMenuItems', () => ({
+  TabSessionSurfaceSwitchMenuItems: () => null
+}))
+
 // Why: this harness expands components without a React dispatcher; the progress bar subscribes to an external store.
 vi.mock('./TerminalTabProgressIndicator', () => ({
   TerminalTabProgressIndicator: () => null
@@ -178,7 +183,16 @@ vi.mock('@/components/ui/input', () => ({
   }
 }))
 
+vi.mock('./TabHoverCard', () => ({
+  TabHoverCard: function TabHoverCard(props: { children?: unknown }) {
+    return props.children
+  }
+}))
+
 vi.mock('@/components/ui/tooltip', () => ({
+  TooltipProvider: function TooltipProvider(props: { children?: unknown }) {
+    return props.children
+  },
   Tooltip: function Tooltip(props: { children?: unknown }) {
     return { type: 'Tooltip', props }
   },

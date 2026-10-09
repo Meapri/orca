@@ -6,7 +6,6 @@ import { chmodSync, copyFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { createHash } from 'node:crypto'
 import {
-  ORCAD_CLI_BUNDLE_FILENAME,
   ORCAD_NODE_RUNTIME_MARKER_FILENAME,
   ORCAD_RUNTIMES_DIRNAME,
   ORCAD_SERVER_TARGET_FILENAME,
@@ -56,7 +55,7 @@ export function packFakeOrcadRelease(root, version, options) {
   const target = orcadInstallHostTarget()
   const stage = join(root, 'stage', version)
   const dir = join(stage, `orcad-${version}`)
-  for (const name of [...orcadArtifactFilenames(target), ORCAD_CLI_BUNDLE_FILENAME]) {
+  for (const name of orcadArtifactFilenames(target)) {
     mkdirSync(dirname(join(dir, name)), { recursive: true })
     writeFileSync(join(dir, name), name)
   }

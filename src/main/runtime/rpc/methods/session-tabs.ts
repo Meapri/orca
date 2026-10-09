@@ -28,6 +28,7 @@ import { SESSION_TABS_SPLIT_GROUP_PLACEMENT_RUNTIME_CAPABILITY } from '../../../
 export const SESSION_TAB_METHODS = [
   defineMethod({
     name: 'session.tabs.list',
+    permission: 'workspace',
     params: WorktreeTabSelector,
     handler: async (params, { runtime, pairedDeviceId, clientKind, clientCapabilities }) => {
       await restoreStructuredTabsIfSupported({ runtime, clientKind, clientCapabilities })
@@ -40,6 +41,7 @@ export const SESSION_TAB_METHODS = [
   }),
   defineMethod({
     name: 'session.tabs.listAll',
+    permission: 'workspace',
     params: null,
     handler: async (_params, context) => {
       await restoreStructuredTabsIfSupported(context)
@@ -50,6 +52,7 @@ export const SESSION_TAB_METHODS = [
   ...SESSION_TAB_CLOSE_METHODS,
   defineMethod({
     name: 'session.tabs.createTerminal',
+    permission: 'workspace',
     params: CreateTerminalTab,
     handler: async (
       params,
@@ -98,6 +101,7 @@ export const SESSION_TAB_METHODS = [
   }),
   defineStreamingMethod({
     name: 'session.tabs.subscribe',
+    permission: 'workspace',
     params: WorktreeTabSelector,
     handler: async (
       params,
@@ -220,6 +224,7 @@ export const SESSION_TAB_METHODS = [
   }),
   defineMethod({
     name: 'session.tabs.unsubscribe',
+    permission: 'workspace',
     params: SessionTabsUnsubscribe,
     handler: async (
       params,
@@ -245,11 +250,13 @@ export const SESSION_TAB_METHODS = [
   }),
   defineStreamingMethod({
     name: 'session.tabs.subscribeAll',
+    permission: 'workspace',
     params: null,
     handler: (_params, context, emit) => subscribeSessionTabsInventory(context, emit)
   }),
   defineMethod({
     name: 'session.tabs.unsubscribeAll',
+    permission: 'workspace',
     params: SessionTabsUnsubscribeAllParams,
     handler: async (params, { runtime, connectionId }) => {
       const cleanupPrefix = `session.tabs:${connectionId ?? 'local'}:*`

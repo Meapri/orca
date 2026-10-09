@@ -204,6 +204,7 @@ function createOrcadRelayMethods(handlers: {
   return [
     defineMethod({
       name: ORCAD_RELAY_STATUS_METHOD,
+      permission: 'pairing-admin',
       params: null,
       handler: (_params, ctx): OrcadRelayReport => {
         requireHostAdministration(ctx)
@@ -212,6 +213,7 @@ function createOrcadRelayMethods(handlers: {
     }),
     defineMethod({
       name: ORCAD_RELAY_SIGN_IN_METHOD,
+      permission: 'pairing-admin',
       params: z.object({}).strict().optional(),
       handler: async (_params, ctx): Promise<OrcadRelaySignInStart> => {
         requireHostAdministration(ctx)
@@ -220,6 +222,7 @@ function createOrcadRelayMethods(handlers: {
     }),
     defineMethod({
       name: ORCAD_RELAY_SIGN_OUT_METHOD,
+      permission: 'pairing-admin',
       params: null,
       handler: async (_params, ctx): Promise<OrcadRelayReport> => {
         requireHostAdministration(ctx)

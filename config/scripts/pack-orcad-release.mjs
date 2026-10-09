@@ -32,7 +32,6 @@ import { basename, dirname, join, resolve } from 'node:path'
 import process from 'node:process'
 import { build } from 'esbuild'
 import {
-  ORCAD_CLI_BUNDLE_FILENAME,
   ORCAD_NODE_RUNTIME_MARKER_FILENAME,
   ORCAD_RUNTIMES_DIRNAME,
   ORCAD_SERVER_TARGET_FILENAME,
@@ -117,9 +116,7 @@ export function assertReleasableBundle(dir, expectedTarget) {
   if (target.startsWith('win32-')) {
     throw new Error('The on-host installer is POSIX-only; Windows uses standalone builds')
   }
-  const missing = [...orcadArtifactFilenames(target), ORCAD_CLI_BUNDLE_FILENAME].filter(
-    (name) => !existsSync(join(dir, name))
-  )
+  const missing = orcadArtifactFilenames(target).filter((name) => !existsSync(join(dir, name)))
   if (missing.length > 0) {
     throw new Error(`${dir} is missing declared orcad artifacts: ${missing.join(', ')}`)
   }

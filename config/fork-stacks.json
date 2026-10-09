@@ -7,38 +7,38 @@
   "topics": [
     {
       "name": "terminal",
-      "ref": "stack/terminal",
-      "base": "7c50009ca4946cf7384495f542d0b5856308b70c"
+      "ref": "stack-sync/2026-10-09-3/terminal",
+      "base": "40716d702e9c76ec181f4c06d0f7d8d6d46a21ab"
     },
     {
       "name": "sync-automation",
-      "ref": "stack/sync-automation",
-      "base": "7c50009ca4946cf7384495f542d0b5856308b70c"
+      "ref": "stack-sync/2026-10-09-3/sync-automation",
+      "base": "40716d702e9c76ec181f4c06d0f7d8d6d46a21ab"
     },
     {
       "name": "runtime-remote",
-      "ref": "stack/runtime-remote",
-      "base": "7c50009ca4946cf7384495f542d0b5856308b70c"
+      "ref": "stack-sync/2026-10-09-3/runtime-remote",
+      "base": "40716d702e9c76ec181f4c06d0f7d8d6d46a21ab"
     },
     {
       "name": "accounts",
-      "ref": "stack/accounts",
-      "base": "7c50009ca4946cf7384495f542d0b5856308b70c"
+      "ref": "stack-sync/2026-10-09-3/accounts",
+      "base": "40716d702e9c76ec181f4c06d0f7d8d6d46a21ab"
     },
     {
       "name": "orcad-runtime",
-      "ref": "stack/orcad-runtime",
-      "base": "7c50009ca4946cf7384495f542d0b5856308b70c"
+      "ref": "stack-sync/2026-10-09-3/orcad-runtime",
+      "base": "40716d702e9c76ec181f4c06d0f7d8d6d46a21ab"
     },
     {
       "name": "distribution",
-      "ref": "stack/distribution",
-      "base": "7c50009ca4946cf7384495f542d0b5856308b70c"
+      "ref": "stack-sync/2026-10-09-3/distribution",
+      "base": "40716d702e9c76ec181f4c06d0f7d8d6d46a21ab"
     },
     {
       "name": "integration-fixups",
-      "ref": "stack/integration-fixups",
-      "base": "def9793735a666480e93eac79cc233656e124670",
+      "ref": "stack-sync/2026-10-09-3/integration-fixups",
+      "base": "d0d42a0d4593b7afce96dd85649366f862d2865f",
       "onto": "integration"
     }
   ]
