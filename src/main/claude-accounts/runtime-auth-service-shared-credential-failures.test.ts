@@ -1,6 +1,6 @@
 import {
   cleanupRuntimeAuthTestState,
-  createElectronMock,
+  installTestUserDataEnvironment,
   createKeychainMock,
   createOauthRefreshMock,
   resetRuntimeAuthTestState,
@@ -14,7 +14,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync, writeFileSync } from 'node:fs'
 
-vi.mock('electron', () => createElectronMock())
+beforeEach(() => installTestUserDataEnvironment())
 vi.mock('./oauth-refresh', () => createOauthRefreshMock())
 vi.mock('./keychain', () => createKeychainMock())
 vi.mock('node:os', async () => {

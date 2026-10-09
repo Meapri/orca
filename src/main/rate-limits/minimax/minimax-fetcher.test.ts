@@ -14,9 +14,12 @@ const { clearStorageDataMock, cookiesSetMock, netFetchMock, sessionFromPartition
   }
 )
 
-vi.mock('electron', () => ({
-  net: { fetch: netFetchMock },
-  session: { fromPartition: sessionFromPartitionMock }
+vi.mock('../../network/http-client', () => ({
+  getMainHttpClient: () => ({
+    fetch: netFetchMock,
+    proxySession: () => null,
+    partitionSession: sessionFromPartitionMock
+  })
 }))
 
 import { fetchMiniMaxRateLimits } from './minimax-fetcher'

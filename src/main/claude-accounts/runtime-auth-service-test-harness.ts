@@ -2,6 +2,7 @@ import { vi } from 'vitest'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { installFakeAppEnvironment } from '../../../config/scripts/vitest-host-ports-setup'
 import { getDefaultSettings } from '../../shared/constants'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import type { ClaudeManagedAccount } from '../../shared/managed-account-types'
@@ -27,12 +28,8 @@ export function expectedRuntimeConfigDir(): string {
   return join(testState.fakeHomeDir, '.claude')
 }
 
-export function createElectronMock() {
-  return {
-    app: {
-      getPath: () => testState.userDataDir
-    }
-  }
+export function installTestUserDataEnvironment(): void {
+  installFakeAppEnvironment({ getPath: () => testState.userDataDir })
 }
 
 // Why: these tests exercise materialize/read-back/snapshot logic, not the

@@ -1,6 +1,6 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { app } from 'electron'
+import { getAppEnvironment } from '../../../shared/app-environment'
 import { writeFileAtomically } from '../../codex-accounts/fs-utils'
 import { ClaudeRuntimeAuthState } from './runtime-auth-state'
 
@@ -71,7 +71,7 @@ export class ClaudeRuntimeAuthFileStorage extends ClaudeRuntimeAuthState {
   }
 
   protected getRuntimeMetadataDir(): string {
-    const metadataDir = join(app.getPath('userData'), 'claude-runtime-auth')
+    const metadataDir = join(getAppEnvironment().getPath('userData'), 'claude-runtime-auth')
     mkdirSync(metadataDir, { recursive: true })
     return metadataDir
   }

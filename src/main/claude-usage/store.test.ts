@@ -8,11 +8,9 @@ const { getPathMock } = vi.hoisted(() => ({
   getPathMock: vi.fn(() => '/tmp/orca-test-userdata')
 }))
 
-vi.mock('electron', () => ({
-  app: {
-    getPath: getPathMock
-  }
-}))
+beforeEach(() => {
+  installFakeAppEnvironment({ getPath: getPathMock })
+})
 
 vi.mock('../usage/usage-scan-worker-spawn', () => ({
   scanClaudeUsageFilesViaWorker: vi.fn()
@@ -20,6 +18,7 @@ vi.mock('../usage/usage-scan-worker-spawn', () => ({
 
 import { ClaudeUsageStore, initClaudeUsagePath } from './store'
 import { scanClaudeUsageFilesViaWorker } from '../usage/usage-scan-worker-spawn'
+import { installFakeAppEnvironment } from '../../../config/scripts/vitest-host-ports-setup'
 
 function createBackingStore(): ConstructorParameters<typeof ClaudeUsageStore>[0] {
   return {

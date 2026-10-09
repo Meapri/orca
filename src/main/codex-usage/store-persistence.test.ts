@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi, beforeEach } from 'vitest'
 import type { CodexUsagePersistedState } from './types'
 import { createStoreWithState, setupCodexUsageStoreEnv } from './store-test-harness'
 
@@ -8,11 +8,9 @@ const { getPathMock } = vi.hoisted(() => ({
   getPathMock: vi.fn(() => '/tmp/orca-test-userdata')
 }))
 
-vi.mock('electron', () => ({
-  app: {
-    getPath: getPathMock
-  }
-}))
+beforeEach(() => {
+  installFakeAppEnvironment({ getPath: getPathMock })
+})
 
 vi.mock('../usage/usage-scan-worker-spawn', () => ({
   scanCodexUsageFilesViaWorker: vi.fn()
@@ -20,6 +18,7 @@ vi.mock('../usage/usage-scan-worker-spawn', () => ({
 
 import { CodexUsageStore, normalizePersistedState } from './store'
 import { scanCodexUsageFilesViaWorker } from '../usage/usage-scan-worker-spawn'
+import { installFakeAppEnvironment } from '../../../config/scripts/vitest-host-ports-setup'
 
 describe('CodexUsageStore', () => {
   const storeEnv = setupCodexUsageStoreEnv(getPathMock)

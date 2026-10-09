@@ -6,8 +6,12 @@ const authState = vi.hoisted<{
   readError: Error | null
 }>(() => ({ file: null, readError: null }))
 
-vi.mock('electron', () => ({
-  net: { fetch: netFetchMock }
+vi.mock('../network/http-client', () => ({
+  getMainHttpClient: () => ({
+    fetch: netFetchMock,
+    proxySession: () => null,
+    partitionSession: () => null
+  })
 }))
 
 vi.mock('node:fs', () => ({

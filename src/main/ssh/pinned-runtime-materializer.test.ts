@@ -233,7 +233,7 @@ it('uses the configured HTTP client for deployment downloads', async () => {
   extraction.executable = new TextEncoder().encode('proxy runtime')
   pin(TARGET, archive, extraction.executable)
   const fetcher = responseFetcher(archive)
-  setMainHttpClient({ fetch: fetcher, proxySession: () => null })
+  setMainHttpClient({ fetch: fetcher, proxySession: () => null, partitionSession: () => null })
   await materializeCachedNodeRuntime(TARGET, cacheRoot, {})
   expect(fetcher).toHaveBeenCalledOnce()
 })
