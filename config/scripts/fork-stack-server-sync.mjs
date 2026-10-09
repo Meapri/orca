@@ -328,10 +328,10 @@ function sync({ options, toolsDir, summary, runDir }) {
     options['baseline-worktree'] ?? path.join(workRoot, '_sync-baseline')
   )
   const xtermWorkDir = path.resolve(options['xterm-work-dir'] ?? path.join(workRoot, '_sync-xterm'))
-  for (const [program, args] of [
-    ['pnpm', ['--version']],
-    ['bun', ['--version']],
-    ['gh', ['auth', 'status']]
+  for (const { program, args } of [
+    { program: 'pnpm', args: ['--version'] },
+    { program: 'bun', args: ['--version'] },
+    { program: 'gh', args: ['auth', 'status'] }
   ]) {
     if (!command(program, args).ok) {
       return {

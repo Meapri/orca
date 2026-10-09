@@ -47,10 +47,10 @@ export function prepareCheckout({ worktree, sha, logFile }) {
   git.run(['checkout', '--quiet', '--detach', '--force', sha])
   git.run(['clean', '-fdq'])
   const steps = [
-    ['pnpm', ['install', '--frozen-lockfile']],
-    ['node', ['config/scripts/ensure-native-runtime.mjs', '--runtime=node']]
+    { program: 'pnpm', args: ['install', '--frozen-lockfile'] },
+    { program: 'node', args: ['config/scripts/ensure-native-runtime.mjs', '--runtime=node'] }
   ]
-  for (const [program, args] of steps) {
+  for (const { program, args } of steps) {
     const result = run(worktree, logFile, program, args, { timeoutMs: 20 * MINUTE })
     if (!result.ok) {
       return { ok: false, error: `${program} ${args.join(' ')} failed; see ${logFile}` }
