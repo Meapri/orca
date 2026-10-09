@@ -115,13 +115,14 @@ export async function assertInlineImagePixels(page: Page, screenshotPath: string
         const counts = [0, 0, 0]
         for (let i = 0; i < png.data.length; i += 4) {
           const [r, g, b] = png.data.subarray(i, i + 3)
-          if (r > 220 && g < 60 && b < 60) {
+          // Why loose: macOS captures are color-managed, so (240,40,40) reads back near (224,67,49).
+          if (r > 200 && g < 120 && b < 120) {
             counts[0]++
           }
-          if (g > 220 && r < 60 && b < 60) {
+          if (g > 200 && r < 130 && b < 120) {
             counts[1]++
           }
-          if (b > 220 && r < 60 && g < 60) {
+          if (b > 200 && r < 120 && g < 120) {
             counts[2]++
           }
         }

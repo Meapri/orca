@@ -3,12 +3,17 @@ import type { Terminal } from '@xterm/xterm'
 
 const addonMock = vi.hoisted(() => ({
   delegateTerminal: null as Terminal | null,
-  joiner: vi.fn<(text: string) => [number, number][]>()
+  joiner: vi.fn<(text: string) => [number, number][]>(),
+  constructedWith: new Array<{ fontFeatureSettings?: string } | undefined>()
 }))
 
 vi.mock('@xterm/addon-ligatures', () => ({
   LigaturesAddon: class {
     private joinerId: number | null = null
+
+    constructor(options?: { fontFeatureSettings?: string }) {
+      addonMock.constructedWith.push(options)
+    }
 
     activate(terminal: Terminal): void {
       addonMock.delegateTerminal = terminal
@@ -23,7 +28,10 @@ vi.mock('@xterm/addon-ligatures', () => ({
   }
 }))
 
-import { TerminalLigaturesAddon } from './terminal-ligatures-addon'
+import {
+  TERMINAL_LIGATURE_FONT_FEATURE_SETTINGS,
+  TerminalLigaturesAddon
+} from './terminal-ligatures-addon'
 
 function createTerminalHarness() {
   let registeredJoiner: ((text: string) => [number, number][]) | null = null
@@ -150,5 +158,15 @@ describe('TerminalLigaturesAddon', () => {
     addon.dispose()
 
     expect(harness.deregisterCharacterJoiner).toHaveBeenCalledWith(17)
+  })
+
+  it('requests both calt and liga so the WebGL atlas canvas ligates liga-only fonts', () => {
+    new TerminalLigaturesAddon()
+
+    expect(addonMock.constructedWith.at(-1)?.fontFeatureSettings).toBe(
+      TERMINAL_LIGATURE_FONT_FEATURE_SETTINGS
+    )
+    expect(TERMINAL_LIGATURE_FONT_FEATURE_SETTINGS).toMatch(/"calt" on/)
+    expect(TERMINAL_LIGATURE_FONT_FEATURE_SETTINGS).toMatch(/"liga" on/)
   })
 })

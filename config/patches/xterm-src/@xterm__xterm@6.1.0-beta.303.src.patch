@@ -1,8 +1,112 @@
+diff --git a/src/browser/AdoptedCaret.ts b/src/browser/AdoptedCaret.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..e81b1d0fdda4ca270264a569e391b53554fdafcb
+--- /dev/null
++++ b/src/browser/AdoptedCaret.ts
+@@ -0,0 +1,70 @@
++/**
++ * Copyright (c) 2026 The xterm.js authors. All rights reserved.
++ * @license MIT
++ */
++
++import { IAdoptedCaret } from './Types';
++import { IBufferLine } from '../common/buffer/Types';
++import { BufferLine } from '../common/buffer/BufferLine';
++import { CellData } from '../common/buffer/CellData';
++import { FgFlags } from '../common/buffer/Constants';
++import { IBufferService, ICoreService } from '../common/services/Services';
++
++/** Where the embedder found the app's caret, in viewport-independent screen coordinates. */
++export type AdoptedCaretSource = () => { x: number, y: number } | undefined;
++
++/**
++ * Orca: a caret an app draws itself (an inverse cell) while it hides the real cursor, adopted so
++ * the renderers draw the terminal cursor there instead. Only what is drawn changes.
++ */
++export class AdoptedCaret implements IAdoptedCaret {
++  public row = 0;
++  public x = 0;
++  private _source: AdoptedCaretSource | undefined;
++  private readonly _line = new BufferLine(0);
++  private readonly _work = new CellData();
++
++  constructor(
++    private readonly _bufferService: IBufferService,
++    private readonly _coreService: ICoreService
++  ) {}
++
++  public setSource(source: AdoptedCaretSource | undefined): void {
++    this._source = source;
++  }
++
++  /** The adopted caret, or `undefined` while the real cursor is shown or none is adopted. */
++  public resolve(): IAdoptedCaret | undefined {
++    // Asked first so the source sees every pass, including ones with the cursor shown.
++    const at = this._source?.();
++    if (!at || !this._coreService.isCursorHidden) {
++      return undefined;
++    }
++    if (at.x < 0 || at.x >= this._bufferService.cols || at.y < 0 || at.y >= this._bufferService.rows) {
++      return undefined;
++    }
++    this.x = at.x;
++    this.row = this._bufferService.buffer.ybase + at.y;
++    return this;
++  }
++
++  public composeLine(source: IBufferLine): IBufferLine {
++    if (!(source instanceof BufferLine) || this.x >= source.length) {
++      return source;
++    }
++    source.loadCell(this.x, this._work);
++    if (!this._work.isInverse()) {
++      return source;
++    }
++    const line = this._line;
++    line.copyFrom(source);
++    // A wide cell's trailing half carries the inverse too.
++    const end = Math.min(this.x + Math.max(this._work.getWidth(), 1), source.length);
++    for (let x = this.x; x < end; x++) {
++      line.loadCell(x, this._work);
++      this._work.fg &= ~FgFlags.INVERSE;
++      line.setCell(x, this._work);
++    }
++    return line;
++  }
++}
 diff --git a/src/browser/CoreBrowserTerminal.ts b/src/browser/CoreBrowserTerminal.ts
-index 67893b7966eb095db4459b8837de9766921f36c5..0abf7ecac1aa108f7caf711d0a5c610a688d34fd 100644
+index 67893b7966eb095db4459b8837de9766921f36c5..c520337a9d869af93cbedfdd3d44d4de72d3ab9f 100644
 --- a/src/browser/CoreBrowserTerminal.ts
 +++ b/src/browser/CoreBrowserTerminal.ts
-@@ -325,6 +325,9 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
+@@ -25,7 +25,8 @@ import { IDecoration, IDecorationOptions, IDisposable, ILinkProvider, IMarker, I
+ import { copyHandler, handlePasteEvent, moveTextAreaUnderMouseCursor, paste, rightClickHandler } from './Clipboard';
+ import * as Strings from './LocalizableStrings';
+ import { OscLinkProvider } from './OscLinkProvider';
+-import { CharacterJoinerHandler, CustomKeyEventHandler, CustomWheelEventHandler, IBrowser, IBufferRange, ICompositionHelper, ILinkifier2, ITerminal } from './Types';
++import { CharacterJoinerHandler, CustomKeyEventHandler, CustomWheelEventHandler, IAdoptedCaret, IBrowser, IBufferRange, ICompositionHelper, IImePreedit, ILinkifier2, ITerminal } from './Types';
++import { AdoptedCaret, AdoptedCaretSource } from './AdoptedCaret';
+ import { Viewport } from './Viewport';
+ import { BufferDecorationRenderer } from './decorations/BufferDecorationRenderer';
+ import { OverviewRulerRenderer } from './decorations/OverviewRulerRenderer';
+@@ -72,6 +73,17 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
+ 
+   private readonly _linkifier: MutableDisposable<ILinkifier2> = this._register(new MutableDisposable());
+   public get linkifier(): ILinkifier2 | undefined { return this._linkifier.value; }
++  public get imePreedit(): IImePreedit | undefined {
++    return this._compositionHelper instanceof CompositionHelper ? this._compositionHelper.imePreedit : undefined;
++  }
++  private _adoptedCaret: AdoptedCaret | undefined;
++  public get adoptedCaret(): IAdoptedCaret | undefined { return this._adoptedCaret?.resolve(); }
++  /** Orca: lets the embedder name the cell an app draws its caret in; `undefined` stops adopting. */
++  public setAdoptedCaretSource(source: AdoptedCaretSource | undefined): void {
++    this._adoptedCaret ??= new AdoptedCaret(this._bufferService, this.coreService);
++    this._adoptedCaret.setSource(source);
++    this.refresh(0, this.rows - 1);
++  }
+   private _overviewRulerRenderer: OverviewRulerRenderer | undefined;
+   private _viewport: Viewport | undefined;
+ 
+@@ -325,6 +337,9 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
    private _handleTextAreaBlur(): void {
      // Text can safely be removed on blur. Doing it earlier could interfere with
      // screen readers reading it out.
@@ -12,7 +116,7 @@ index 67893b7966eb095db4459b8837de9766921f36c5..0abf7ecac1aa108f7caf711d0a5c610a
      this.textarea!.value = '';
      this.refresh(this.buffer.y, this.buffer.y);
      if (this.coreService.decPrivateModes.sendFocus) {
-@@ -425,7 +428,18 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
+@@ -425,7 +440,18 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
        this._compositionHelper!.updateCompositionElements();
      }));
      this._register(addDisposableListener(this.textarea!, 'compositionupdate', (e: CompositionEvent) => this._compositionHelper!.compositionupdate(e)));
@@ -32,7 +136,7 @@ index 67893b7966eb095db4459b8837de9766921f36c5..0abf7ecac1aa108f7caf711d0a5c610a
      this._register(addDisposableListener(this.textarea!, 'input', (ev: InputEvent) => this._inputEvent(ev), true));
      this._register(this.onRender(() => this._compositionHelper!.updateCompositionElements()));
    }
-@@ -552,6 +566,11 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
+@@ -552,6 +578,16 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
      this._compositionView = this._document.createElement('div');
      this._compositionView.classList.add('composition-view');
      this._compositionHelper = this._instantiationService.createInstance(CompositionHelper, this.textarea, this._compositionView);
@@ -41,10 +145,15 @@ index 67893b7966eb095db4459b8837de9766921f36c5..0abf7ecac1aa108f7caf711d0a5c610a
 +        this._compositionHelper.dispose();
 +      }
 +    }));
++    this._register(this.onWriteParsed(() => {
++      if (this._compositionHelper instanceof CompositionHelper) {
++        this._compositionHelper.handleWriteParsed();
++      }
++    }));
      this._helperContainer.appendChild(this._compositionView);
  
      this._mouseCoordsService = this._instantiationService.createInstance(MouseCoordsService);
-@@ -1009,7 +1028,9 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
+@@ -1009,7 +1045,9 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
  
      this._onKey.fire({ key, domEvent: ev });
      this._showCursor();
@@ -55,7 +164,7 @@ index 67893b7966eb095db4459b8837de9766921f36c5..0abf7ecac1aa108f7caf711d0a5c610a
  
      this._keyPressHandled = true;
  
-@@ -1027,6 +1048,15 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
+@@ -1027,6 +1065,15 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
     * @param ev The input event to be handled.
     */
    protected _inputEvent(ev: InputEvent): boolean {
@@ -71,11 +180,180 @@ index 67893b7966eb095db4459b8837de9766921f36c5..0abf7ecac1aa108f7caf711d0a5c610a
      // Only support emoji IMEs when screen reader mode is disabled as the event must bubble up to
      // support reading out character input which can doubling up input characters
      // Based on these event traces: https://github.com/xtermjs/xterm.js/issues/3679
+diff --git a/src/browser/PixelScroll.ts b/src/browser/PixelScroll.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..b86003bc6c7e44b1fae7a6f882ff5a0f537c6a6e
+--- /dev/null
++++ b/src/browser/PixelScroll.ts
+@@ -0,0 +1,117 @@
++/**
++ * Copyright (c) 2026 The xterm.js authors. All rights reserved.
++ * @license MIT
++ */
++
++// Orca: pixel-precise viewport scrolling. The buffer still scrolls by whole rows (ydisp); a
++// renderer that supports it draws the remaining sub-row distance as an offset. Import-free and
++// limited to erasable TypeScript so Orca can unit test it straight from the installed package.
++
++/** Quiet time after the last scroll event before settling; outlasts trackpad momentum gaps. */
++export const PIXEL_SCROLL_SETTLE_DELAY_MS = 120;
++/** Length of the glide onto a whole row. */
++export const PIXEL_SCROLL_SETTLE_DURATION_MS = 90;
++/** A settle keeps going in the direction of travel once this much of the next row is showing. */
++export const PIXEL_SCROLL_SETTLE_FORWARD_FRACTION = 0.25;
++/** Offsets this close to a row edge snap to it, absorbing the canvas height's rounding. */
++const SNAP_DEVICE_PIXELS = 1.5;
++
++export interface IPixelScrollGate {
++  /** The `pixelScroll` option. */
++  enabled: boolean;
++  /** The active renderer draws a sub-row offset; the DOM renderer does not. */
++  rendererDrawsOffset: boolean;
++  isNormalBuffer: boolean;
++  /** An app requesting mouse reports owns the wheel. */
++  areMouseEventsActive: boolean;
++  prefersReducedMotion: boolean;
++}
++
++/** Pixel scrolling covers only viewport scrolling of the normal buffer; the rest steps rows. */
++export function isPixelScrollActive(gate: IPixelScrollGate): boolean {
++  return gate.enabled && gate.rendererDrawsOffset && gate.isNormalBuffer && !gate.areMouseEventsActive && !gate.prefersReducedMotion;
++}
++
++export interface IPixelScrollPosition {
++  /** The top buffer row drawn, i.e. ydisp. */
++  row: number;
++  /** Whole device pixels the viewport sits below that row's top edge; 0 draws whole rows. */
++  offset: number;
++}
++
++/** Maps a pixel scroll position to the top row and the sub-row offset drawn below its top edge. */
++export function resolvePixelScrollPosition(scrollTop: number, cssCellHeight: number, deviceCellHeight: number, maxRow: number): IPixelScrollPosition {
++  if (!(cssCellHeight > 0) || !(deviceCellHeight > 0)) {
++    return { row: 0, offset: 0 };
++  }
++  const rows = Math.max(scrollTop, 0) / cssCellHeight;
++  const row = Math.floor(rows + SNAP_DEVICE_PIXELS / deviceCellHeight);
++  // The last page has no row below it to reveal.
++  if (row >= maxRow) {
++    return { row: Math.max(maxRow, 0), offset: 0 };
++  }
++  return { row, offset: Math.max(Math.round((rows - row) * deviceCellHeight), 0) };
++}
++
++/** The whole row a settle lands on: the nearest one, biased toward the direction of travel. */
++export function resolvePixelScrollSettleRow(scrollTop: number, cssCellHeight: number, direction: number, maxRow: number): number {
++  if (!(cssCellHeight > 0)) {
++    return 0;
++  }
++  const rows = Math.max(scrollTop, 0) / cssCellHeight;
++  const floor = Math.floor(rows);
++  const fraction = rows - floor;
++  let row = Math.round(rows);
++  if (direction > 0) {
++    row = fraction >= PIXEL_SCROLL_SETTLE_FORWARD_FRACTION ? floor + 1 : floor;
++  } else if (direction < 0) {
++    row = fraction <= 1 - PIXEL_SCROLL_SETTLE_FORWARD_FRACTION ? floor : floor + 1;
++  }
++  return Math.min(Math.max(row, 0), Math.max(maxRow, 0));
++}
++
++/** Calls `onSettle` once scroll events stop arriving, with the direction they were travelling. */
++export class PixelScrollSettler {
++  private _timer: ReturnType<typeof setTimeout> | undefined;
++  private _lastScrollTop: number | undefined;
++  private _direction = 0;
++  private readonly _onSettle: (direction: number) => void;
++
++  constructor(onSettle: (direction: number) => void) {
++    this._onSettle = onSettle;
++  }
++
++  public get isPending(): boolean {
++    return this._timer !== undefined;
++  }
++
++  public noteScroll(scrollTop: number): void {
++    if (this._lastScrollTop !== undefined && scrollTop !== this._lastScrollTop) {
++      this._direction = Math.sign(scrollTop - this._lastScrollTop);
++    }
++    this._lastScrollTop = scrollTop;
++    if (this._timer !== undefined) {
++      clearTimeout(this._timer);
++    }
++    this._timer = setTimeout(() => {
++      this._timer = undefined;
++      const direction = this._direction;
++      this._lastScrollTop = undefined;
++      this._direction = 0;
++      this._onSettle(direction);
++    }, PIXEL_SCROLL_SETTLE_DELAY_MS);
++  }
++
++  public cancel(): void {
++    if (this._timer !== undefined) {
++      clearTimeout(this._timer);
++      this._timer = undefined;
++    }
++    this._lastScrollTop = undefined;
++    this._direction = 0;
++  }
++
++  public dispose(): void {
++    this.cancel();
++  }
++}
 diff --git a/src/browser/Types.ts b/src/browser/Types.ts
-index 497afcf535f3eaca00889525a77e15eb633ccd96..96d499b34605f860608382114c3fbdc07dc6b07f 100644
+index 497afcf535f3eaca00889525a77e15eb633ccd96..7cee04996e9bff6603aec38beb6f93aa8bf78e95 100644
 --- a/src/browser/Types.ts
 +++ b/src/browser/Types.ts
-@@ -41,9 +41,10 @@ export interface ICompositionHelper {
+@@ -4,7 +4,7 @@
+  */
+ 
+ import { IColor, ITerminalOptions } from '../common/Types';
+-import { CharData, IBuffer } from '../common/buffer/Types';
++import { CharData, IBuffer, IBufferLine } from '../common/buffer/Types';
+ import { ICoreTerminal } from '../common/CoreTerminal';
+ import { IDisposable, IRenderDimensions as IRenderDimensionsApi, Terminal as ITerminalApi } from '@xterm/xterm';
+ import { channels, css } from '../common/Color';
+@@ -30,6 +30,36 @@ export interface ITerminal extends InternalPassthroughApis, ICoreTerminal {
+   onA11yChar: IEvent<string>;
+   onA11yTab: IEvent<number>;
+   onWillOpen: IEvent<HTMLElement>;
++
++  /** The IME preedit the renderer draws into the cell grid, when in-grid preedit is composing. */
++  readonly imePreedit?: IImePreedit;
++  /** The app-drawn caret the renderer draws the cursor at while the real cursor is hidden. */
++  readonly adoptedCaret?: IAdoptedCaret;
++}
++
++/**
++ * A caret the app draws as an inverse cell after hiding the cursor, adopted by the embedder. Like
++ * `IImePreedit` it exists only in what the renderer draws.
++ */
++export interface IAdoptedCaret {
++  /** The absolute buffer row of the caret cell. */
++  readonly row: number;
++  readonly x: number;
++  /** `line` with the app's inverse cleared at the caret, so only the cursor marks it. */
++  composeLine(line: IBufferLine): IBufferLine;
++}
++
++/**
++ * An IME preedit laid out on the cell grid. It exists only in what the renderer draws: the buffer,
++ * selection, serialization and the pty never see it.
++ */
++export interface IImePreedit {
++  /** The absolute buffer row the preedit is drawn on. */
++  readonly row: number;
++  /** The column the cursor is drawn at while composing. */
++  readonly cursorX: number;
++  /** `line` as displayed with the preedit composed into it; `line` itself is left untouched. */
++  composeLine(line: IBufferLine): IBufferLine;
+ }
+ 
+ export type CustomKeyEventHandler = (event: KeyboardEvent) => boolean;
+@@ -41,9 +71,10 @@ export interface ICompositionHelper {
    readonly isComposing: boolean;
    compositionstart(): void;
    compositionupdate(ev: CompositionEvent): void;
@@ -87,11 +365,195 @@ index 497afcf535f3eaca00889525a77e15eb633ccd96..96d499b34605f860608382114c3fbdc0
  }
  
  export interface IBrowser {
+diff --git a/src/browser/Viewport.ts b/src/browser/Viewport.ts
+index 18c275ccbe583f48ccb5c5f66cd26d0bd8621e39..e01fdb233c4333e9a2f7cb2ab78169df73a631f1 100644
+--- a/src/browser/Viewport.ts
++++ b/src/browser/Viewport.ts
+@@ -13,6 +13,7 @@ import { SmoothScrollableElement } from './scrollable/scrollableElement';
+ import type { IScrollableElementChangeOptions } from './scrollable/scrollableElementOptions';
+ import { Emitter, EventUtils } from '../common/Event';
+ import { Scrollable, ScrollbarVisibility, type IScrollEvent } from './scrollable/scrollable';
++import { isPixelScrollActive, PIXEL_SCROLL_SETTLE_DURATION_MS, PixelScrollSettler, resolvePixelScrollPosition, resolvePixelScrollSettleRow, type IPixelScrollPosition } from './PixelScroll';
+ 
+ export class Viewport extends Disposable {
+ 
+@@ -29,20 +30,24 @@ export class Viewport extends Disposable {
+   private _suppressOnScrollHandler: boolean = false;
+   private _needsSyncOnRender: boolean = false;
+ 
++  private readonly _scrollable: Scrollable;
++  private readonly _pixelScrollSettler = this._register(new PixelScrollSettler(direction => this._settlePixelScroll(direction)));
++  private readonly _reducedMotionQuery: MediaQueryList | undefined;
++
+   constructor(
+     element: HTMLElement,
+     screenElement: HTMLElement,
+     @IBufferService private readonly _bufferService: IBufferService,
+     @ICoreBrowserService coreBrowserService: ICoreBrowserService,
+     @ICoreService private readonly _coreService: ICoreService,
+-    @IMouseStateService mouseStateService: IMouseStateService,
++    @IMouseStateService private readonly _mouseStateService: IMouseStateService,
+     @IThemeService themeService: IThemeService,
+     @IOptionsService private readonly _optionsService: IOptionsService,
+     @IRenderService private readonly _renderService: IRenderService
+   ) {
+     super();
+ 
+-    const scrollable = this._register(new Scrollable({
++    const scrollable = this._scrollable = this._register(new Scrollable({
+       forceIntegerValues: false,
+       smoothScrollDuration: this._optionsService.rawOptions.smoothScrollDuration,
+       // This is used over `IRenderService.addRefreshCallback` since it can be canceled
+@@ -66,11 +71,21 @@ export class Viewport extends Disposable {
+       'scrollbar'
+     ], () => this._scrollableElement.updateOptions(this._getChangeOptions())));
+     // Don't handle mouse wheel if wheel events are supported by the current mouse prototcol
+-    this._register(mouseStateService.onProtocolChange(type => {
++    this._register(_mouseStateService.onProtocolChange(type => {
+       this._scrollableElement.updateOptions({
+         handleMouseWheel: !(type & CoreMouseEventType.WHEEL)
+       });
++      this._refreshPixelScroll();
+     }));
++    this._register(this._optionsService.onSpecificOptionChange('pixelScroll', () => this._refreshPixelScroll()));
++    const win = coreBrowserService.window;
++    this._reducedMotionQuery = typeof win.matchMedia === 'function' ? win.matchMedia('(prefers-reduced-motion: reduce)') : undefined;
++    const reducedMotionQuery = this._reducedMotionQuery;
++    if (reducedMotionQuery) {
++      const handleReducedMotionChange = (): void => this._refreshPixelScroll();
++      reducedMotionQuery.addEventListener('change', handleReducedMotionChange);
++      this._register(toDisposable(() => reducedMotionQuery.removeEventListener('change', handleReducedMotionChange)));
++    }
+ 
+     this._scrollableElement.setScrollDimensions({ height: 0, scrollHeight: 0 });
+     this._register(EventUtils.runAndSubscribe(themeService.onChangeColors, () => {
+@@ -197,6 +212,7 @@ export class Viewport extends Disposable {
+         scrollTop: ydisp * this._renderService.dimensions.css.cell.height
+       });
+     }
++    this._refreshPixelScroll();
+ 
+     this._isSyncing = false;
+   }
+@@ -209,7 +225,9 @@ export class Viewport extends Disposable {
+       return;
+     }
+     this._isHandlingScroll = true;
+-    const newRow = Math.round(e.scrollTop / this._renderService.dimensions.css.cell.height);
++    const newRow = this._isPixelScrollActive()
++      ? this._handlePixelScroll(e.scrollTop)
++      : Math.round(e.scrollTop / this._renderService.dimensions.css.cell.height);
+     const diff = newRow - this._bufferService.buffer.ydisp;
+     if (diff !== 0) {
+       this._latestYDisp = newRow;
+@@ -218,6 +236,79 @@ export class Viewport extends Disposable {
+     this._isHandlingScroll = false;
+   }
+ 
++  private _isPixelScrollActive(): boolean {
++    return isPixelScrollActive({
++      enabled: this._optionsService.rawOptions.pixelScroll === true,
++      rendererDrawsOffset: this._renderService.supportsPixelScroll === true,
++      isNormalBuffer: this._bufferService.buffer === this._bufferService.buffers.normal,
++      areMouseEventsActive: this._mouseStateService.areMouseEventsActive,
++      prefersReducedMotion: this._reducedMotionQuery?.matches === true
++    });
++  }
++
++  private _resolvePixelScrollPosition(scrollTop: number): IPixelScrollPosition {
++    const dimensions = this._renderService.dimensions;
++    const maxRow = this._bufferService.buffer.lines.length - this._bufferService.rows;
++    return resolvePixelScrollPosition(scrollTop, dimensions.css.cell.height, dimensions.device.cell.height, maxRow);
++  }
++
++  /** Returns the whole row to scroll the buffer to and hands the renderer the rest as an offset. */
++  private _handlePixelScroll(scrollTop: number): number {
++    const position = this._resolvePixelScrollPosition(scrollTop);
++    this._renderService.setPixelScrollOffset?.(position.offset);
++    this._pixelScrollSettler.noteScroll(scrollTop);
++    // Land an in-flight wheel or jump animation on a whole row rather than settling after it.
++    const target = this._scrollable.getFutureScrollPosition().scrollTop;
++    if (target !== scrollTop && this._resolvePixelScrollPosition(target).offset !== 0) {
++      this._smoothScrollToRow(this._resolvePixelScrollSettleRow(target, Math.sign(target - scrollTop)));
++    }
++    return position.row;
++  }
++
++  private _resolvePixelScrollSettleRow(scrollTop: number, direction: number): number {
++    const maxRow = this._bufferService.buffer.lines.length - this._bufferService.rows;
++    return resolvePixelScrollSettleRow(scrollTop, this._renderService.dimensions.css.cell.height, direction, maxRow);
++  }
++
++  private _settlePixelScroll(direction: number): void {
++    if (!this._isPixelScrollActive() || !this._renderService.pixelScrollOffset) {
++      return;
++    }
++    const scrollTop = this._scrollable.getFutureScrollPosition().scrollTop;
++    this._smoothScrollToRow(this._resolvePixelScrollSettleRow(scrollTop, direction));
++  }
++
++  private _smoothScrollToRow(row: number): void {
++    // The embedder may keep smoothScrollDuration at 0, which would make this a jump.
++    this._scrollable.setSmoothScrollDuration(PIXEL_SCROLL_SETTLE_DURATION_MS);
++    this._scrollableElement.setScrollPosition({
++      reuseAnimation: true,
++      scrollTop: row * this._renderService.dimensions.css.cell.height
++    });
++    this._scrollable.setSmoothScrollDuration(this._optionsService.rawOptions.smoothScrollDuration);
++  }
++
++  /** Re-derives the offset after something other than a scroll event moved the viewport. */
++  private _refreshPixelScroll(): void {
++    if (!this._renderService.hasRenderer()) {
++      return;
++    }
++    if (!this._isPixelScrollActive()) {
++      this._pixelScrollSettler.cancel();
++      if (this._renderService.pixelScrollOffset) {
++        this._renderService.setPixelScrollOffset?.(0);
++        // Snap to the drawn row so whole-row stepping resumes from what is on screen.
++        this._scrollableElement.setScrollPosition({
++          scrollTop: this._bufferService.buffer.ydisp * this._renderService.dimensions.css.cell.height
++        });
++      }
++      return;
++    }
++    const position = this._resolvePixelScrollPosition(this._scrollableElement.getScrollPosition().scrollTop);
++    // A buffer moved without a scroll event (trim, resize) draws whole rows until the next one.
++    this._renderService.setPixelScrollOffset?.(position.row === this._bufferService.buffer.ydisp ? position.offset : 0);
++  }
++
+   public handleTouchScroll(translationY: number): void {
+     const pos = this._scrollableElement.getScrollPosition();
+     this._scrollableElement.setScrollPosition({
+diff --git a/src/browser/decorations/BufferDecorationRenderer.ts b/src/browser/decorations/BufferDecorationRenderer.ts
+index fd356808ea611fc87b28d92b2758cf9584472516..411276dd5b2bd45bdc7186ceb242e0ca598d2b2b 100644
+--- a/src/browser/decorations/BufferDecorationRenderer.ts
++++ b/src/browser/decorations/BufferDecorationRenderer.ts
+@@ -75,7 +75,7 @@ export class BufferDecorationRenderer extends Disposable {
+     element.classList.toggle('xterm-decoration-top-layer', decoration?.options?.layer === 'top');
+     element.style.width = `${Math.round((decoration.options.width || 1) * this._renderService.dimensions.css.cell.width)}px`;
+     element.style.height = `${(decoration.options.height || 1) * this._renderService.dimensions.css.cell.height}px`;
+-    element.style.top = `${(decoration.marker.line - this._bufferService.buffers.active.ydisp) * this._renderService.dimensions.css.cell.height}px`;
++    element.style.top = `${(decoration.marker.line - this._bufferService.buffers.active.ydisp) * this._renderService.dimensions.css.cell.height - (this._renderService.pixelScrollOffset ?? 0)}px`;
+     element.style.lineHeight = `${this._renderService.dimensions.css.cell.height}px`;
+ 
+     const x = decoration.options.x ?? 0;
+@@ -112,7 +112,8 @@ export class BufferDecorationRenderer extends Disposable {
+       if (!this._altBufferIsActive) {
+         element.style.width = `${Math.round((decoration.options.width || 1) * this._renderService.dimensions.css.cell.width)}px`;
+         element.style.height = `${(decoration.options.height || 1) * this._renderService.dimensions.css.cell.height}px`;
+-        element.style.top = `${line * this._renderService.dimensions.css.cell.height}px`;
++        // Orca: follow the rows a pixel-scroll offset draws higher.
++        element.style.top = `${line * this._renderService.dimensions.css.cell.height - (this._renderService.pixelScrollOffset ?? 0)}px`;
+         element.style.lineHeight = `${this._renderService.dimensions.css.cell.height}px`;
+       }
+       decoration.onRenderEmitter.fire(element);
 diff --git a/src/browser/input/CompositionHelper.ts b/src/browser/input/CompositionHelper.ts
-index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..4d62369d0005f465318ec93e221fd3ee3acfddfa 100644
+index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..43b574113b63eb7532b6040495570824029e7280 100644
 --- a/src/browser/input/CompositionHelper.ts
 +++ b/src/browser/input/CompositionHelper.ts
-@@ -1,10 +1,15 @@
+@@ -1,10 +1,22 @@
 +/// <reference lib="es2022.intl" />
  /**
   * Copyright (c) 2016 The xterm.js authors. All rights reserved.
@@ -102,6 +564,13 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..4d62369d0005f465318ec93e221fd3ee
 -import { IBufferService, ICoreService, IOptionsService } from '../../common/services/Services';
 +import { IRenderService, IThemeService } from '../services/Services';
 +import { IBufferService, ICoreService, IOptionsService, IUnicodeService } from '../../common/services/Services';
++import { IImePreedit } from '../Types';
++import { IBufferLine } from '../../common/buffer/Types';
++import { BufferLine } from '../../common/buffer/BufferLine';
++import { AttributeData, ExtendedAttrs } from '../../common/buffer/AttributeData';
++import { CellData } from '../../common/buffer/CellData';
++import { Attributes, Content, FgFlags, UnderlineStyle } from '../../common/buffer/Constants';
++import { UnicodeService } from '../../common/services/UnicodeService';
 +import { WidthCacheFontVariantCanvas } from '../renderer/dom/WidthCache';
 +import { addDisposableListener } from '../Dom';
 +import { Disposable } from '../../common/Lifecycle';
@@ -109,7 +578,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..4d62369d0005f465318ec93e221fd3ee
  import { C0 } from '../../common/data/EscapeSequences';
  
  interface IPosition {
-@@ -12,6 +17,27 @@ interface IPosition {
+@@ -12,6 +24,53 @@ interface IPosition {
    end: number;
  }
  
@@ -130,6 +599,32 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..4d62369d0005f465318ec93e221fd3ee
 +  nextCompositionStart?: number;
 +}
 +
++/** A commit drawn in place until the app echoes it: its transaction and the text that was sent. */
++interface IGridEchoSegment {
++  transactionId: number;
++  text: string;
++  width: number;
++}
++
++interface IGridEcho {
++  /** The input position (column, absolute row) the app will echo the first segment at. */
++  x: number;
++  row: number;
++  segments: IGridEchoSegment[];
++  layout: CompositionGridPreedit;
++  timer?: ReturnType<typeof setTimeout>;
++}
++
++/** Longest a commit stays drawn without its echo; an app that never echoes (a password) clears it. */
++const GRID_ECHO_HOLD_MS = 250;
++
++const MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'AltGraph', 'Meta', 'CapsLock', 'Fn']);
++
++/** A keydown that types its own `key` rather than asking the app to edit. */
++function isPrintableKeydown(ev: KeyboardEvent): boolean {
++  return [...ev.key].length === 1 && !ev.ctrlKey && !ev.metaKey && !ev.altKey;
++}
++
 +const XTERM_COMPOSITION_SESSION_START_EVENT = 'xterm-composition-session-start';
 +const XTERM_COMPOSITION_SESSION_END_EVENT = 'xterm-composition-session-end';
 +const XTERM_COMPOSITION_TRANSACTION_ACCEPTED_EVENT =
@@ -137,7 +632,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..4d62369d0005f465318ec93e221fd3ee
  /**
   * Encapsulates the logic for handling compositionstart, compositionupdate and compositionend
   * events, displaying the in-progress composition to the UI and forwarding the final composition
-@@ -24,6 +50,15 @@ export class CompositionHelper {
+@@ -24,6 +83,15 @@ export class CompositionHelper {
     */
    private _isComposing: boolean;
    public get isComposing(): boolean { return this._isComposing; }
@@ -153,7 +648,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..4d62369d0005f465318ec93e221fd3ee
  
    /**
     * The position within the input textarea's value of the current composition.
-@@ -36,52 +71,144 @@ export class CompositionHelper {
+@@ -36,52 +104,236 @@ export class CompositionHelper {
     */
    private _compositionSuffix: string;
  
@@ -222,6 +717,87 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..4d62369d0005f465318ec93e221fd3ee
 +  /** The insertion caret painted above the renderer cursor the composition view covers. */
 +  private _compositionCaret?: HTMLElement;
 +
++  /** Set when `imePreeditInGrid` owns the current composition; the overlay stays empty then. */
++  private _gridPreedit?: CompositionGridPreedit;
++
++  /** The viewport rows the last in-grid publish covered, so a moved preedit repaints both. */
++  private _gridPreeditRows?: { start: number, end: number };
++
++  private _gridPreeditHidesTail = false;
++
++  private _gridPreeditAnchor?: { x: number, y: number };
++
++  /**
++   * Commits still drawn where the app will echo them. A TUI repaints later than the IME commits,
++   * so without this the text blanks and the cursor steps back until the echo lands.
++   */
++  private _gridEcho?: IGridEcho;
++
++  /**
++   * Where the cursor was last shown while this preedit is drawn. A TUI hides the cursor while it
++   * repaints, and a frame split across writes parks it anywhere; that is not where input goes.
++   */
++  private _shownCursor?: { x: number, row: number };
++
++  /** Set while this helper forwards a commit, so its own data is not taken for typed text. */
++  private _isForwardingCommit = false;
++
++  private _typedDataListener?: { dispose(): void };
++
++  /** When the in-grid path last held a commit, so text typed right after it can be held too. */
++  private _lastGridCommitAt = Number.NEGATIVE_INFINITY;
++
++  /** The in-grid preedit the renderers draw, laid out against the live cursor. */
++  public get imePreedit(): IImePreedit | undefined {
++    return (this._gridPreedit ?? this._gridEcho?.layout)?.resolve(
++      this._gridLayoutAnchor(), this._gridPreeditHidesTail
++    );
++  }
++
++  /** Whether the renderer draws a preedit or a held commit, so an embedder keeps its anchor current. */
++  public get hasGridPreedit(): boolean {
++    return this._gridPreedit !== undefined || this._gridEcho !== undefined;
++  }
++
++  /**
++   * Whether the open composition draws in the grid. Latched at `compositionstart`, so it can
++   * differ from `imePreeditInGrid` when the option changes mid-composition.
++   */
++  public get isGridPreeditActive(): boolean {
++    return this._gridPreedit !== undefined;
++  }
++
++  /** A held commit pins the layout to where the app will echo it; otherwise the input position. */
++  private _gridLayoutAnchor(): { x: number, y: number } | undefined {
++    const echo = this._gridEcho;
++    return echo ? { x: echo.x, y: echo.row - this._bufferService.buffer.ybase } : this._inputPosition();
++  }
++
++  /** The embedder's anchor, else the cursor where it was last shown; `undefined` is the live cursor. */
++  private _inputPosition(): { x: number, y: number } | undefined {
++    const shown = this._shownCursor;
++    if (this._gridPreeditAnchor || !shown || !this._coreService.isCursorHidden) {
++      return this._gridPreeditAnchor;
++    }
++    return { x: shown.x, y: shown.row - this._bufferService.buffer.ybase };
++  }
++
++  private _trackShownCursor(): void {
++    if (this._coreService.isCursorHidden || this._coreService.decPrivateModes.synchronizedOutput) {
++      return;
++    }
++    const buffer = this._bufferService.buffer;
++    this._shownCursor = { x: buffer.x, row: buffer.ybase + buffer.y };
++  }
++
++  /** Forgets the input position once neither a preedit nor a held commit is drawn. */
++  private _releaseInputPosition(): void {
++    if (!this.hasGridPreedit) {
++      this._gridPreeditAnchor = undefined;
++      this._shownCursor = undefined;
++    }
++  }
++
 +  // Keep the six-argument form callable: upstream's own CompositionHelper.test.ts constructs
 +  // this class directly, and `.npmignore` strips src/**/*.test.ts from the published tarball, so
 +  // the shipped patch has no hunk that could update that call. Dropping this overload fails the
@@ -260,6 +836,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..4d62369d0005f465318ec93e221fd3ee
 +    this._compositionTransactionId = 0;
 +    this._compositionTimers = new Set();
 +    this._imeKeydownAwaitingCommit = false;
++    this._typedDataListener = this._coreService.onData(data => this._holdTypedText(data));
    }
  
    /**
@@ -298,9 +875,20 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..4d62369d0005f465318ec93e221fd3ee
 -    this._compositionView.textContent = '';
 +    this._resetCompositionView();
      this._dataAlreadySent = '';
+-    this._compositionView.classList.add('active');
 +    this._compositionInputData = '';
 +    this._lastCompositionData = '';
-     this._compositionView.classList.add('active');
++    if (this._optionsService.rawOptions.imePreeditInGrid && this._unicodeService) {
++      this._gridPreedit = new CompositionGridPreedit(this._bufferService, this._unicodeService);
++      this._gridPreedit.setPrefix(this._gridEchoText());
++      if (!this._gridEcho) {
++        // Only a cursor shown during this session counts; one hidden from the start is left live.
++        this._shownCursor = undefined;
++      }
++      this._trackShownCursor();
++    } else {
++      this._compositionView.classList.add('active');
++    }
 +    this._dispatchCompositionSessionEvent(new CustomEvent(XTERM_COMPOSITION_SESSION_START_EVENT, {
 +      bubbles: true,
 +      detail: { id: this._compositionTransactionId }
@@ -308,7 +896,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..4d62369d0005f465318ec93e221fd3ee
    }
  
    /**
-@@ -89,22 +216,95 @@ export class CompositionHelper {
+@@ -89,22 +341,279 @@ export class CompositionHelper {
     * @param ev The event.
     */
    public compositionupdate(ev: Pick<CompositionEvent, 'data'>): void {
@@ -324,10 +912,15 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..4d62369d0005f465318ec93e221fd3ee
 +    if (ev.data?.length > 0) {
 +      this._lastCompositionData = ev.data;
 +    }
-+    this._renderCompositionView(ev.data ?? '');
-+    // Some IMEs resume without compositionstart; keep that inferred transaction visible until
-+    // compositionend settles it. An empty update hides the overlay without ending the transaction.
-+    this._compositionView.classList.toggle('active', Boolean(ev.data));
++    if (this._gridPreedit) {
++      this._gridPreedit.setText(ev.data ?? '');
++      this._publishGridPreedit();
++    } else {
++      this._renderCompositionView(ev.data ?? '');
++      // Some IMEs resume without compositionstart; keep that inferred transaction visible until
++      // compositionend settles it. An empty update hides the overlay without ending the transaction.
++      this._compositionView.classList.toggle('active', Boolean(ev.data));
++    }
      this.updateCompositionElements();
 -    setTimeout(() => {
 -      const end = this._textarea.selectionEnd ?? this._textarea.value.length;
@@ -340,6 +933,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..4d62369d0005f465318ec93e221fd3ee
 +        this._compositionHasObservedProgress ||= this._hasCompositionProgress();
 +        const end = this._textarea.selectionEnd ?? this._textarea.value.length;
 +        this._compositionPosition.end = Math.max(this._compositionPosition.start, end);
++        this._syncGridPreeditCaret();
 +      }
 +    });
    }
@@ -388,9 +982,23 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..4d62369d0005f465318ec93e221fd3ee
 +    if (this._isComposing || this.hasPendingCompositionFinalization) {
 +      this._finalizeComposition(false);
 +    }
++    this._clearGridEcho();
++  }
++
++  /** Output was parsed: follow the input position, and stop drawing commits the app has echoed. */
++  public handleWriteParsed(): void {
++    if (!this.hasGridPreedit) {
++      return;
++    }
++    this._trackShownCursor();
++    if (!this._settleGridEcho()) {
++      this._publishGridPreedit();
++    }
 +  }
 +
 +  public dispose(): void {
++    this._typedDataListener?.dispose();
++    this._typedDataListener = undefined;
 +    if (this._textareaChangeTimer !== undefined) {
 +      clearTimeout(this._textareaChangeTimer);
 +      this._textareaChangeTimer = undefined;
@@ -407,13 +1015,177 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..4d62369d0005f465318ec93e221fd3ee
 +    this._isComposing = false;
 +    this._compositionTransactionId++;
 +    this._compositionView.classList.remove('active');
++    this._gridEcho = undefined;
++    this._gridPreeditAnchor = undefined;
++    this._shownCursor = undefined;
 +    this._resetCompositionView();
 +    this._preeditRenderer?.dispose();
 +    this._preeditRenderer = undefined;
++    this._gridPreeditRows = undefined;
++  }
++
++  /**
++   * Hides the committed row tail the in-grid preedit would push right, for embedders that know the
++   * tail is a placeholder the typed text replaces.
++   */
++  public setPreeditHidesTail(hidesTail: boolean): void {
++    if (hidesTail !== this._gridPreeditHidesTail) {
++      this._gridPreeditHidesTail = hidesTail;
++      this._refreshGridPreedit();
++    }
++  }
++
++  /**
++   * Draws the in-grid preedit at `anchor` (column, row relative to the buffer base) instead of the
++   * terminal cursor, for embedders that know the app hides its real input position. Ignored while
++   * nothing is drawn, and cleared once the composition and any held commit end.
++   */
++  public setPreeditAnchor(anchor: { x: number, y: number } | undefined): void {
++    const current = this._gridPreeditAnchor;
++    if (this.hasGridPreedit && (anchor?.x !== current?.x || anchor?.y !== current?.y)) {
++      this._gridPreeditAnchor = anchor && { x: anchor.x, y: anchor.y };
++      if (!this._settleGridEcho()) {
++        this._refreshGridPreedit();
++      }
++    }
++  }
++
++  private _refreshGridPreedit(): void {
++    if (this.hasGridPreedit) {
++      this._publishGridPreedit();
++      this._positionGridPreeditTextarea();
++    }
++  }
++
++  private _gridEchoText(): string {
++    return this._gridEcho?.segments.map(segment => segment.text).join('') ?? '';
++  }
++
++  /** Keeps the committing preedit drawn, without its underline, until the app echoes it. */
++  private _holdGridEcho(): void {
++    const preedit = this._gridPreedit;
++    const echo = preedit?.text ? this._ensureGridEcho() : undefined;
++    if (!preedit || !echo) {
++      return;
++    }
++    this._lastGridCommitAt = Date.now();
++    echo.segments.push({
++      transactionId: this._compositionTransactionId,
++      text: preedit.text,
++      width: preedit.measure(preedit.text)
++    });
++    this._cancelDeferredTimer(echo.timer);
++    echo.timer = this._defer(() => this._clearGridEcho(), GRID_ECHO_HOLD_MS);
++    this._syncGridEchoPrefix();
++  }
++
++  /** The hold at the input position, started if none is open. */
++  private _ensureGridEcho(): IGridEcho | undefined {
++    if (!this._unicodeService) {
++      return undefined;
++    }
++    if (!this._gridEcho) {
++      const buffer = this._bufferService.buffer;
++      const position = this._inputPosition();
++      this._gridEcho = {
++        x: position?.x ?? buffer.x,
++        row: buffer.ybase + (position?.y ?? buffer.y),
++        segments: [],
++        layout: new CompositionGridPreedit(this._bufferService, this._unicodeService)
++      };
++    }
++    return this._gridEcho;
++  }
++
++  /** Replaces a held commit's provisional text with what was actually sent, or drops it. */
++  private _confirmGridEcho(transactionId: number, input: string): void {
++    const echo = this._gridEcho;
++    const index = echo ? echo.segments.findIndex(segment => segment.transactionId === transactionId) : -1;
++    if (!echo || index < 0) {
++      return;
++    }
++    const segment = echo.segments[index];
++    // Control bytes (a commit that carries Enter or Backspace) repaint the input, not append to it.
++    if (!input || [...input].some(char => char < ' ' || char === '\x7f')) {
++      echo.segments.splice(index, 1);
++    } else if (input !== segment.text) {
++      segment.text = input;
++      segment.width = echo.layout.measure(input);
++    } else {
++      return;
++    }
++    this._updateGridEcho();
++  }
++
++  /**
++   * Drops the held commits the app has echoed: its input position moved past them. Any other move
++   * means it repainted differently, so all are dropped. Returns whether anything changed.
++   */
++  private _settleGridEcho(): boolean {
++    const echo = this._gridEcho;
++    const anchor = this._gridPreeditAnchor;
++    // Mid-frame (synchronized output, or a hidden cursor with no app caret to read): wait for the
++    // frame to finish, or for the hold to expire.
++    if (
++      !echo ||
++      this._coreService.decPrivateModes.synchronizedOutput ||
++      (!anchor && this._coreService.isCursorHidden)
++    ) {
++      return false;
++    }
++    const buffer = this._bufferService.buffer;
++    const x = anchor?.x ?? buffer.x;
++    const row = buffer.ybase + (anchor?.y ?? buffer.y);
++    if (x === echo.x && row === echo.row) {
++      return false;
++    }
++    let end = echo.x;
++    let echoed = 0;
++    while (echoed < echo.segments.length && end < x) {
++      end += echo.segments[echoed++].width;
++    }
++    if (row === echo.row && end === x) {
++      echo.segments.splice(0, echoed);
++      echo.x = x;
++    } else {
++      echo.segments.length = 0;
++    }
++    this._updateGridEcho();
++    return true;
++  }
++
++  private _updateGridEcho(): void {
++    if (this._gridEcho?.segments.length === 0) {
++      this._clearGridEcho();
++      return;
++    }
++    this._syncGridEchoPrefix();
++    this._refreshGridPreedit();
++  }
++
++  private _clearGridEcho(): void {
++    const echo = this._gridEcho;
++    if (!echo) {
++      return;
++    }
++    this._cancelDeferredTimer(echo.timer);
++    this._gridEcho = undefined;
++    this._syncGridEchoPrefix();
++    this._publishGridPreedit();
++    if (this._gridPreedit) {
++      this._positionGridPreeditTextarea();
++    }
++    this._releaseInputPosition();
++  }
++
++  private _syncGridEchoPrefix(): void {
++    const text = this._gridEchoText();
++    this._gridEcho?.layout.setPrefix(text);
++    this._gridPreedit?.setPrefix(text);
    }
  
    /**
-@@ -113,7 +313,19 @@ export class CompositionHelper {
+@@ -113,7 +622,19 @@ export class CompositionHelper {
     * @returns Whether the Terminal should continue processing the keydown event.
     */
    public keydown(ev: KeyboardEvent): boolean {
@@ -434,7 +1206,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..4d62369d0005f465318ec93e221fd3ee
        if (ev.keyCode === 20 || ev.keyCode === 229) {
          // 20 is CapsLock, 229 is Enter
          // Continue composing if the keyCode is the "composition character"
-@@ -128,6 +340,10 @@ export class CompositionHelper {
+@@ -128,6 +649,10 @@ export class CompositionHelper {
        this._finalizeComposition(false);
      }
  
@@ -445,10 +1217,18 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..4d62369d0005f465318ec93e221fd3ee
      if (ev.keyCode === 229) {
        // If the "composition character" is used but gets to this point it means a non-composition
        // character (eg. numbers and punctuation) was pressed when the IME was active.
-@@ -138,6 +354,74 @@ export class CompositionHelper {
-     return true;
-   }
+@@ -135,6 +660,79 @@ export class CompositionHelper {
+       return false;
+     }
  
++    // A key the app handles itself (Backspace, arrows, Enter) repaints the input its own way. A
++    // printable key is text typed after the held commit, which _holdTypedText keeps with it.
++    if (!MODIFIER_KEYS.has(ev.key) && !isPrintableKeydown(ev)) {
++      this._clearGridEcho();
++    }
++    return true;
++  }
++
 +  /**
 +   * Defers keypress text while a composition finalizer is pending so all input is emitted once
 +   * after reconciliation with the final textarea candidate.
@@ -514,19 +1294,19 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..4d62369d0005f465318ec93e221fd3ee
 +      this._textareaChangeTimer = undefined;
 +    }
 +    this._coreService.triggerDataEvent(text, true);
-+    return true;
-+  }
-+
-   /**
-    * Finalizes the composition, resuming regular input actions. This is called when a composition
-    * is ending.
-@@ -146,23 +430,52 @@ export class CompositionHelper {
+     return true;
+   }
+ 
+@@ -146,23 +744,55 @@ export class CompositionHelper {
     *   compositionend event is triggered, such as enter, so that the composition is sent before
     *   the command is executed.
     */
 -  private _finalizeComposition(waitForPropagation: boolean): void {
 +  private _finalizeComposition(waitForPropagation: boolean, endData: string = ''): void {
 +    const wasComposing = this._isComposing;
++    if (waitForPropagation && wasComposing) {
++      this._holdGridEcho();
++    }
      this._compositionView.classList.remove('active');
 +    // Cleared, not just hidden: a rendered tail left in the view is stale DOM the next composition
 +    // would have to correct before its own first update lands.
@@ -584,7 +1364,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..4d62369d0005f465318ec93e221fd3ee
  
        // Since composition* events happen before the changes take place in the textarea on most
        // browsers, use a setTimeout with 0ms time to allow the native compositionend event to
-@@ -172,37 +485,315 @@ export class CompositionHelper {
+@@ -172,37 +802,344 @@ export class CompositionHelper {
        // - The last compositionupdate event's data property does not always accurately describe
        //   the character, a counter example being Korean where an ending consonsant can move to
        //   the following character if the following input is a vowel.
@@ -780,6 +1560,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..4d62369d0005f465318ec93e221fd3ee
 +    input: string,
 +    dispatchSessionEnd: boolean = true
 +  ): void {
++    this._confirmGridEcho(transactionId, input);
 +    let prevented = false;
 +    if (dispatchSessionEnd) {
 +      const event = new CustomEvent(XTERM_COMPOSITION_SESSION_END_EVENT, {
@@ -791,8 +1572,36 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..4d62369d0005f465318ec93e221fd3ee
 +      prevented = event.defaultPrevented;
 +    }
 +    if (input.length > 0 && !prevented) {
-+      this._coreService.triggerDataEvent(input, true);
++      this._isForwardingCommit = true;
++      try {
++        this._coreService.triggerDataEvent(input, true);
++      } finally {
++        this._isForwardingCommit = false;
++      }
 +    }
++  }
++
++  /**
++   * Text typed right after a held commit (a space or punctuation between syllables) lands after
++   * it, so it is held too: the next preedit is laid after it instead of jumping right once the
++   * echo arrives. Control input is the app's to repaint and leaves the hold alone.
++   */
++  private _holdTypedText(data: string): void {
++    if (this._isForwardingCommit || !data || [...data].some(char => char < ' ' || char === '\x7f')) {
++      return;
++    }
++    // The commit before it may already be echoed; a mark typed that soon after still belongs to
++    // the typing, so the syllable after it is laid past it. Unrelated typing is never held.
++    const typingAfterCommit = Date.now() - this._lastGridCommitAt <= GRID_ECHO_HOLD_MS;
++    const echo = this._gridEcho ?? (typingAfterCommit ? this._ensureGridEcho() : undefined);
++    if (!echo) {
++      return;
++    }
++    echo.segments.push({ transactionId: -1, text: data, width: echo.layout.measure(data) });
++    this._cancelDeferredTimer(echo.timer);
++    echo.timer = this._defer(() => this._clearGridEcho(), GRID_ECHO_HOLD_MS);
++    this._syncGridEchoPrefix();
++    this._refreshGridPreedit();
 +  }
 +
 +  private _endPendingCompositionSession(pending: IPendingComposition): void {
@@ -907,11 +1716,11 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..4d62369d0005f465318ec93e221fd3ee
 +    );
 +  }
 +
-+  private _defer(callback: () => void): ReturnType<typeof setTimeout> {
++  private _defer(callback: () => void, delay: number = 0): ReturnType<typeof setTimeout> {
 +    const timer = setTimeout(() => {
 +      this._compositionTimers.delete(timer);
 +      callback();
-+    }, 0);
++    }, delay);
 +    this._compositionTimers.add(timer);
 +    return timer;
 +  }
@@ -927,7 +1736,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..4d62369d0005f465318ec93e221fd3ee
    /**
     * Apply any changes made to the textarea after the current event chain is allowed to complete.
     * This should be called when not currently composing but a keydown event with the "composition
-@@ -222,6 +813,9 @@ export class CompositionHelper {
+@@ -222,6 +1159,9 @@ export class CompositionHelper {
  
          const diff = newValue.replace(oldValue, '');
  
@@ -937,10 +1746,86 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..4d62369d0005f465318ec93e221fd3ee
          this._dataAlreadySent = diff;
  
          if (newValue.length > oldValue.length) {
-@@ -236,6 +830,105 @@ export class CompositionHelper {
+@@ -236,6 +1176,186 @@ export class CompositionHelper {
      }, 0);
    }
  
++  /**
++   * Asks the renderer to repaint the rows the in-grid preedit covered and now covers, plus the
++   * cursor row it stands in for. Runs only on preedit changes: this path is also driven from
++   * `onRender`, so repainting unconditionally would never settle.
++   */
++  private _publishGridPreedit(): void {
++    const buffer = this._bufferService.buffer;
++    const preedit = this.imePreedit;
++    let start = buffer.ybase + buffer.y - buffer.ydisp;
++    let end = start;
++    if (preedit) {
++      start = Math.min(start, preedit.row - buffer.ydisp);
++      end = Math.max(end, preedit.row - buffer.ydisp);
++    }
++    const previous = this._gridPreeditRows;
++    this._gridPreeditRows = preedit ? { start, end } : undefined;
++    if (previous) {
++      start = Math.min(start, previous.start);
++      end = Math.max(end, previous.end);
++    }
++    start = Math.max(0, start);
++    end = Math.min(this._bufferService.rows - 1, end);
++    if (start <= end) {
++      this._renderService.refreshRows(start, end);
++    }
++  }
++
++  /** Places the IME caret inside the preedit where the textarea reports it, once it has settled. */
++  private _syncGridPreeditCaret(): void {
++    const preedit = this._gridPreedit;
++    if (!preedit) {
++      return;
++    }
++    const start = this._compositionPosition.start;
++    // A converting clause arrives as a non-collapsed selection whose end is the insertion point.
++    const caret = this._textarea.selectionEnd;
++    // Only trust the selection once the textarea holds exactly the preedit it describes.
++    const offset = caret !== null && this._textarea.value.substring(start, start + preedit.text.length) === preedit.text
++      ? caret - start
++      : undefined;
++    if (preedit.setCaret(offset)) {
++      this._publishGridPreedit();
++      this._positionGridPreeditTextarea();
++    }
++  }
++
++  /** Anchors the textarea to the drawn preedit so the OS candidate window follows it. */
++  private _positionGridPreeditTextarea(): void {
++    const buffer = this._bufferService.buffer;
++    const grid = this._gridPreedit ?? this._gridEcho?.layout;
++    const preedit = grid?.resolve(this._gridLayoutAnchor(), this._gridPreeditHidesTail);
++    const viewportRow = (preedit ? preedit.row : buffer.ybase + buffer.y) - buffer.ydisp;
++    if (viewportRow < 0 || viewportRow >= this._bufferService.rows) {
++      return;
++    }
++    const cell = this._renderService.dimensions.css.cell;
++    // The candidate window belongs to the preedit, after any held commit.
++    const column = preedit && grid
++      ? grid.start + grid.visiblePrefixWidth
++      : Math.min(buffer.x, this._bufferService.cols - 1);
++    const width = Math.max((preedit && grid ? grid.visibleWidth - grid.visiblePrefixWidth : 0) * cell.width, 1);
++    this._setTextareaStyle('left', column * cell.width + 'px');
++    this._setTextareaStyle('top', viewportRow * cell.height + 'px');
++    // Ensure the text area is at least 1x1, otherwise certain IMEs may break
++    this._setTextareaStyle('width', width + 'px');
++    this._setTextareaStyle('height', Math.max(cell.height, 1) + 'px');
++    this._setTextareaStyle('lineHeight', cell.height + 'px');
++  }
++
++  /** Skips unchanged writes: this runs on every render, and a style write invalidates layout. */
++  private _setTextareaStyle(property: 'left' | 'top' | 'width' | 'height' | 'lineHeight', value: string): void {
++    if (this._textarea.style[property] !== value) {
++      this._textarea.style[property] = value;
++    }
++  }
++
 +  /**
 +   * Renders the preedit into the view and, when the cursor sits mid-line, the rest of the row
 +   * after it, so a composition reads as inserted text pushing the tail right rather than an opaque
@@ -1022,6 +1907,11 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..4d62369d0005f465318ec93e221fd3ee
 +  }
 +
 +  private _resetCompositionView(): void {
++    if (this._gridPreedit) {
++      this._gridPreedit = undefined;
++      this._releaseInputPosition();
++      this._publishGridPreedit();
++    }
 +    this._preeditRenderer?.clear();
 +    this._compositionView.textContent = '';
 +    this._compositionPreedit = undefined;
@@ -1043,11 +1933,15 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..4d62369d0005f465318ec93e221fd3ee
    /**
     * Positions the composition view on top of the cursor and the textarea just below it (so the
     * IME helper dialog is positioned correctly).
-@@ -243,10 +936,23 @@ export class CompositionHelper {
+@@ -243,10 +1363,27 @@ export class CompositionHelper {
     *   necessary as the IME events across browsers are not consistently triggered.
     */
    public updateCompositionElements(dontRecurse?: boolean): void {
 -    if (!this._isComposing) {
++    if (this._gridPreedit) {
++      this._positionGridPreeditTextarea();
++      return;
++    }
 +    // Empty updates hide the overlay without ending the inferred transaction.
 +    if (!this._compositionView.classList.contains('active')) {
        return;
@@ -1068,7 +1962,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..4d62369d0005f465318ec93e221fd3ee
      if (this._bufferService.buffer.isCursorInViewport) {
        const cursorX = Math.min(this._bufferService.buffer.x, this._bufferService.cols - 1);
  
-@@ -254,31 +960,156 @@ export class CompositionHelper {
+@@ -254,31 +1391,371 @@ export class CompositionHelper {
        const cursorTop = this._bufferService.buffer.y * this._renderService.dimensions.css.cell.height;
        const cursorLeft = cursorX * this._renderService.dimensions.css.cell.width;
  
@@ -1232,13 +2126,587 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..4d62369d0005f465318ec93e221fd3ee
 +    emit(data.length);
 +    nodes.push(doc.createTextNode('‎'));
 +    preedit.replaceChildren(...nodes);
++  }
++}
++
++interface IGridPreeditCell {
++  codepoints: number[];
++  width: number;
++  /** UTF-16 offset in the preedit text where this cell's grapheme ends. */
++  end: number;
++}
++
++/**
++ * The preedit laid out the way the buffer would hold it once committed, so the renderer draws it
++ * as ordinary cells: graphemes join and take widths exactly as `InputHandler.print` would. A
++ * committed prefix (text sent but not yet echoed) is drawn the same way, without the underline.
++ */
++class CompositionGridPreedit implements IImePreedit {
++  public text = '';
++  public row = 0;
++  public cursorX = 0;
++  /** The first column the prefix and preedit occupy, as of the last `resolve`. */
++  public start = 0;
++  /** The prefix and preedit cells left after clipping to the row, as of the last `resolve`. */
++  public visibleWidth = 0;
++  /** The visible prefix cells, as of the last `resolve`; the preedit starts after them. */
++  public visiblePrefixWidth = 0;
++  private _cells: IGridPreeditCell[] = [];
++  private _width = 0;
++  private _prefixCells: IGridPreeditCell[] = [];
++  private _prefixWidth = 0;
++  private _allCells: IGridPreeditCell[] = [];
++  private _caret?: number;
++  private _firstVisible = 0;
++  private _tailSource = 0;
++  private _hidesTail = false;
++  private readonly _line = new BufferLine(0);
++  private readonly _work = new CellData();
++  private readonly _preeditAttr = new AttributeData();
++  private readonly _prefixAttr = new AttributeData();
++  private readonly _fillAttr = new AttributeData();
++
++  constructor(
++    private readonly _bufferService: IBufferService,
++    private readonly _unicodeService: IUnicodeService
++  ) {
++    // Shared by every preedit cell, so it is never mutated after this.
++    this._preeditAttr.extended = new ExtendedAttrs();
++    this._preeditAttr.extended.underlineStyle = UnderlineStyle.SINGLE;
++  }
++
++  public setText(text: string): void {
++    this.text = text;
++    this._caret = undefined;
++    this._cells = this._layout(text);
++    this._width = this._cells.reduce((sum, cell) => sum + cell.width, 0);
++    this._allCells = this._prefixCells.concat(this._cells);
++  }
++
++  /** Draws `text` before the preedit, as committed cells. */
++  public setPrefix(text: string): void {
++    this._prefixCells = this._layout(text);
++    this._prefixWidth = this._prefixCells.reduce((sum, cell) => sum + cell.width, 0);
++    this._allCells = this._prefixCells.concat(this._cells);
++  }
++
++  /** The cell width `text` takes, laid out as the buffer would store it. */
++  public measure(text: string): number {
++    return this._layout(text).reduce((sum, cell) => sum + cell.width, 0);
++  }
++
++  private _layout(text: string): IGridPreeditCell[] {
++    const cells: IGridPreeditCell[] = [];
++    let preceding = 0;
++    let offset = 0;
++    for (const char of text) {
++      offset += char.length;
++      const code = char.codePointAt(0)!;
++      // The buffer drops soft hyphens too.
++      if (code === 0xAD) {
++        continue;
++      }
++      const info = this._unicodeService.charProperties(code, preceding);
++      const width = UnicodeService.extractWidth(info);
++      const shouldJoin = UnicodeService.extractShouldJoin(info);
++      preceding = info;
++      const last = cells[cells.length - 1];
++      if (last && (shouldJoin || width === 0)) {
++        last.codepoints.push(code);
++        last.end = offset;
++        if (shouldJoin && width) {
++          last.width = Math.min(2, width);
++        }
++        continue;
++      }
++      cells.push({ codepoints: [code], width: Math.min(2, Math.max(1, width)), end: offset });
++    }
++    return cells;
++  }
++
++  /** Moves the caret to a UTF-16 offset inside the preedit, or its end; returns whether it moved. */
++  public setCaret(offset: number | undefined): boolean {
++    let caret: number | undefined;
++    if (offset !== undefined && offset >= 0 && offset < this.text.length) {
++      caret = 0;
++      for (const cell of this._cells) {
++        if (cell.end > offset) {
++          break;
++        }
++        caret += cell.width;
++      }
++    }
++    if (caret === this._caret) {
++      return false;
++    }
++    this._caret = caret;
++    return true;
++  }
++
++  public resolve(anchor: { x: number, y: number } | undefined, hidesTail: boolean): IImePreedit | undefined {
++    const total = this._prefixWidth + this._width;
++    if (total === 0) {
++      return undefined;
++    }
++    const buffer = this._bufferService.buffer;
++    const cols = this._bufferService.cols;
++    const cursorX = Math.max(0, Math.min(anchor?.x ?? buffer.x, cols - 1));
++    // Keep the newest text and one cell for the caret when the preedit outgrows the row.
++    const room = Math.max(1, cols - 1);
++    let first = 0;
++    let hidden = 0;
++    while (total - hidden > room && first < this._allCells.length - 1) {
++      hidden += this._allCells[first++].width;
++    }
++    this._firstVisible = first;
++    this.visibleWidth = total - hidden;
++    this.visiblePrefixWidth = Math.max(0, this._prefixWidth - hidden);
++    this._tailSource = cursorX;
++    this._hidesTail = hidesTail;
++    // End-aligned against the right edge so the caret stays on screen.
++    this.start = Math.max(0, Math.min(cursorX, cols - this.visibleWidth - 1));
++    this.row = buffer.ybase + (anchor?.y ?? buffer.y);
++    const caret = Math.max(0, Math.min(this.visibleWidth, this._prefixWidth + (this._caret ?? this._width) - hidden));
++    this.cursorX = Math.min(this.start + caret, cols - 1);
++    return this;
++  }
++
++  public composeLine(source: IBufferLine): IBufferLine {
++    if (!(source instanceof BufferLine)) {
++      return source;
++    }
++    const line = this._line;
++    const cols = Math.min(this._bufferService.cols, source.length);
++    line.copyFrom(source);
++    this._resolveAttributes(source);
++    const start = Math.min(this.start, cols);
++    const tail = Math.min(start + this.visibleWidth, cols);
++    if (this._hidesTail) {
++      for (let x = tail; x < cols; x++) {
++        line.setCellFromCodepoint(x, 0, 1, this._fillAttr);
++      }
++    } else if (tail < cols) {
++      // Reads as if the preedit were inserted at the cursor, pushing the committed tail right.
++      line.copyCellsFrom(source, this._tailSource, tail, cols - Math.max(tail, this._tailSource), false);
++      if (line.getWidth(tail) === 0) {
++        this._blankCell(line, tail);
++      }
++    }
++    let x = start;
++    for (let i = this._firstVisible; i < this._allCells.length; i++) {
++      const cell = this._allCells[i];
++      if (x + cell.width > cols) {
++        break;
++      }
++      const attr = i < this._prefixCells.length ? this._prefixAttr : this._preeditAttr;
++      line.setCellFromCodepoint(x, cell.codepoints[0], cell.width, attr);
++      for (let j = 1; j < cell.codepoints.length; j++) {
++        line.addCodepointToCell(x, cell.codepoints[j], 0);
++      }
++      if (cell.width === 2) {
++        line.setCellFromCodepoint(x + 1, 0, 0, attr);
++      }
++      x += cell.width;
++    }
++    // Never leave half of a wide character at either edge of the preedit or the row.
++    if (start > 0 && line.getWidth(start - 1) === 2) {
++      this._blankCell(line, start - 1);
++    }
++    if (cols > 0 && line.getWidth(cols - 1) === 2) {
++      this._blankCell(line, cols - 1);
++    }
++    return line;
++  }
++
++  /** Default foreground over the cursor cell's background, so the preedit sits inside TUI boxes. */
++  private _resolveAttributes(source: BufferLine): void {
++    const x = Math.min(this._tailSource, source.length - 1);
++    source.loadCell(x, this._work);
++    // An inverse cell is an app-drawn caret; the box around it is what the preedit sits in.
++    if (this._work.isInverse() && x > 0) {
++      source.loadCell(x - 1, this._work);
++    }
++    const bg = this._work.isInverse() ? 0 : this._work.bg & (Attributes.CM_MASK | Attributes.RGB_MASK);
++    this._preeditAttr.fg = FgFlags.UNDERLINE;
++    this._preeditAttr.bg = bg;
++    this._preeditAttr.updateExtended();
++    this._prefixAttr.fg = 0;
++    this._prefixAttr.bg = bg;
++    this._fillAttr.fg = 0;
++    this._fillAttr.bg = bg;
++  }
++
++  private _blankCell(line: BufferLine, x: number): void {
++    line.loadCell(x, this._work);
++    this._work.content = 1 << Content.WIDTH_SHIFT;
++    this._work.combinedData = '';
++    line.setCell(x, this._work);
    }
  }
+diff --git a/src/browser/renderer/dom/DomRenderer.ts b/src/browser/renderer/dom/DomRenderer.ts
+index 657217f7104c97ce54b98e88b381b325b061604c..fcbe8487607479c6aea5a71c20079b0c15986dfe 100644
+--- a/src/browser/renderer/dom/DomRenderer.ts
++++ b/src/browser/renderer/dom/DomRenderer.ts
+@@ -11,10 +11,11 @@ import { createSelectionRenderModel } from '../shared/SelectionRenderModel';
+ import { TextBlinkStateManager } from '../shared/TextBlinkStateManager';
+ import { IRenderDimensions, IRenderer, IRequestRedrawEvent, ISelectionRenderModel } from '../shared/Types';
+ import { ICharSizeService, ICoreBrowserService, IThemeService } from '../../services/Services';
+-import { ILinkifier2, ILinkifierEvent, ITerminal, ReadonlyColorSet } from '../../Types';
++import { IAdoptedCaret, IImePreedit, ILinkifier2, ILinkifierEvent, ITerminal, ReadonlyColorSet } from '../../Types';
++import { IBufferLine } from '../../../common/buffer/Types';
+ import { color } from '../../../common/Color';
+ import { Disposable, toDisposable } from '../../../common/Lifecycle';
+-import { IBufferService, ICoreService, IInstantiationService, IOptionsService } from '../../../common/services/Services';
++import { IBufferService, ICoreService, IInstantiationService, IOptionsService, IUnicodeService } from '../../../common/services/Services';
+ import { Emitter } from '../../../common/Event';
+ import { addDisposableListener } from '../../Dom';
+ 
+@@ -54,6 +55,8 @@ export class DomRenderer extends Disposable implements IRenderer {
+   private _textBlinkStateManager: TextBlinkStateManager;
+   private _rowHasBlinkingCells: boolean[] = [];
+   private _rowHasBlinkingCellsCount: number = 0;
++  /** The absolute row the last pass drew an adopted caret on, so a moved caret repaints it. */
++  private _adoptedCaretRow: number | undefined;
+ 
+   public dimensions: IRenderDimensions;
+ 
+@@ -74,7 +77,8 @@ export class DomRenderer extends Disposable implements IRenderer {
+     @IBufferService private readonly _bufferService: IBufferService,
+     @ICoreService private readonly _coreService: ICoreService,
+     @ICoreBrowserService private readonly _coreBrowserService: ICoreBrowserService,
+-    @IThemeService private readonly _themeService: IThemeService
++    @IThemeService private readonly _themeService: IThemeService,
++    @IUnicodeService unicodeService: IUnicodeService
+   ) {
+     super();
+     this._rowContainer = this._document.createElement('div');
+@@ -94,6 +98,7 @@ export class DomRenderer extends Disposable implements IRenderer {
+     this._injectCss(this._themeService.colors);
+ 
+     this._rowFactory = instantiationService.createInstance(DomRendererRowFactory, document);
++    this._rowFactory.unicodeService = unicodeService;
+ 
+     this._element.classList.add(Constants.TERMINAL_CLASS_PREFIX + this._terminalClass);
+     this._screenElement.appendChild(this._rowContainer);
+@@ -214,6 +219,10 @@ export class DomRenderer extends Disposable implements IRenderer {
+       `}` +
+       `${this._terminalSelector} span.${RowCss.BLINK_HIDDEN_CLASS} {` +
+       ` visibility: hidden;` +
++      `}` +
++      // Orca: text rather than padding leads a fitted wide glyph, so decorations span its cells.
++      `${this._terminalSelector} span.${RowCss.WIDE_GLYPH_CLASS}::before {` +
++      ` content: '\\a0';` +
+       `}`;
+     // Blink animation
+     const blinkAnimationUnderlineId = `blink_underline_${this._terminalClass}`;
+@@ -526,8 +535,19 @@ export class DomRenderer extends Disposable implements IRenderer {
+ 
+   public renderRows(start: number, end: number): void {
+     const buffer = this._bufferService.buffer;
+-    const cursorAbsoluteY = buffer.ybase + buffer.y;
+-    const cursorX = Math.min(buffer.x, this._bufferService.cols - 1);
++    const preedit = this._terminal.imePreedit;
++    const adopted = this._terminal.adoptedCaret;
++    const cursorAbsoluteY = preedit?.row ?? adopted?.row ?? buffer.ybase + buffer.y;
++    const cursorX = preedit?.cursorX ?? adopted?.x ?? Math.min(buffer.x, this._bufferService.cols - 1);
++    // Both the row the adopted caret left and the one it is on lose or gain the drawn cursor.
++    for (const caretRow of [this._adoptedCaretRow, adopted?.row]) {
++      const y = caretRow === undefined ? -1 : caretRow - buffer.ydisp;
++      if (y >= 0 && y < this._bufferService.rows) {
++        start = Math.min(start, y);
++        end = Math.max(end, y);
++      }
++    }
++    this._adoptedCaretRow = adopted?.row;
+     const cursorBlink = this._coreService.decPrivateModes.cursorBlink ?? this._optionsService.rawOptions.cursorBlink;
+     const cursorStyle = this._coreService.decPrivateModes.cursorStyle ?? this._optionsService.rawOptions.cursorStyle;
+     const cursorInactiveStyle = this._optionsService.rawOptions.cursorInactiveStyle;
+@@ -545,9 +565,10 @@ export class DomRenderer extends Disposable implements IRenderer {
+         this._setRowBlinkState(y, false);
+         continue;
+       }
++      const isPreeditRow = preedit?.row === row;
+       rowElement.replaceChildren(
+         ...this._rowFactory.createRow(
+-          lineData,
++          this._composeDrawnLine(lineData, row, preedit, adopted),
+           row,
+           row === cursorAbsoluteY,
+           cursorStyle,
+@@ -559,7 +580,9 @@ export class DomRenderer extends Disposable implements IRenderer {
+           this._widthCache,
+           -1,
+           -1,
+-          rowInfo
++          rowInfo,
++          isPreeditRow,
++          adopted !== undefined
+         )
+       );
+       this._setRowBlinkState(y, rowInfo.hasBlinkingCells);
+@@ -567,6 +590,12 @@ export class DomRenderer extends Disposable implements IRenderer {
+     this._updateTextBlinkState();
+   }
+ 
++  /** The row as drawn: the adopted caret's inverse cleared, then any IME preedit composed in. */
++  private _composeDrawnLine(line: IBufferLine, row: number, preedit: IImePreedit | undefined, adopted: IAdoptedCaret | undefined): IBufferLine {
++    const drawn = adopted?.row === row ? adopted.composeLine(line) : line;
++    return preedit?.row === row ? preedit.composeLine(drawn) : drawn;
++  }
++
+   private get _terminalSelector(): string {
+     return `.${Constants.TERMINAL_CLASS_PREFIX}${this._terminalClass}`;
+   }
+@@ -604,8 +633,10 @@ export class DomRenderer extends Disposable implements IRenderer {
+ 
+     cols = Math.min(cols, this._bufferService.cols);
+     const buffer = this._bufferService.buffer;
+-    const cursorAbsoluteY = buffer.ybase + buffer.y;
+-    const cursorX = Math.min(buffer.x, cols - 1);
++    const preedit = this._terminal.imePreedit;
++    const adopted = this._terminal.adoptedCaret;
++    const cursorAbsoluteY = preedit?.row ?? adopted?.row ?? buffer.ybase + buffer.y;
++    const cursorX = preedit?.cursorX ?? adopted?.x ?? Math.min(buffer.x, cols - 1);
+     const cursorBlink = this._optionsService.rawOptions.cursorBlink;
+     const cursorStyle = this._optionsService.rawOptions.cursorStyle;
+     const cursorInactiveStyle = this._optionsService.rawOptions.cursorInactiveStyle;
+@@ -624,9 +655,10 @@ export class DomRenderer extends Disposable implements IRenderer {
+         this._setRowBlinkState(i, false);
+         continue;
+       }
++      const isPreeditRow = preedit?.row === row;
+       rowElement.replaceChildren(
+         ...this._rowFactory.createRow(
+-          bufferline,
++          this._composeDrawnLine(bufferline, row, preedit, adopted),
+           row,
+           row === cursorAbsoluteY,
+           cursorStyle,
+@@ -638,7 +670,9 @@ export class DomRenderer extends Disposable implements IRenderer {
+           this._widthCache,
+           enabled ? (i === y ? x : 0) : -1,
+           enabled ? ((i === y2 ? x2 : cols) - 1) : -1,
+-          rowInfo
++          rowInfo,
++          isPreeditRow,
++          adopted !== undefined
+         )
+       );
+       this._setRowBlinkState(i, rowInfo.hasBlinkingCells);
+diff --git a/src/browser/renderer/dom/DomRendererRowFactory.ts b/src/browser/renderer/dom/DomRendererRowFactory.ts
+index 6ae089a4387de14488f39f5dab7024cffdcd9d10..541e0b09ea71e792a5fe963984ae016a0b4fb0f0 100644
+--- a/src/browser/renderer/dom/DomRendererRowFactory.ts
++++ b/src/browser/renderer/dom/DomRendererRowFactory.ts
+@@ -8,7 +8,7 @@ import { IBufferLine, ICellData } from '../../../common/buffer/Types';
+ import { INVERTED_DEFAULT_COLOR } from '../shared/Constants';
+ import { WHITESPACE_CELL_CHAR, Attributes } from '../../../common/buffer/Constants';
+ import { CellData } from '../../../common/buffer/CellData';
+-import { ICoreService, IDecorationService, IOptionsService } from '../../../common/services/Services';
++import { ICoreService, IDecorationService, IOptionsService, IUnicodeService } from '../../../common/services/Services';
+ import { channels, color } from '../../../common/Color';
+ import { ICharacterJoinerService, ICoreBrowserService, IThemeService } from '../../services/Services';
+ import { JoinedCellData } from '../../services/CharacterJoinerService';
+@@ -31,7 +31,8 @@ export const enum RowCss {
+   CURSOR_STYLE_BLOCK_CLASS = 'xterm-cursor-block',
+   CURSOR_STYLE_OUTLINE_CLASS = 'xterm-cursor-outline',
+   CURSOR_STYLE_BAR_CLASS = 'xterm-cursor-bar',
+-  CURSOR_STYLE_UNDERLINE_CLASS = 'xterm-cursor-underline'
++  CURSOR_STYLE_UNDERLINE_CLASS = 'xterm-cursor-underline',
++  WIDE_GLYPH_CLASS = 'xterm-wide-glyph'
+ }
+ 
+ 
+@@ -43,6 +44,8 @@ export class DomRendererRowFactory {
+   private _columnSelectMode: boolean = false;
+ 
+   public defaultSpacing = 0;
++  /** Orca: set by DomRenderer; without it (hand-built factories) wide glyphs stay unfitted. */
++  public unicodeService: IUnicodeService | undefined;
+ 
+   constructor(
+     private readonly _document: Document,
+@@ -73,14 +76,17 @@ export class DomRendererRowFactory {
+     widthCache: WidthCache,
+     linkStart: number,
+     linkEnd: number,
+-    rowInfo?: { hasBlinkingCells: boolean }
++    rowInfo?: { hasBlinkingCells: boolean },
++    ignoreJoins: boolean = false,
++    drawsHiddenCursor: boolean = false
+   ): HTMLSpanElement[] {
+ 
+     const elements: HTMLSpanElement[] = [];
+     if (rowInfo) {
+       rowInfo.hasBlinkingCells = false;
+     }
+-    const joinedRanges = this._characterJoinerService.getJoinedCharacters(row);
++    // Joins are computed from the buffer, whose columns a composed-in preedit has shifted.
++    const joinedRanges = ignoreJoins ? [] : this._characterJoinerService.getJoinedCharacters(row);
+     const colors = this._themeService.colors;
+ 
+     let lineLength = lineData.getNoBgTrimmedLength();
+@@ -181,6 +187,12 @@ export class DomRendererRowFactory {
+ 
+       // lookup char render width and calc spacing
+       spacing = width * cellWidth - widthCache.get(chars, cell.isBold(), cell.isItalic());
++      // Orca: enlarged and centered wide glyphs carry their own spacing, so they never merge. Like
++      // the WebGL atlas, only fit cells exactly as wide as their first code point.
++      const wideGlyph = width > 1 && !isJoined && !cell.isInvisible() && this._optionsService.rawOptions.fitWideGlyphs
++        && width === this.unicodeService?.wcwidth(chars.codePointAt(0) ?? 0)
++        ? widthCache.getWideGlyphFit(chars, cell.isBold(), cell.isItalic(), width * cellWidth)
++        : undefined;
+ 
+       if (!charElement) {
+         charElement = this._document.createElement('span');
+@@ -212,6 +224,7 @@ export class DomRendererRowFactory {
+           && !isJoined
+           && !isDecorated
+           && isValidJoinRange
++          && !wideGlyph
+         ) {
+           // no span alterations, thus only account chars skipping all code below
+           if (cell.isInvisible()) {
+@@ -252,7 +265,8 @@ export class DomRendererRowFactory {
+         }
+       }
+ 
+-      if (!this._coreService.isCursorHidden && isCursorCell && this._coreService.isCursorInitialized) {
++      // An adopted app caret is drawn with the cursor hidden.
++      if ((drawsHiddenCursor || !this._coreService.isCursorHidden) && isCursorCell && this._coreService.isCursorInitialized) {
+         classes.push(RowCss.CURSOR_CLASS);
+         if (this._coreBrowserService.isFocused) {
+           if (cursorBlink) {
+@@ -299,6 +313,10 @@ export class DomRendererRowFactory {
+         classes.push(RowCss.DIM_CLASS);
+       }
+ 
++      if (wideGlyph) {
++        classes.push(RowCss.WIDE_GLYPH_CLASS);
++      }
++
+       if (cell.isInvisible()) {
+         text = WHITESPACE_CELL_CHAR;
+       } else {
+@@ -469,13 +487,25 @@ export class DomRendererRowFactory {
+       }
+ 
+       // exclude conditions for cell merging - never merge these
+-      if (!isCursorCell && !isJoined && !isDecorated && isValidJoinRange) {
++      if (!isCursorCell && !isJoined && !isDecorated && isValidJoinRange && !wideGlyph) {
+         cellAmount++;
+       } else {
+         charElement.textContent = text;
+       }
+-      // apply letter-spacing rule
+-      if (spacing !== this.defaultSpacing) {
++      if (wideGlyph) {
++        // A ::before space and the letter-spacing put `offset` on each side of the glyph; negative
++        // word-spacing cancels the space's own advance, so the span stays exactly its cells wide.
++        charElement.style.letterSpacing = `${wideGlyph.offset}px`;
++        charElement.style.wordSpacing = `${-wideGlyph.space}px`;
++        if (wideGlyph.scale !== 1) {
++          charElement.style.fontSize = `${this._optionsService.rawOptions.fontSize * wideGlyph.scale}px`;
++        }
++        if (wideGlyph.lineHeightDelta !== 0) {
++          // 1lh is the row's line-height; the baseline moves by half of what the span's differs.
++          charElement.style.lineHeight = `calc(1lh - ${wideGlyph.lineHeightDelta}px)`;
++        }
++      } else if (spacing !== this.defaultSpacing) {
++        // apply letter-spacing rule
+         charElement.style.letterSpacing = `${spacing}px`;
+       }
+ 
 diff --git a/src/browser/renderer/dom/WidthCache.ts b/src/browser/renderer/dom/WidthCache.ts
-index d45938515e7a9903de0da0d61716fd42e4deea0c..17d6577e388eb2e4397338093e35373864b822a4 100644
+index d45938515e7a9903de0da0d61716fd42e4deea0c..92cab3ed07644b5ed318884cac8c425b8cdce882 100644
 --- a/src/browser/renderer/dom/WidthCache.ts
 +++ b/src/browser/renderer/dom/WidthCache.ts
-@@ -142,7 +142,7 @@ export class WidthCache implements IDisposable {
+@@ -6,6 +6,7 @@
+ import { throwIfFalsy } from '../shared/RendererUtils';
+ import { IDisposable } from '../../../common/Types';
+ import { FontWeight } from '../../../common/services/Services';
++import { IWideGlyphFit, WideGlyphFitter } from '../shared/WideGlyphFit';
+ 
+ 
+ export const enum WidthCacheSettings {
+@@ -28,6 +29,16 @@ const enum FontVariant {
+ export interface IWidthCacheFontVariantCanvas {
+   setFont(fontFamily: string, fontSize: number, fontWeight: FontWeight, italic: boolean): void;
+   measure(c: string): number;
++  /** Orca: full metrics for wide glyph fitting; measure-only doubles leave glyphs unfitted. */
++  measureMetrics?(c: string): TextMetrics;
++}
++
++/** Orca: a wide glyph fit plus what a DOM row needs to apply it. */
++export interface IDomWideGlyphFit extends IWideGlyphFit {
++  /** Advance of the leading space at the scaled size, which negative word-spacing cancels. */
++  space: number;
++  /** Line-height reduction that puts the enlarged strut's baseline `shift` below the row's. */
++  lineHeightDelta: number;
+ }
+ 
+ export class WidthCache implements IDisposable {
+@@ -48,6 +59,8 @@ export class WidthCache implements IDisposable {
+   private _weight: FontWeight = 'normal';
+   private _weightBold: FontWeight = 'bold';
+   private _canvasElements: IWidthCacheFontVariantCanvas[] = [];
++  private _wideGlyphFitter = new WideGlyphFitter();
++  private _wideGlyphFits = new Map<string, IDomWideGlyphFit | null>();
+ 
+   constructor(
+     canvasFactory: () => IWidthCacheFontVariantCanvas = () => new WidthCacheFontVariantCanvas()
+@@ -74,6 +87,9 @@ export class WidthCache implements IDisposable {
+     this._flat.fill(WidthCacheSettings.FLAT_UNSET);
+     // .clear() has some overhead, re-assign instead (>3 times faster)
+     this._holey = new Map<string, number>();
++    this._wideGlyphFits = new Map();
++    // Orca: the fitter keys faces by variant only, so a font or weight change must drop them.
++    this._wideGlyphFitter = new WideGlyphFitter();
+   }
+ 
+   /**
+@@ -137,12 +153,49 @@ export class WidthCache implements IDisposable {
+     return width;
+   }
+ 
++  /** Orca: how to enlarge and center wide glyph `c` in `span` pixels, if it needs it. */
++  public getWideGlyphFit(c: string, bold: boolean | number, italic: boolean | number, span: number): IDomWideGlyphFit | undefined {
++    let variant = FontVariant.REGULAR;
++    if (bold) variant |= FontVariant.BOLD;
++    if (italic) variant |= FontVariant.ITALIC;
++    const key = `${c}|${variant}|${span}`;
++    let fit = this._wideGlyphFits.get(key);
++    if (fit === undefined) {
++      fit = this._fitWideGlyph(c, bold, italic, variant, span);
++      this._wideGlyphFits.set(key, fit);
++    }
++    return fit ?? undefined;
++  }
++
++  private _fitWideGlyph(c: string, bold: boolean | number, italic: boolean | number, variant: FontVariant, span: number): IDomWideGlyphFit | null {
++    const canvas = this._canvasElements[variant];
++    const measure = canvas.measureMetrics?.bind(canvas);
++    if (!measure) {
++      return null;
++    }
++    // The span's line box is the primary font's; half a pixel keeps antialiasing inside the row.
++    const line = measure('W');
++    const fit = this._wideGlyphFitter.fit(c, {
++      span,
++      ascent: line.fontBoundingBoxAscent - 0.5,
++      descent: line.fontBoundingBoxDescent - 0.5
++    }, String(variant), measure);
++    if (!fit) {
++      return null;
++    }
++    return {
++      ...fit,
++      space: this.get('\xa0', bold, italic) * fit.scale,
++      lineHeightDelta: (fit.scale - 1) * (line.fontBoundingBoxAscent - line.fontBoundingBoxDescent) - 2 * fit.shift
++    };
++  }
++
+   protected _measure(c: string, variant: FontVariant): number {
+     return this._canvasElements[variant].measure(c);
    }
  }
  
@@ -1247,6 +2715,277 @@ index d45938515e7a9903de0da0d61716fd42e4deea0c..17d6577e388eb2e4397338093e353738
    private _canvas: OffscreenCanvas | HTMLCanvasElement;
    private _ctx: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D;
  
+@@ -166,4 +219,8 @@ class WidthCacheFontVariantCanvas implements IWidthCacheFontVariantCanvas {
+   public measure(c: string): number {
+     return this._ctx.measureText(c).width;
+   }
++
++  public measureMetrics(c: string): TextMetrics {
++    return this._ctx.measureText(c);
++  }
+ }
+diff --git a/src/browser/renderer/shared/Types.ts b/src/browser/renderer/shared/Types.ts
+index d664d1611b44e605c02c1bc22a5da271861d83fa..ece6cb977365dac176b2ea757fb92299610007f2 100644
+--- a/src/browser/renderer/shared/Types.ts
++++ b/src/browser/renderer/shared/Types.ts
+@@ -71,6 +71,8 @@ export interface IRenderer extends IDisposable {
+   clear(): void;
+   renderRows(start: number, end: number): void;
+   clearTextureAtlas?(): void;
++  /** Orca: draws every row this many device pixels higher; implementing it opts into pixel scrolling. */
++  setPixelScrollOffset?(deviceOffset: number): void;
+ }
+ 
+ export interface ISelectionRenderModel {
+diff --git a/src/browser/renderer/shared/WideGlyphFit.ts b/src/browser/renderer/shared/WideGlyphFit.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..fbd9855c62cbfbdab1fa867269f2860d46c89fbd
+--- /dev/null
++++ b/src/browser/renderer/shared/WideGlyphFit.ts
+@@ -0,0 +1,131 @@
++/**
++ * Copyright (c) 2026 The xterm.js authors. All rights reserved.
++ * @license MIT
++ */
++
++// Orca: sizes and centers wide glyphs whose fallback face leaves them narrower than their cells.
++// The WebGL addon cannot import new core files, so it ships a byte-identical copy; keep this file
++// import-free and limited to erasable TypeScript so Orca can unit test both copies as installed.
++
++/** Scripts a terminal font stack draws from one fallback face, so one scale keeps a line even. */
++export type WideGlyphScript = 'hangul' | 'han' | 'kana';
++
++// The script's scale and baseline shift must fit every glyph of the face: sample its extremes.
++const SCRIPT_SAMPLES: Record<WideGlyphScript, string> = {
++  hangul: '가갈뷁힣ㅎ',
++  han: '中國鬱龍語',
++  kana: 'あガぽヅカ'
++};
++
++export function getWideGlyphScript(code: number): WideGlyphScript | undefined {
++  if ((code >= 0xAC00 && code <= 0xD7A3) || (code >= 0x1100 && code <= 0x115F) ||
++    (code >= 0x3130 && code <= 0x318F) || (code >= 0xA960 && code <= 0xA97F)) {
++    return 'hangul';
++  }
++  if ((code >= 0x3040 && code <= 0x30FF) || (code >= 0x31F0 && code <= 0x31FF)) {
++    return 'kana';
++  }
++  if ((code >= 0x3400 && code <= 0x4DBF) || (code >= 0x4E00 && code <= 0x9FFF) ||
++    (code >= 0xF900 && code <= 0xFAFF) || (code >= 0x20000 && code <= 0x3FFFF)) {
++    return 'han';
++  }
++  return undefined;
++}
++
++/** The space a wide glyph may fill, measured from the alphabetic baseline it is drawn on. */
++export interface IWideGlyphBox {
++  /** Width of the cells the glyph occupies. */
++  span: number;
++  /** Room above the baseline, up to the top of the primary font's line box. */
++  ascent: number;
++  /** Room below the baseline, down to the bottom of the primary font's line box. */
++  descent: number;
++}
++
++export interface IWideGlyphFit {
++  /** Font size multiplier; 1 keeps the terminal font size. */
++  scale: number;
++  /** Space left of the scaled glyph that centers it in its span. */
++  offset: number;
++  /** How far to lower the baseline so the scaled ink stays inside the line box. */
++  shift: number;
++}
++
++/** The subset of TextMetrics the fit reads, measured at the alphabetic baseline. */
++export interface IWideGlyphMetrics {
++  width: number;
++  actualBoundingBoxAscent: number;
++  actualBoundingBoxDescent: number;
++}
++
++interface IInkExtent {
++  width: number;
++  ascent: number;
++  descent: number;
++}
++
++function inkExtent(metrics: IWideGlyphMetrics): IInkExtent {
++  return { width: metrics.width, ascent: metrics.actualBoundingBoxAscent, descent: metrics.actualBoundingBoxDescent };
++}
++
++/** Largest scale that keeps `ink` within the span and the line box's full height; below 1 when it cannot fit. */
++function maxScale(ink: IInkExtent, box: IWideGlyphBox): number {
++  const height = ink.ascent + ink.descent;
++  return Math.min(box.span / ink.width, height > 0 ? (box.ascent + box.descent) / height : Infinity);
++}
++
++/** The smallest baseline move that keeps `ink` at `scale` inside the line box. */
++function baselineShift(ink: IInkExtent, scale: number, box: IWideGlyphBox): number {
++  return Math.min(Math.max(0, ink.ascent * scale - box.ascent), box.descent - ink.descent * scale);
++}
++
++export class WideGlyphFitter {
++  private readonly _faces = new Map<string, { scale: number, ink: IInkExtent }>();
++
++  /**
++   * Fits a glyph that occupies exactly the cells of its first code point. `measure` reports the
++   * unscaled font; `fontKey` separates font variants. Undefined when the glyph already fills its
++   * span. Listed scripts grow as far as the span and line box allow, lowering the baseline only
++   * once the line box's ascent runs out; other glyphs only center.
++   */
++  public fit(chars: string, box: IWideGlyphBox, fontKey: string, measure: (text: string) => IWideGlyphMetrics): IWideGlyphFit | undefined {
++    const glyph = inkExtent(measure(chars));
++    if (!(glyph.width > 0) || glyph.width >= box.span) {
++      return undefined;
++    }
++    const script = getWideGlyphScript(chars.codePointAt(0) ?? 0);
++    const face = script && this._measureFace(script, box, fontKey, measure);
++    if (!face || face.scale <= 1) {
++      return { scale: 1, offset: (box.span - glyph.width) / 2, shift: 0 };
++    }
++    // Also bound by the glyph itself: a code point the samples miss may come from another face.
++    // Never shrinks: a glyph taller than the line box keeps its size and overflows it, as unfitted.
++    const scale = Math.max(1, Math.min(face.scale, maxScale(glyph, box)));
++    // The face's shift, not the glyph's, keeps every glyph of the face on one baseline; it only
++    // ever lowers, so an overflowing glyph never rises above where it draws unfitted.
++    const shift = Math.max(0, Math.min(
++      Math.max(baselineShift(face.ink, scale, box), glyph.ascent * scale - box.ascent),
++      box.descent - glyph.descent * scale
++    ));
++    return { scale, offset: (box.span - glyph.width * scale) / 2, shift };
++  }
++
++  private _measureFace(script: WideGlyphScript, box: IWideGlyphBox, fontKey: string, measure: (text: string) => IWideGlyphMetrics): { scale: number, ink: IInkExtent } {
++    const key = `${fontKey}|${script}|${box.span}|${box.ascent}|${box.descent}`;
++    let face = this._faces.get(key);
++    if (!face) {
++      const ink: IInkExtent = { width: 0, ascent: -Infinity, descent: -Infinity };
++      for (const sample of SCRIPT_SAMPLES[script]) {
++        const metrics = measure(sample);
++        if (metrics.width > 0) {
++          ink.width = Math.max(ink.width, metrics.width);
++          ink.ascent = Math.max(ink.ascent, metrics.actualBoundingBoxAscent);
++          ink.descent = Math.max(ink.descent, metrics.actualBoundingBoxDescent);
++        }
++      }
++      face = { scale: ink.width > 0 ? maxScale(ink, box) : 1, ink };
++      this._faces.set(key, face);
++    }
++    return face;
++  }
++}
+diff --git a/src/browser/services/MouseCoordsService.ts b/src/browser/services/MouseCoordsService.ts
+index 7e110ea988bd320e99e24f5b87628ad7f3adff72..bff67033b5e0a1ea07ec0251d6d0bed2db8b1892 100644
+--- a/src/browser/services/MouseCoordsService.ts
++++ b/src/browser/services/MouseCoordsService.ts
+@@ -17,9 +17,11 @@ export class MouseCoordsService implements IMouseCoordsService {
+   }
+ 
+   public getCoords(event: {clientX: number, clientY: number}, element: HTMLElement, colCount: number, rowCount: number, isSelection?: boolean): [number, number] | undefined {
++    // Orca: a pixel-scroll offset draws each row above its cell.
++    const pixelScrollOffset = this._renderService.pixelScrollOffset ?? 0;
+     return getCoords(
+       getWindow(element),
+-      event,
++      pixelScrollOffset ? { clientX: event.clientX, clientY: event.clientY + pixelScrollOffset } : event,
+       element,
+       colCount,
+       rowCount,
+@@ -35,6 +37,10 @@ export class MouseCoordsService implements IMouseCoordsService {
+     if (!this._charSizeService.hasValidSize) {
+       return undefined;
+     }
++    // A detached element has no computed padding, so coords can be NaN.
++    if (!Number.isFinite(coords[0]) || !Number.isFinite(coords[1])) {
++      return undefined;
++    }
+     coords[0] = Math.min(Math.max(coords[0], 0), this._renderService.dimensions.css.canvas.width - 1);
+     coords[1] = Math.min(Math.max(coords[1], 0), this._renderService.dimensions.css.canvas.height - 1);
+     return {
+diff --git a/src/browser/services/MouseService.ts b/src/browser/services/MouseService.ts
+index 353e0581da7a95c9473d6169cd9ec548bc3bfe30..d587c02426b284b9567208c02b0d59d1feb24f8e 100644
+--- a/src/browser/services/MouseService.ts
++++ b/src/browser/services/MouseService.ts
+@@ -495,9 +495,9 @@ export class MouseService implements IMouseService {
+    * to fulfill protocol and encoding restrictions.
+    */
+   private _triggerMouseEvent(e: ICoreMouseEvent): boolean {
+-    // range check for col/row
+-    if (e.col < 0 || e.col >= this._bufferService.cols
+-      || e.row < 0 || e.row >= this._bufferService.rows) {
++    // range check for col/row, written to also reject NaN coordinates
++    if (!(e.col >= 0 && e.col < this._bufferService.cols
++      && e.row >= 0 && e.row < this._bufferService.rows)) {
+       return false;
+     }
+ 
+diff --git a/src/browser/services/RenderService.ts b/src/browser/services/RenderService.ts
+index 75cd55418b0eac94c3f28273c73a26086e437a90..ff31f2740e48010fdbf03f4d4412827f41c49366 100644
+--- a/src/browser/services/RenderService.ts
++++ b/src/browser/services/RenderService.ts
+@@ -55,6 +55,12 @@ export class RenderService extends Disposable implements IRenderService {
+ 
+   public get dimensions(): IRenderDimensions { return this._renderer.value!.dimensions; }
+ 
++  private _pixelScrollOffset: number = 0;
++  public get pixelScrollOffset(): number {
++    return this._pixelScrollOffset && this._pixelScrollOffset * this.dimensions.css.cell.height / this.dimensions.device.cell.height;
++  }
++  public get supportsPixelScroll(): boolean { return typeof this._renderer.value?.setPixelScrollOffset === 'function'; }
++
+   constructor(
+     private _rowCount: number,
+     screenElement: HTMLElement,
+@@ -104,7 +110,8 @@ export class RenderService extends Disposable implements IRenderService {
+       'fontWeight',
+       'fontWeightBold',
+       'minimumContrastRatio',
+-      'rescaleOverlappingGlyphs'
++      'rescaleOverlappingGlyphs',
++      'fitWideGlyphs'
+     ], () => {
+       this.clear();
+       this.handleResize(bufferService.cols, bufferService.rows);
+@@ -244,8 +251,20 @@ export class RenderService extends Disposable implements IRenderService {
+     return !!this._renderer.value;
+   }
+ 
++  public setPixelScrollOffset(deviceOffset: number): void {
++    const offset = this.supportsPixelScroll ? deviceOffset : 0;
++    if (offset === this._pixelScrollOffset) {
++      return;
++    }
++    this._pixelScrollOffset = offset;
++    this._renderer.value?.setPixelScrollOffset?.(offset);
++    // Not redraw-only: decorations and links follow rendered viewport changes.
++    this.refreshRows(this._rowCount - 1, this._rowCount - 1);
++  }
++
+   public setRenderer(renderer: IRenderer): void {
+     this._renderer.value = renderer;
++    this._pixelScrollOffset = 0;
+     // If the value was not set, the terminal is being disposed so ignore it
+     if (this._renderer.value) {
+       this._renderer.value.onRequestRedraw(e => this.refreshRows(e.start, e.end, e.sync, true));
+diff --git a/src/browser/services/Services.ts b/src/browser/services/Services.ts
+index 2b8e06b7d7c81fa4292dff4770476473cd29c277..b89a7122563c24d3d46a119ac7741c3aa0aef2b6 100644
+--- a/src/browser/services/Services.ts
++++ b/src/browser/services/Services.ts
+@@ -104,6 +104,14 @@ export interface IRenderService extends IDisposable {
+   handleSelectionChanged(start: [number, number] | undefined, end: [number, number] | undefined, columnSelectMode: boolean): void;
+   handleCursorMove(): void;
+   clear(): void;
++
++  // Orca: pixel scrolling. Optional so implementations without it (test mocks) still conform.
++  /** CSS pixels the rows are drawn above their cells; 0 unless the renderer draws the offset. */
++  readonly pixelScrollOffset?: number;
++  /** Whether the renderer can draw a sub-row offset. */
++  readonly supportsPixelScroll?: boolean;
++  /** Sets the sub-row offset in whole device pixels. */
++  setPixelScrollOffset?(deviceOffset: number): void;
+ }
+ 
+ export const ISelectionService = createDecorator<ISelectionService>('SelectionService');
 diff --git a/src/common/SortedList.ts b/src/common/SortedList.ts
 index 8a10076e3963e33b4a7d1e4602333eb3f4772dc9..c6dcf18b762e3c56fe22e9c2d49b8e550d96f915 100644
 --- a/src/common/SortedList.ts
@@ -1369,3 +3108,42 @@ index 8a10076e3963e33b4a7d1e4602333eb3f4772dc9..c6dcf18b762e3c56fe22e9c2d49b8e55
        this._flushDeletedTask.flush();
      }
    }
+diff --git a/src/common/services/OptionsService.ts b/src/common/services/OptionsService.ts
+index d14982e3ff8907fd3182c8c970d81afa74eba84b..519469b8cb3d1388d4ceb232505f115347a8fafd 100644
+--- a/src/common/services/OptionsService.ts
++++ b/src/common/services/OptionsService.ts
+@@ -37,7 +37,10 @@ export const DEFAULT_OPTIONS: Readonly<Required<ITerminalOptions>> = {
+   scrollOnUserInput: true,
+   scrollSensitivity: 1,
+   screenReaderMode: false,
++  imePreeditInGrid: false,
++  fitWideGlyphs: false,
+   smoothScrollDuration: 0,
++  pixelScroll: false,
+   macOptionIsMeta: false,
+   macOptionClickForcesSelection: false,
+   minimumContrastRatio: 1,
+diff --git a/src/common/services/Services.ts b/src/common/services/Services.ts
+index 8f0aeeed15d38aa8ab341577520db15d13788a52..255595b8be38819ee079075c5788e499e8b029f1 100644
+--- a/src/common/services/Services.ts
++++ b/src/common/services/Services.ts
+@@ -218,6 +218,10 @@ export interface ITerminalOptions {
+   fontSize?: number;
+   fontFamily?: string;
+   fontWeight?: FontWeight;
++  /** Draws the IME preedit in the renderer's cell grid instead of the composition-view overlay. */
++  imePreeditInGrid?: boolean;
++  /** Enlarges Hangul, Han and Kana glyphs narrower than their two cells and centers wide glyphs. */
++  fitWideGlyphs?: boolean;
+   fontWeightBold?: FontWeight;
+   ignoreBracketedPasteMode?: boolean;
+   letterSpacing?: number;
+@@ -239,6 +243,8 @@ export interface ITerminalOptions {
+   scrollOnUserInput?: boolean;
+   scrollSensitivity?: number;
+   smoothScrollDuration?: number;
++  /** Orca: scrolls the normal buffer's viewport by pixels when the renderer supports a sub-row offset. */
++  pixelScroll?: boolean;
+   tabStopWidth?: number;
+   theme?: ITheme;
+   windowsPty?: IWindowsPty;

@@ -2,13 +2,17 @@ import type { ManagedPane, PaneManager } from '@/lib/pane-manager/pane-manager'
 import type { PaneCwdMap } from './resolve-split-cwd'
 import type { PtyTransport } from './pty-transport'
 import { copyTerminalSelection } from './terminal-selection-copy'
+import { showTerminalCopyFeedback } from './terminal-copy-feedback'
 import { splitTerminalPaneWithInheritedCwd } from './terminal-pane-split-with-inherited-cwd'
 import {
   markTerminalFollowOutput,
   markTerminalPinnedViewport,
   syncTerminalScrollIntentFromViewport
 } from '@/lib/pane-manager/terminal-scroll-intent'
+import { smoothScrollTerminalTo } from '@/lib/pane-manager/terminal-smooth-scroll'
 import type { resolveTerminalKeyboardShortcutAction } from './terminal-keyboard-shortcut-matching'
+import { requestTerminalComposerOpen } from '../terminal-composer/terminal-composer-open-event'
+import { getTerminalPaneMarks } from './terminal-marks/terminal-pane-marks'
 
 type TerminalShortcutAction = NonNullable<ReturnType<typeof resolveTerminalKeyboardShortcutAction>>
 
@@ -79,6 +83,15 @@ export function dispatchTerminalShortcutAction(
     event.stopImmediatePropagation()
     return
   }
+  if (action.type === 'navigatePrompt') {
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    const pane = manager.getActivePane() ?? manager.getPanes()[0]
+    if (pane) {
+      getTerminalPaneMarks(pane.terminal)?.navigatePrompt(action.direction)
+    }
+    return
+  }
   if (action.type === 'copySelection') {
     const pane = manager.getActivePane() ?? manager.getPanes()[0]
     if (!pane || !pane.terminal.getSelection()) {
@@ -87,15 +100,27 @@ export function dispatchTerminalShortcutAction(
     event.preventDefault()
     event.stopImmediatePropagation()
     if (!event.repeat) {
+      // Why: under kitty release reporting xterm would encode this key's keyup
+      // as user input and scroll to the bottom mid-copy (#17606).
       armNativeOnlyShortcut(event)
       void copyTerminalSelection({
         terminal: pane.terminal,
-        writeClipboardText: window.api.ui.writeTerminalClipboardText
+        writeClipboardText: window.api.ui.writeTerminalClipboardText,
+        onCopied: showTerminalCopyFeedback
       }).catch(() => {})
     }
     return
   }
   if (event.repeat) {
+    return
+  }
+  if (action.type === 'toggleBookmark') {
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    const pane = manager.getActivePane() ?? manager.getPanes()[0]
+    if (pane) {
+      getTerminalPaneMarks(pane.terminal)?.toggleBookmark()
+    }
     return
   }
   if (action.type === 'toggleSearch') {
@@ -118,6 +143,7 @@ export function dispatchTerminalShortcutAction(
     return
   }
   if (action.type === 'scrollViewport') {
+    armNativeOnlyShortcut(event)
     event.preventDefault()
     event.stopImmediatePropagation()
     const pane = manager.getActivePane() ?? manager.getPanes()[0]
@@ -126,12 +152,18 @@ export function dispatchTerminalShortcutAction(
     }
     if (action.position === 'top') {
       markTerminalPinnedViewport(pane.terminal)
-      pane.terminal.scrollToLine(0)
     } else {
       markTerminalFollowOutput(pane.terminal)
-      pane.terminal.scrollToBottom()
     }
-    syncTerminalScrollIntentFromViewport(pane.terminal)
+    // Why: an animated jump re-samples intent when it lands; sampling now would read the start.
+    if (!smoothScrollTerminalTo(pane.terminal, action.position)) {
+      if (action.position === 'top') {
+        pane.terminal.scrollToLine(0)
+      } else {
+        pane.terminal.scrollToBottom()
+      }
+      syncTerminalScrollIntentFromViewport(pane.terminal)
+    }
     return
   }
   if (action.type === 'focusPane') {
@@ -193,6 +225,15 @@ export function dispatchTerminalShortcutAction(
     const pane = manager.getActivePane() ?? manager.getPanes()[0]
     if (pane) {
       onClearPaneTitle(pane.id)
+    }
+    return
+  }
+  if (action.type === 'openComposer') {
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    const pane = manager.getActivePane() ?? manager.getPanes()[0]
+    if (pane) {
+      requestTerminalComposerOpen({ tabId, paneId: pane.id })
     }
     return
   }

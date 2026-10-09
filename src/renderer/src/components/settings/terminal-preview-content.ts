@@ -23,7 +23,8 @@ function prompt(): string {
 const lines: string[] = [
   `${prompt()}npm test`,
   ` ${BG_GREEN}${FG_BLACK} PASS ${RESET} src/preview.test.ts`,
-  ` ${GREEN}✓${RESET} renders sample output ${DIM}(3ms)${RESET}`,
+  // Why CJK here: the preview shows how the fallback chain renders wide text.
+  ` ${GREEN}✓${RESET} renders 한글 漢字 かな ${DIM}(3ms)${RESET}`,
   ` ${RED}✗ ligatures: => != >= <= ===${RESET}`,
   ``,
   `${YELLOW}def${RESET} ${CYAN}total${RESET}(xs: list[${CYAN}int${RESET}]) -> ${CYAN}int${RESET}:`,

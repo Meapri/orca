@@ -69,6 +69,7 @@ function renderMenu(overrides: Record<string, unknown> = {}): string {
     canExpandPane: true,
     menuPaneIsExpanded: false,
     onCopy: vi.fn(),
+    onCopyRaw: vi.fn(),
     onSelectAll: vi.fn(),
     onPaste: vi.fn(),
     onSplitRight: vi.fn(),
@@ -102,6 +103,7 @@ function renderMenu(overrides: Record<string, unknown> = {}): string {
     onCopyPaneId: vi.fn(),
     canCopyAgentSessionId: false,
     onCopyAgentSessionId: vi.fn(),
+    getMenuTerminal: () => null,
     ...overrides
   }
   return renderToStaticMarkup(React.createElement(TerminalContextMenu, props))

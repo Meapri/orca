@@ -1,8 +1,302 @@
+diff --git a/src/CharAtlasUtils.ts b/src/CharAtlasUtils.ts
+index d9ca69b39d4be3a3e7f5625c469e0fddfa837946..cad782913aa8a964f4a0d3fc235db1d6ce773d41 100644
+--- a/src/CharAtlasUtils.ts
++++ b/src/CharAtlasUtils.ts
+@@ -48,6 +48,8 @@ export function generateConfig(deviceCellWidth: number, deviceCellHeight: number
+     allowTransparency: options.allowTransparency,
+     drawBoldTextInBrightColors: options.drawBoldTextInBrightColors,
+     minimumContrastRatio: options.minimumContrastRatio,
++    // Orca's core patch adds this option; the published typings the addon builds against lack it.
++    fitWideGlyphs: 'fitWideGlyphs' in options && options.fitWideGlyphs === true,
+     colors: clonedColors
+   };
+ }
+@@ -74,6 +76,7 @@ export function configEquals(a: ICharAtlasConfig, b: ICharAtlasConfig): boolean
+       a.deviceCharHeight === b.deviceCharHeight &&
+       a.drawBoldTextInBrightColors === b.drawBoldTextInBrightColors &&
+       a.minimumContrastRatio === b.minimumContrastRatio &&
++      a.fitWideGlyphs === b.fitWideGlyphs &&
+       a.colors.foreground.rgba === b.colors.foreground.rgba &&
+       a.colors.background.rgba === b.colors.background.rgba;
+ }
+diff --git a/src/CursorMotionAnimator.ts b/src/CursorMotionAnimator.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..ec4e32efbe809753f2a9974a1ec1f282351351f0
+--- /dev/null
++++ b/src/CursorMotionAnimator.ts
+@@ -0,0 +1,259 @@
++/**
++ * Copyright (c) 2026 The xterm.js authors. All rights reserved.
++ * @license MIT
++ */
++
++// Orca: GPU cursor glide and blink fade for the WebGL renderer. Import-free and limited to erasable
++// TypeScript so Orca can unit test it straight from the installed package.
++
++/** Glide length; short enough that typing never feels laggy. */
++export const CURSOR_MOTION_DURATION_MS = 100;
++/** Blink fade length; must stay well under the 600ms blink interval. */
++export const CURSOR_BLINK_FADE_DURATION_MS = 150;
++/** Only moves this soon after local input glide, so output-driven moves snap. Covers SSH echo. */
++export const CURSOR_MOTION_INPUT_WINDOW_MS = 500;
++/** Glides allowed per input; further moves inside the window are TUI redraw churn. */
++export const CURSOR_MOTION_MOVES_PER_INPUT = 2;
++/** Larger row jumps are redraws or output, never typing. */
++export const CURSOR_MOTION_MAX_ROW_DELTA = 1;
++
++export interface ICursorMotionLines {
++  get(index: number): object | undefined;
++}
++
++export interface ICursorMotionSample {
++  x: number;
++  /** Absolute buffer row, so a glide stays anchored to content while output scrolls it. */
++  row: number;
++  width: number;
++  /** Cursor style; only compared, a change always snaps. */
++  style: string;
++  /** The active buffer's lines; a different list is an alt-screen switch. */
++  lines: ICursorMotionLines;
++}
++
++export interface ICursorMotionFrame {
++  /** False means draw exactly as upstream: settled cell, in-model block inversion, hard blink. */
++  isAnimating: boolean;
++  x: number;
++  row: number;
++  width: number;
++  opacity: number;
++}
++
++export class CursorMotionAnimator {
++  private _enabled = false;
++  private _reducedMotion = false;
++  private _lastInputTime = Number.NEGATIVE_INFINITY;
++  private _movesSinceInput = 0;
++
++  private _hasTarget = false;
++  private _targetX = 0;
++  private _targetRow = 0;
++  private _targetWidth = 1;
++  private _targetStyle = '';
++  private _targetLines: ICursorMotionLines | undefined;
++  private _targetLine: object | undefined;
++
++  private _inMotion = false;
++  private _motionStart = 0;
++  private _fromX = 0;
++  private _fromRow = 0;
++  private _fromWidth = 1;
++
++  private _blinkOn = true;
++  private _fading = false;
++  private _fadeStart = 0;
++  private _fadeDuration = 0;
++  private _fadeFrom = 1;
++  private _fadeTo = 1;
++
++  private readonly _frame: ICursorMotionFrame = { isAnimating: false, x: 0, row: 0, width: 1, opacity: 1 };
++
++  private readonly _now: () => number;
++
++  constructor(now: () => number) {
++    this._now = now;
++  }
++
++  /** Whether the last update produced an in-between frame, i.e. another frame is needed. */
++  public get isAnimating(): boolean {
++    return this._frame.isAnimating;
++  }
++
++  public setEnabled(enabled: boolean): void {
++    if (this._enabled !== enabled) {
++      this._enabled = enabled;
++      this.reset();
++    }
++  }
++
++  public setReducedMotion(reduced: boolean): void {
++    if (this._reducedMotion !== reduced) {
++      this._reducedMotion = reduced;
++      this.reset();
++    }
++  }
++
++  public notifyUserInput(): void {
++    this._lastInputTime = this._now();
++    this._movesSinceInput = 0;
++  }
++
++  /** Forgets the drawn position so the next update snaps. */
++  public reset(): void {
++    this._hasTarget = false;
++    this._targetLines = undefined;
++    this._targetLine = undefined;
++    this._inMotion = false;
++    this._fading = false;
++    this._frame.isAnimating = false;
++  }
++
++  /**
++   * Advances the animation for one rendered frame. `sample` is undefined while the cursor is hidden
++   * or outside the viewport. The returned frame is reused across calls.
++   */
++  public update(sample: ICursorMotionSample | undefined, blinkOn: boolean, isFocused: boolean): ICursorMotionFrame {
++    const isActive = this._enabled && !this._reducedMotion && isFocused;
++    if (!isActive || !sample) {
++      if (isActive) {
++        // Keep the last visible position: TUIs hide the cursor while redrawing, then show it again.
++        this._inMotion = false;
++        this._fading = false;
++      } else {
++        this.reset();
++      }
++      this._blinkOn = blinkOn;
++      return this._writeSettledFrame(sample, blinkOn);
++    }
++    const now = this._now();
++    if (!this._hasTarget || this._isTargetChange(sample)) {
++      this._retarget(sample, now);
++    } else if (blinkOn !== this._blinkOn) {
++      this._startFade(blinkOn ? 1 : 0, now);
++    }
++    this._blinkOn = blinkOn;
++    return this._writeFrame(now, blinkOn);
++  }
++
++  private _isTargetChange(sample: ICursorMotionSample): boolean {
++    return sample.x !== this._targetX ||
++      sample.row !== this._targetRow ||
++      sample.width !== this._targetWidth ||
++      sample.style !== this._targetStyle ||
++      sample.lines !== this._targetLines;
++  }
++
++  private _retarget(sample: ICursorMotionSample, now: number): void {
++    if (this._hasTarget && this._qualifiesForGlide(sample, now)) {
++      // Glide on from wherever the cursor is drawn now so quick successive moves stay continuous.
++      this._writeMotionPosition(now);
++      this._fromX = this._frame.x;
++      this._fromRow = this._frame.row;
++      this._fromWidth = this._frame.width;
++      this._motionStart = now;
++      this._inMotion = true;
++    } else {
++      this._inMotion = false;
++    }
++    // Blink restarts visible on every move; fading in at a new position would read as lag.
++    this._fading = false;
++    this._hasTarget = true;
++    this._targetX = sample.x;
++    this._targetRow = sample.row;
++    this._targetWidth = sample.width;
++    this._targetStyle = sample.style;
++    this._targetLines = sample.lines;
++    this._targetLine = sample.lines.get(sample.row);
++  }
++
++  private _qualifiesForGlide(sample: ICursorMotionSample, now: number): boolean {
++    const moveIndex = ++this._movesSinceInput;
++    return sample.lines === this._targetLines &&
++      sample.style === this._targetStyle &&
++      // Another line object under the old row means content shifted (scrollback trim, reflow).
++      sample.lines.get(this._targetRow) === this._targetLine &&
++      Math.abs(sample.row - this._targetRow) <= CURSOR_MOTION_MAX_ROW_DELTA &&
++      now - this._lastInputTime <= CURSOR_MOTION_INPUT_WINDOW_MS &&
++      moveIndex <= CURSOR_MOTION_MOVES_PER_INPUT;
++  }
++
++  private _startFade(to: number, now: number): void {
++    const from = this._fading ? this._fadeOpacityAt(now) : (this._blinkOn ? 1 : 0);
++    this._fadeFrom = from;
++    this._fadeTo = to;
++    this._fadeStart = now;
++    this._fadeDuration = CURSOR_BLINK_FADE_DURATION_MS * Math.abs(to - from);
++    this._fading = this._fadeDuration > 0;
++  }
++
++  private _fadeOpacityAt(now: number): number {
++    const t = Math.min(Math.max((now - this._fadeStart) / this._fadeDuration, 0), 1);
++    return this._fadeFrom + (this._fadeTo - this._fadeFrom) * t * t * (3 - 2 * t);
++  }
++
++  /** Writes the drawn position into the frame; returns whether the glide is still in flight. */
++  private _writeMotionPosition(now: number): boolean {
++    const frame = this._frame;
++    frame.x = this._targetX;
++    frame.row = this._targetRow;
++    frame.width = this._targetWidth;
++    if (!this._inMotion) {
++      return false;
++    }
++    const t = (now - this._motionStart) / CURSOR_MOTION_DURATION_MS;
++    if (t >= 1) {
++      this._inMotion = false;
++      return false;
++    }
++    const remaining = 1 - Math.max(t, 0);
++    const eased = 1 - remaining * remaining * remaining;
++    frame.x = this._fromX + (this._targetX - this._fromX) * eased;
++    frame.row = this._fromRow + (this._targetRow - this._fromRow) * eased;
++    frame.width = this._fromWidth + (this._targetWidth - this._fromWidth) * eased;
++    return true;
++  }
++
++  private _writeFrame(now: number, blinkOn: boolean): ICursorMotionFrame {
++    const frame = this._frame;
++    let isAnimating = this._writeMotionPosition(now);
++    frame.opacity = blinkOn ? 1 : 0;
++    if (this._fading) {
++      if (now - this._fadeStart >= this._fadeDuration) {
++        this._fading = false;
++      } else {
++        frame.opacity = this._fadeOpacityAt(now);
++        isAnimating = true;
++      }
++    }
++    frame.isAnimating = isAnimating;
++    return frame;
++  }
++
++  private _writeSettledFrame(sample: ICursorMotionSample | undefined, blinkOn: boolean): ICursorMotionFrame {
++    const frame = this._frame;
++    frame.isAnimating = false;
++    frame.x = sample?.x ?? 0;
++    frame.row = sample?.row ?? 0;
++    frame.width = sample?.width ?? 1;
++    frame.opacity = blinkOn ? 1 : 0;
++    return frame;
++  }
++}
++
++/** Reports `prefers-reduced-motion` now and on every change. */
++export function watchPrefersReducedMotion(
++  win: { matchMedia?: (query: string) => MediaQueryList },
++  onChange: (reduced: boolean) => void
++): { dispose(): void } {
++  const query = typeof win.matchMedia === 'function' ? win.matchMedia('(prefers-reduced-motion: reduce)') : undefined;
++  if (!query) {
++    onChange(false);
++    return { dispose: () => {} };
++  }
++  const listener = (event: MediaQueryListEvent): void => onChange(event.matches);
++  onChange(query.matches);
++  query.addEventListener('change', listener);
++  return { dispose: () => query.removeEventListener('change', listener) };
++}
 diff --git a/src/GlyphRenderer.ts b/src/GlyphRenderer.ts
-index 742f0879ff4f04509e4a07c8efdf0d5743fe8ee5..885a206a394fff783737a412c0b75bf935dd0eca 100644
+index 742f0879ff4f04509e4a07c8efdf0d5743fe8ee5..1d8e6b1950e293450fe5a7fc381a7117801145bd 100644
 --- a/src/GlyphRenderer.ts
 +++ b/src/GlyphRenderer.ts
-@@ -61,6 +61,8 @@ function createFragmentShaderSource(maxFragmentShaderTextureUnits: number): stri
+@@ -11,6 +11,7 @@ import { IRenderModel, IWebGL2RenderingContext, IWebGLVertexArrayObject, type IR
+ import { createProgram, GLTexture, PROJECTION_MATRIX } from './WebglUtils';
+ import type { ILogService, IOptionsService } from 'common/services/Services';
+ import { allowRescaling, throwIfFalsy } from 'browser/renderer/shared/RendererUtils';
++import { PIXEL_SCROLL_EXTRA_ROWS, writePixelScrollProjection } from './PixelScroll';
+ 
+ interface IVertices {
+   attributes: Float32Array;
+@@ -61,6 +62,8 @@ function createFragmentShaderSource(maxFragmentShaderTextureUnits: number): stri
    for (let i = 1; i < maxFragmentShaderTextureUnits; i++) {
      textureConditionals += ` else if (v_texpage == ${i}) { outColor = texture(u_texture[${i}], v_texcoord); }`;
    }
@@ -11,7 +305,7 @@ index 742f0879ff4f04509e4a07c8efdf0d5743fe8ee5..885a206a394fff783737a412c0b75bf9
    return (`#version 300 es
  precision lowp float;
  
-@@ -74,7 +76,7 @@ out vec4 outColor;
+@@ -74,7 +77,7 @@ out vec4 outColor;
  void main() {
    if (v_texpage == 0) {
      outColor = texture(u_texture[0], v_texcoord);
@@ -20,8 +314,235 @@ index 742f0879ff4f04509e4a07c8efdf0d5743fe8ee5..885a206a394fff783737a412c0b75bf9
  }`);
  }
  
+@@ -103,6 +106,8 @@ export class GlyphRenderer extends Disposable {
+   private _lastSeenPageLayoutVersion: number = -1;
+   private _pageOverflowWarned: boolean = false;
+   private _activeBuffer: number = 0;
++  private _pixelScrollOffset: number = 0;
++  private readonly _projection = new Float32Array(16);
+   private readonly _vertices: IVertices = {
+     count: 0,
+     attributes: new Float32Array(0),
+@@ -305,7 +310,8 @@ export class GlyphRenderer extends Disposable {
+ 
+   public clear(): void {
+     const terminal = this._terminal;
+-    const newCount = terminal.cols * terminal.rows * Constants.INDICES_PER_CELL;
++    const modelRows = terminal.rows + PIXEL_SCROLL_EXTRA_ROWS;
++    const newCount = terminal.cols * modelRows * Constants.INDICES_PER_CELL;
+ 
+     // Clear vertices
+     if (this._vertices.count !== newCount) {
+@@ -323,7 +329,7 @@ export class GlyphRenderer extends Disposable {
+     }
+     this._vertices.count = newCount;
+     i = 0;
+-    for (let y = 0; y < terminal.rows; y++) {
++    for (let y = 0; y < modelRows; y++) {
+       for (let x = 0; x < terminal.cols; x++) {
+         this._vertices.attributes[i + 9] = x / terminal.cols;
+         this._vertices.attributes[i + 10] = y / terminal.rows;
+@@ -349,6 +355,7 @@ export class GlyphRenderer extends Disposable {
+ 
+     gl.useProgram(this._program);
+     gl.bindVertexArray(this._vertexArrayObject);
++    gl.uniformMatrix4fv(this._projectionLocation, false, writePixelScrollProjection(this._projection, PROJECTION_MATRIX, this._pixelScrollOffset, this._dimensions.device.canvas.height));
+ 
+     // Alternate buffers each frame as the active buffer gets locked while it's in use by the GPU
+     this._activeBuffer = (this._activeBuffer + 1) % 2;
+@@ -415,6 +422,11 @@ export class GlyphRenderer extends Disposable {
+     this._atlasTextures[i].version = atlas.pages[i].version;
+   }
+ 
++  /** Orca: draws every row this many device pixels higher. */
++  public setPixelScrollOffset(deviceOffset: number): void {
++    this._pixelScrollOffset = deviceOffset;
++  }
++
+   public setDimensions(dimensions: IRenderDimensions): void {
+     this._dimensions = dimensions;
+   }
+diff --git a/src/PixelScroll.ts b/src/PixelScroll.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..ac598e41f22242c073769704cf2dd7b9eeca7d7d
+--- /dev/null
++++ b/src/PixelScroll.ts
+@@ -0,0 +1,20 @@
++/**
++ * Copyright (c) 2026 The xterm.js authors. All rights reserved.
++ * @license MIT
++ */
++
++// Orca: draws the grid at the core's pixel-scroll offset. Import-free and limited to erasable
++// TypeScript so Orca can unit test it straight from the installed package.
++
++/** Rows the model keeps below the viewport so an offset has a row to reveal at the bottom. */
++export const PIXEL_SCROLL_EXTRA_ROWS = 1;
++
++/** Writes `projection` moved up by `deviceOffset` of a `deviceCanvasHeight` canvas into `out`. */
++export function writePixelScrollProjection(out: Float32Array, projection: Float32Array, deviceOffset: number, deviceCanvasHeight: number): Float32Array {
++  out.set(projection);
++  if (deviceOffset && deviceCanvasHeight > 0) {
++    // Clip space spans 2 units bottom-up, so moving up by a pixel adds 2/height to y's translation.
++    out[13] += 2 * deviceOffset / deviceCanvasHeight;
++  }
++  return out;
++}
+diff --git a/src/RectangleRenderer.ts b/src/RectangleRenderer.ts
+index eebfda3b3df9b4c8cefcc6a64692053ed5eaeefa..320f5390de19ac45b7b3ae35532aee3760e6ff28 100644
+--- a/src/RectangleRenderer.ts
++++ b/src/RectangleRenderer.ts
+@@ -14,6 +14,7 @@ import { RenderModelConstants } from './RenderModel';
+ import { IRenderModel, IWebGL2RenderingContext, IWebGLVertexArrayObject } from './Types';
+ import { createProgram, expandFloat32Array, PROJECTION_MATRIX } from './WebglUtils';
+ import { throwIfFalsy } from 'browser/renderer/shared/RendererUtils';
++import { PIXEL_SCROLL_EXTRA_ROWS, writePixelScrollProjection } from './PixelScroll';
+ import type { ILogService } from 'common/services/Services';
+ 
+ const enum VertexAttribLocations {
+@@ -82,6 +83,9 @@ export class RectangleRenderer extends Disposable {
+   private _projectionLocation: WebGLUniformLocation;
+   private _bgFloat!: Float32Array;
+   private _cursorFloat!: Float32Array;
++  private _animatedCursorFloat = new Float32Array(4);
++  private _pixelScrollOffset = 0;
++  private readonly _projection = new Float32Array(16);
+ 
+   private _vertices: Vertices = new Vertices();
+   private _verticesCursor: Vertices = new Vertices();
+@@ -162,7 +166,7 @@ export class RectangleRenderer extends Disposable {
+ 
+     gl.bindVertexArray(this._vertexArrayObject);
+ 
+-    gl.uniformMatrix4fv(this._projectionLocation, false, PROJECTION_MATRIX);
++    gl.uniformMatrix4fv(this._projectionLocation, false, writePixelScrollProjection(this._projection, PROJECTION_MATRIX, this._pixelScrollOffset, this._dimensions.device.canvas.height));
+ 
+     // Bind attributes buffer and draw
+     gl.bindBuffer(gl.ARRAY_BUFFER, this._attributesBuffer);
+@@ -174,6 +178,11 @@ export class RectangleRenderer extends Disposable {
+     this._updateViewportRectangle();
+   }
+ 
++  /** Orca: draws every rectangle this many device pixels higher. */
++  public setPixelScrollOffset(deviceOffset: number): void {
++    this._pixelScrollOffset = deviceOffset;
++  }
++
+   public setDimensions(dimensions: IRenderDimensions): void {
+     this._dimensions = dimensions;
+   }
+@@ -191,7 +200,8 @@ export class RectangleRenderer extends Disposable {
+       0,
+       0,
+       this._terminal.cols * this._dimensions.device.cell.width,
+-      this._terminal.rows * this._dimensions.device.cell.height,
++      // Also clears the extra row a pixel-scroll offset reveals.
++      (this._terminal.rows + PIXEL_SCROLL_EXTRA_ROWS) * this._dimensions.device.cell.height,
+       this._bgFloat
+     );
+   }
+@@ -214,7 +224,7 @@ export class RectangleRenderer extends Disposable {
+     let inverse: boolean;
+     let offset: number;
+ 
+-    for (y = 0; y < terminal.rows; y++) {
++    for (y = 0; y < terminal.rows + PIXEL_SCROLL_EXTRA_ROWS; y++) {
+       currentStartX = -1;
+       currentBg = 0;
+       currentFg = 0;
+@@ -248,13 +258,28 @@ export class RectangleRenderer extends Disposable {
+   public updateCursor(model: IRenderModel): void {
+     const vertices = this._verticesCursor;
+     const cursor = model.cursor;
+-    if (!cursor || cursor.style === 'block') {
++    // A settled block cursor is drawn by inverting its cell in the model; an animating one is not.
++    if (!cursor || (cursor.style === 'block' && cursor.opacity === undefined)) {
+       vertices.count = 0;
+       return;
+     }
+ 
+     let offset: number;
+     let rectangleCount = 0;
++    const color = this._resolveCursorColor(cursor.opacity);
++
++    if (cursor.style === 'block') {
++      offset = rectangleCount++ * INDICES_PER_RECTANGLE;
++      this._addRectangleFloat(
++        vertices.attributes,
++        offset,
++        cursor.x * this._dimensions.device.cell.width,
++        cursor.y * this._dimensions.device.cell.height,
++        cursor.width * this._dimensions.device.cell.width,
++        this._dimensions.device.cell.height,
++        color
++      );
++    }
+ 
+     if (cursor.style === 'bar' || cursor.style === 'outline') {
+       // Left edge
+@@ -266,7 +291,7 @@ export class RectangleRenderer extends Disposable {
+         cursor.y * this._dimensions.device.cell.height,
+         cursor.style === 'bar' ? cursor.dpr * cursor.cursorWidth : cursor.dpr,
+         this._dimensions.device.cell.height,
+-        this._cursorFloat
++        color
+       );
+     }
+     if (cursor.style === 'underline' || cursor.style === 'outline') {
+@@ -279,7 +304,7 @@ export class RectangleRenderer extends Disposable {
+         (cursor.y + 1) * this._dimensions.device.cell.height - cursor.dpr,
+         cursor.width * this._dimensions.device.cell.width,
+         cursor.dpr,
+-        this._cursorFloat
++        color
+       );
+     }
+     if (cursor.style === 'outline') {
+@@ -292,7 +317,7 @@ export class RectangleRenderer extends Disposable {
+         cursor.y * this._dimensions.device.cell.height,
+         cursor.width * this._dimensions.device.cell.width,
+         cursor.dpr,
+-        this._cursorFloat
++        color
+       );
+       // Right edge
+       offset = rectangleCount++ * INDICES_PER_RECTANGLE;
+@@ -303,7 +328,7 @@ export class RectangleRenderer extends Disposable {
+         cursor.y * this._dimensions.device.cell.height,
+         cursor.dpr,
+         this._dimensions.device.cell.height,
+-        this._cursorFloat
++        color
+       );
+     }
+ 
+@@ -341,7 +366,7 @@ export class RectangleRenderer extends Disposable {
+ 
+     if (vertices.attributes.length < offset + INDICES_PER_RECTANGLE) {
+       // +1 for the viewport-clear rectangle at offset 0.
+-      vertices.attributes = expandFloat32Array(vertices.attributes, (this._terminal.rows * this._terminal.cols + 1) * INDICES_PER_RECTANGLE);
++      vertices.attributes = expandFloat32Array(vertices.attributes, ((this._terminal.rows + PIXEL_SCROLL_EXTRA_ROWS) * this._terminal.cols + 1) * INDICES_PER_RECTANGLE);
+     }
+     $x1 = startX * this._dimensions.device.cell.width;
+     $y1 = y * this._dimensions.device.cell.height;
+@@ -375,6 +400,15 @@ export class RectangleRenderer extends Disposable {
+     array[offset + 7] = color[3];
+   }
+ 
++  private _resolveCursorColor(opacity: number | undefined): Float32Array {
++    if (opacity === undefined) {
++      return this._cursorFloat;
++    }
++    this._animatedCursorFloat.set(this._cursorFloat);
++    this._animatedCursorFloat[3] *= opacity;
++    return this._animatedCursorFloat;
++  }
++
+   private _colorToFloat32Array(color: IColor): Float32Array {
+     return new Float32Array([
+       ((color.rgba >> 24) & 0xFF) / 255,
 diff --git a/src/TextureAtlas.ts b/src/TextureAtlas.ts
-index 4977ad741065e26bbfd35bc50e7558a033b13340..f55805ddc3f266415f7f8e81e5b8c318e7db194c 100644
+index 4977ad741065e26bbfd35bc50e7558a033b13340..e419cdaa04561a755a6db5c87e1e97e02187fd4c 100644
 --- a/src/TextureAtlas.ts
 +++ b/src/TextureAtlas.ts
 @@ -3,6 +3,7 @@
@@ -32,7 +553,15 @@ index 4977ad741065e26bbfd35bc50e7558a033b13340..f55805ddc3f266415f7f8e81e5b8c318
  import { IColorContrastCache } from 'browser/Types';
  import { DIM_OPACITY, TEXT_BASELINE } from './Constants';
  import { tryDrawCustomGlyph } from './customGlyphs/CustomGlyphRasterizer';
-@@ -135,21 +136,23 @@ export class TextureAtlas implements ITextureAtlas {
+@@ -16,6 +17,7 @@ import { AttributeData } from 'common/buffer/AttributeData';
+ import { Attributes, DEFAULT_COLOR, DEFAULT_EXT, UnderlineStyle } from 'common/buffer/Constants';
+ import { ILogService, IUnicodeService } from 'common/services/Services';
+ import { Emitter } from 'common/Event';
++import { WideGlyphFitter } from './WideGlyphFit';
+ 
+ /**
+  * A shared object which is used to draw nothing for a particular cell.
+@@ -135,21 +137,25 @@ export class TextureAtlas implements ITextureAtlas {
    private _pageLayoutVersion = 0;
    public get pageLayoutVersion(): number { return this._pageLayoutVersion; }
  
@@ -41,6 +570,8 @@ index 4977ad741065e26bbfd35bc50e7558a033b13340..f55805ddc3f266415f7f8e81e5b8c318
 +  // assignment fails to parse, which rasterizes glyphs at a stale weight.
 +  public fontProbeMismatchCount = 0;
 +  public fontProbeLastMismatch: { desired: string, actual: string } | undefined;
++
++  private readonly _wideGlyphFitter = new WideGlyphFitter();
 +
    public clearTexture(): void {
 -    if (this._pages[0].currentRow.x === 0 && this._pages[0].currentRow.y === 0) {
@@ -68,7 +599,7 @@ index 4977ad741065e26bbfd35bc50e7558a033b13340..f55805ddc3f266415f7f8e81e5b8c318
    }
  
    private _createNewPage(): AtlasPage {
-@@ -465,6 +468,36 @@ export class TextureAtlas implements ITextureAtlas {
+@@ -465,6 +471,66 @@ export class TextureAtlas implements ITextureAtlas {
      return this._config.colors.contrastCache;
    }
  
@@ -102,10 +633,40 @@ index 4977ad741065e26bbfd35bc50e7558a033b13340..f55805ddc3f266415f7f8e81e5b8c318
 +    }
 +  }
 +
++  /**
++   * Orca: where to draw a wide glyph so it fills and centers in its cells. Leaves the context on
++   * the alphabetic baseline, at the scaled size when the glyph grows; undefined draws it upstream's
++   * way. Ligatures are excluded because they span more cells than their first character.
++   */
++  private _fitWideGlyph(chars: string, chWidth: number, fontStyle: string, fontWeight: FontWeight, padding: number): { x: number, y: number } | undefined {
++    if (!this._config.fitWideGlyphs || chWidth < 2 || chWidth !== this._unicodeService.wcwidth(chars.codePointAt(0) ?? 0)) {
++      return undefined;
++    }
++    const ctx = this._tmpCtx;
++    const anchorAscent = ctx.measureText('W').actualBoundingBoxAscent;
++    ctx.textBaseline = 'alphabetic';
++    // How far the alphabetic baseline sits above the anchor upstream draws glyphs at.
++    const baselineRise = anchorAscent - ctx.measureText('W').actualBoundingBoxAscent;
++    // A device pixel of margin keeps antialiased edges out of the neighbouring rows.
++    const fit = this._wideGlyphFitter.fit(chars, {
++      span: chWidth * this._config.deviceCellWidth,
++      ascent: this._config.deviceCharHeight - baselineRise - 1,
++      descent: baselineRise - 1
++    }, `${fontStyle} ${fontWeight}`, text => ctx.measureText(text));
++    if (!fit) {
++      ctx.textBaseline = TEXT_BASELINE;
++      return undefined;
++    }
++    if (fit.scale !== 1) {
++      ctx.font = `${fontStyle} ${fontWeight} ${this._config.fontSize * this._config.devicePixelRatio * fit.scale}px ${this._config.fontFamily}`;
++    }
++    return { x: padding + fit.offset, y: padding + this._config.deviceCharHeight - baselineRise + fit.shift };
++  }
++
    private _drawToCache(codeOrChars: number | string, bg: number, fg: number, ext: number, restrictToCellHeight: boolean, domContainer: HTMLElement | undefined): IRasterizedGlyph {
      const chars = typeof codeOrChars === 'number' ? String.fromCharCode(codeOrChars) : codeOrChars;
  
-@@ -536,6 +569,7 @@ export class TextureAtlas implements ITextureAtlas {
+@@ -536,6 +602,7 @@ export class TextureAtlas implements ITextureAtlas {
      const fontStyle = italic ? 'italic' : '';
      this._tmpCtx.font =
        `${fontStyle} ${fontWeight} ${this._config.fontSize * this._config.devicePixelRatio}px ${this._config.fontFamily}`;
@@ -113,11 +674,188 @@ index 4977ad741065e26bbfd35bc50e7558a033b13340..f55805ddc3f266415f7f8e81e5b8c318
      this._tmpCtx.textBaseline = TEXT_BASELINE;
  
      const powerlineGlyph = chars.length === 1 && isPowerlineGlyph(chars.charCodeAt(0));
+@@ -565,6 +632,10 @@ export class TextureAtlas implements ITextureAtlas {
+       chWidth = this._unicodeService.getStringCellWidth(codeOrChars);
+     }
+ 
++    const wideGlyph = customGlyph ? undefined : this._fitWideGlyph(chars, chWidth, fontStyle, fontWeight, padding);
++    const glyphX = wideGlyph?.x ?? padding;
++    const glyphY = wideGlyph?.y ?? padding + this._config.deviceCharHeight;
++
+     // Draw underline
+     if (underline) {
+       this._tmpCtx.save();
+@@ -716,7 +787,7 @@ export class TextureAtlas implements ITextureAtlas {
+             this._tmpCtx.clip(clipRegion);
+             this._tmpCtx.lineWidth = this._config.devicePixelRatio * 3;
+             this._tmpCtx.strokeStyle = backgroundColor.css;
+-            this._tmpCtx.strokeText(chars, padding, padding + this._config.deviceCharHeight);
++            this._tmpCtx.strokeText(chars, glyphX, glyphY);
+             this._tmpCtx.restore();
+           }
+         }
+@@ -737,7 +808,7 @@ export class TextureAtlas implements ITextureAtlas {
+ 
+     // Draw the character
+     if (!customGlyph) {
+-      this._tmpCtx.fillText(chars, padding, padding + this._config.deviceCharHeight);
++      this._tmpCtx.fillText(chars, glyphX, glyphY);
+     }
+ 
+     // If this character is underscore and beyond the cell bounds, shift it up until it is visible
+diff --git a/src/Types.ts b/src/Types.ts
+index bfd6fd76cebe8f55dce7bfad5406d4f7cd184320..3088edbadc03eeb9320e5fe99889f706fb255a4b 100644
+--- a/src/Types.ts
++++ b/src/Types.ts
+@@ -23,6 +23,8 @@ export interface ICursorRenderModel {
+   style: CursorStyle | CursorInactiveStyle;
+   cursorWidth: number;
+   dpr: number;
++  /** Set only while the cursor animates; the block is then a rectangle instead of cell inversion. */
++  opacity?: number;
+ }
+ 
+ export interface IWebGL2RenderingContext extends WebGLRenderingContext {
+@@ -53,6 +55,8 @@ export interface ICharAtlasConfig {
+   allowTransparency: boolean;
+   drawBoldTextInBrightColors: boolean;
+   minimumContrastRatio: number;
++  /** Orca: enlarge and center wide glyphs narrower than their cells. */
++  fitWideGlyphs?: boolean;
+   colors: IColorSet;
+ }
+ 
+diff --git a/src/WebglAddon.ts b/src/WebglAddon.ts
+index f61206b13824e6925efebd041261a2d125d0f527..053cfa47ae44b9b3b690521e20edd333e192da89 100644
+--- a/src/WebglAddon.ts
++++ b/src/WebglAddon.ts
+@@ -29,6 +29,7 @@ export class WebglAddon extends Disposable implements ITerminalAddon, IWebglApi
+ 
+   private readonly _customGlyphs: boolean;
+   private readonly _preserveDrawingBuffer?: boolean;
++  private _cursorAnimation = false;
+ 
+   constructor(options?: IWebglAddonOptions) {
+     if (isSafari && getSafariVersion() < 16) {
+@@ -81,6 +82,7 @@ export class WebglAddon extends Disposable implements ITerminalAddon, IWebglApi
+       this._customGlyphs,
+       this._preserveDrawingBuffer
+     ));
++    this._renderer.setCursorAnimation(this._cursorAnimation);
+     this._register(EventUtils.forward(this._renderer.onContextLoss, this._onContextLoss));
+     this._register(EventUtils.forward(this._renderer.onChangeTextureAtlas, this._onChangeTextureAtlas));
+     this._register(EventUtils.forward(this._renderer.onAddTextureAtlasCanvas, this._onAddTextureAtlasCanvas));
+@@ -104,4 +106,10 @@ export class WebglAddon extends Disposable implements ITerminalAddon, IWebglApi
+   public clearTextureAtlas(): void {
+     this._renderer?.clearTextureAtlas();
+   }
++
++  /** Orca: GPU cursor glide and blink fade; off by default so upstream rendering is unchanged. */
++  public setCursorAnimation(enabled: boolean): void {
++    this._cursorAnimation = enabled;
++    this._renderer?.setCursorAnimation(enabled);
++  }
+ }
 diff --git a/src/WebglRenderer.ts b/src/WebglRenderer.ts
-index a951efba5c75e82735cd39b6b22c4b5d5fad5928..e7f80c3a8c14dd65a16a97f1d17e3da1d65ed8bf 100644
+index a951efba5c75e82735cd39b6b22c4b5d5fad5928..de7b328ae3c71d7ec73cae348f148bbacf7c6874 100644
 --- a/src/WebglRenderer.ts
 +++ b/src/WebglRenderer.ts
-@@ -386,7 +386,10 @@ export class WebglRenderer extends Disposable implements IRenderer {
+@@ -7,7 +7,9 @@ import { ITerminal } from 'browser/Types';
+ import { CellColorResolver } from './CellColorResolver';
+ import { acquireTextureAtlas, removeTerminalFromCache } from './CharAtlasCache';
+ import { CursorBlinkStateManager } from './CursorBlinkStateManager';
++import { CursorMotionAnimator, ICursorMotionFrame, ICursorMotionSample, watchPrefersReducedMotion } from './CursorMotionAnimator';
+ import { observeDevicePixelDimensions } from './DevicePixelObserver';
++import { PIXEL_SCROLL_EXTRA_ROWS } from './PixelScroll';
+ import { IRenderDimensions, IRenderer, IRequestRedrawEvent } from 'browser/renderer/shared/Types';
+ import { ICharSizeService, ICharacterJoinerService, ICoreBrowserService, IThemeService } from 'browser/services/Services';
+ import { CharData, IBufferLine, ICellData } from 'common/buffer/Types';
+@@ -16,6 +18,7 @@ import { CellData } from 'common/buffer/CellData';
+ import { Attributes, Content, FgFlags, NULL_CELL_CHAR, NULL_CELL_CODE } from 'common/buffer/Constants';
+ import { TextBlinkStateManager } from 'browser/renderer/shared/TextBlinkStateManager';
+ import { ICoreService, IDecorationService, ILogService, IOptionsService } from 'common/services/Services';
++import { CursorStyle } from 'common/Types';
+ import { Terminal } from '@xterm/xterm';
+ import { GlyphRenderer } from './GlyphRenderer';
+ import { RectangleRenderer } from './RectangleRenderer';
+@@ -32,10 +35,38 @@ const enum Constants {
+   MERGE_RETRY_LIMIT = 32
+ }
+ 
++/**
++ * The in-grid IME preedit a patched core exposes (browser/Types `IImePreedit`). Declared here
++ * because the addon builds against stock core types; an unpatched core simply never sets it.
++ */
++interface IImePreeditTerminal {
++  readonly imePreedit?: {
++    readonly row: number;
++    readonly cursorX: number;
++    composeLine(line: IBufferLine): IBufferLine;
++  };
++}
++
++/** The app-drawn caret a patched core adopts (browser/Types `IAdoptedCaret`); declared for the same reason. */
++interface IAdoptedCaretTerminal {
++  readonly adoptedCaret?: {
++    readonly row: number;
++    readonly x: number;
++    composeLine(line: IBufferLine): IBufferLine;
++  };
++}
++
+ export class WebglRenderer extends Disposable implements IRenderer {
+   private _renderLayers: IRenderLayer[];
+   private _cursorBlinkStateManager: MutableDisposable<CursorBlinkStateManager> = this._register(new MutableDisposable());
+   private _textBlinkStateManager: TextBlinkStateManager;
++  private readonly _cursorMotion = new CursorMotionAnimator(() => performance.now());
++  private _cursorMotionSample: ICursorMotionSample | undefined;
++  /** The absolute row the last pass drew an adopted caret on, so a moved caret repaints it. */
++  private _adoptedCaretRow: number | undefined;
++  private _adoptedCaretX: number | undefined;
++  /** Device pixels pixel scrolling draws the grid higher; nonzero also models the extra row. */
++  private _pixelScrollOffset = 0;
+   private _charAtlasDisposable = this._register(new MutableDisposable());
+   private _charAtlas: ITextureAtlas | undefined;
+   private _devicePixelRatio: number;
+@@ -55,7 +86,7 @@ export class WebglRenderer extends Disposable implements IRenderer {
+ 
+   public readonly dimensions: IRenderDimensions;
+ 
+-  private _core: ITerminal;
++  private _core: ITerminal & IImePreeditTerminal & IAdoptedCaretTerminal;
+   private _isAttached: boolean;
+   private _contextRestorationTimeout: number | undefined;
+ 
+@@ -151,6 +182,7 @@ export class WebglRenderer extends Disposable implements IRenderer {
+     }));
+ 
+     this._register(addDisposableListener(this._coreBrowserService.mainDocument, 'mousedown', () => this._cursorBlinkStateManager.value?.restartBlinkAnimation()));
++    this._registerCursorMotionSignals();
+ 
+     this._core.screenElement!.appendChild(this._canvas);
+ 
+@@ -190,10 +222,11 @@ export class WebglRenderer extends Disposable implements IRenderer {
+   }
+ 
+   public handleResize(cols: number, rows: number): void {
++    this._cursorMotion.reset();
+     // Update character and canvas dimensions
+     this._updateDimensions();
+ 
+-    this._model.resize(this._terminal.cols, this._terminal.rows);
++    this._model.resize(this._terminal.cols, this._terminal.rows + PIXEL_SCROLL_EXTRA_ROWS);
+     this._resetBlinkingRowState();
+ 
+     // Resize all render layers
+@@ -339,6 +372,7 @@ export class WebglRenderer extends Disposable implements IRenderer {
+   }
+ 
+   public clear(): void {
++    this._cursorMotion.reset();
+     this._clearModel(true);
+     for (const l of this._renderLayers) {
+       l.reset(this._terminal);
+@@ -386,7 +420,10 @@ export class WebglRenderer extends Disposable implements IRenderer {
      // page's version, so re-run the update and force a full texture rebind.
      let merged = false;
      let mergeRetries = 0;
@@ -129,3 +867,342 @@ index a951efba5c75e82735cd39b6b22c4b5d5fad5928..e7f80c3a8c14dd65a16a97f1d17e3da1
        merged = true;
        this._clearModel(true);
        this._updateModel(0, this._terminal.rows - 1);
+@@ -396,11 +433,74 @@ export class WebglRenderer extends Disposable implements IRenderer {
+     }
+ 
+     // Render
++    this._rectangleRenderer.value.setPixelScrollOffset(this._pixelScrollOffset);
++    this._glyphRenderer.value.setPixelScrollOffset(this._pixelScrollOffset);
+     this._rectangleRenderer.value.renderBackgrounds();
++    // An animating block sits under the text so the glyphs it passes over stay readable.
++    const isAnimatingBlock = this._cursorMotion.isAnimating && this._model.cursor?.style === 'block';
++    if (isAnimatingBlock) {
++      this._rectangleRenderer.value.renderCursor();
++    }
+     this._glyphRenderer.value.render(this._model);
+-    if (!this._cursorBlinkStateManager.value || this._cursorBlinkStateManager.value.isCursorVisible) {
++    if (!isAnimatingBlock && (this._cursorMotion.isAnimating || !this._cursorBlinkStateManager.value || this._cursorBlinkStateManager.value.isCursorVisible)) {
+       this._rectangleRenderer.value.renderCursor();
+     }
++    if (this._cursorMotion.isAnimating) {
++      this._requestCursorMotionFrame();
++    }
++  }
++
++  /** Orca: draws the grid this many device pixels higher, revealing part of the row below it. */
++  public setPixelScrollOffset(deviceOffset: number): void {
++    this._pixelScrollOffset = deviceOffset;
++    for (const l of this._renderLayers) {
++      l.setPixelScrollOffset(deviceOffset / this._devicePixelRatio);
++    }
++  }
++
++  /** Orca: toggles GPU cursor glide and blink fade. */
++  public setCursorAnimation(enabled: boolean): void {
++    this._cursorMotion.setEnabled(enabled);
++    this._requestRedrawViewport();
++  }
++
++  private _registerCursorMotionSignals(): void {
++    // Glides are armed only by local input, so output-driven cursor moves snap.
++    const notifyInput = (): void => this._cursorMotion.notifyUserInput();
++    this._register(this._coreService.onUserInput(notifyInput));
++    if (this._core.textarea) {
++      // Also covers keys the embedder handles itself instead of through onData.
++      this._register(addDisposableListener(this._core.textarea, 'keydown', notifyInput));
++    }
++    this._register(addDisposableListener(this._core.screenElement!, 'mousedown', notifyInput));
++    this._register(watchPrefersReducedMotion(this._coreBrowserService.window, reduced => this._cursorMotion.setReducedMotion(reduced)));
++  }
++
++  private _updateCursorMotion(cursorX: number, cursorY: number, cursorStyle: CursorStyle, preedit: IImePreeditTerminal['imePreedit'], isCaretAdopted: boolean): ICursorMotionFrame {
++    const buffer = this._core.buffer;
++    const viewportY = cursorY - buffer.ydisp;
++    const isDrawable = this._coreService.isCursorInitialized && (isCaretAdopted || !this._coreService.isCursorHidden) &&
++      viewportY >= 0 && viewportY < this._terminal.rows;
++    let sample: ICursorMotionSample | undefined;
++    if (isDrawable) {
++      sample = this._cursorMotionSample ??= { x: 0, row: 0, width: 1, style: cursorStyle, lines: buffer.lines };
++      sample.x = cursorX;
++      sample.row = cursorY;
++      const bufferLine = buffer.lines.get(cursorY);
++      // The caret cell's width comes from the row as drawn, which a preedit has shifted.
++      const drawnLine = bufferLine && preedit?.row === cursorY ? preedit.composeLine(bufferLine) : bufferLine;
++      sample.width = Math.max(drawnLine?.getWidth(cursorX) ?? 1, 1);
++      sample.style = cursorStyle;
++      sample.lines = buffer.lines;
++    }
++    const blinkOn = !this._cursorBlinkStateManager.value || this._cursorBlinkStateManager.value.isCursorVisible;
++    return this._cursorMotion.update(sample, blinkOn, this._coreBrowserService.isFocused);
++  }
++
++  private _requestCursorMotionFrame(): void {
++    const buffer = this._core.buffer;
++    const viewportY = clamp(buffer.ybase + buffer.y - buffer.ydisp, this._terminal.rows - 1, 0);
++    this._onRequestRedraw.fire({ start: viewportY, end: viewportY });
+   }
+ 
+   private _updateCursorBlink(): void {
+@@ -440,17 +540,41 @@ export class WebglRenderer extends Disposable implements IRenderer {
+     let j: number;
+     start = clamp(start, terminal.rows - 1, 0);
+     end = clamp(end, terminal.rows - 1, 0);
++    // While offset, every pass also updates the row the offset reveals below the viewport.
++    if (this._pixelScrollOffset) {
++      end = terminal.rows - 1 + PIXEL_SCROLL_EXTRA_ROWS;
++    }
+     const cursorStyle = this._coreService.decPrivateModes.cursorStyle ?? terminal.options.cursorStyle ?? 'block';
+ 
+-    const cursorY = this._terminal.buffer.active.baseY + this._terminal.buffer.active.cursorY;
++    // An in-grid IME preedit is drawn into its row, and the cursor moves to its caret.
++    const preedit = this._core.imePreedit;
++    // A caret the app draws while hiding the cursor gets the real cursor; the IME caret wins over it.
++    const adopted = this._core.adoptedCaret;
++    const cursorY = preedit?.row ?? adopted?.row ?? this._terminal.buffer.active.baseY + this._terminal.buffer.active.cursorY;
+     const viewportRelativeCursorY = cursorY - terminal.buffer.ydisp;
+     // in case cursor.x == cols adjust visual cursor to cols - 1
+-    const cursorX = Math.min(this._terminal.buffer.active.cursorX, terminal.cols - 1);
++    const cursorX = preedit?.cursorX ?? adopted?.x ?? Math.min(this._terminal.buffer.active.cursorX, terminal.cols - 1);
++    // The cursor model is rebuilt on every pass, so a pass must include the row that draws it, and
++    // the row an adopted caret left must be redrawn with the app's inverse back.
++    for (const drawnRow of [preedit || adopted ? cursorY : undefined, this._adoptedCaretRow, adopted?.row]) {
++      const y = drawnRow === undefined ? -1 : drawnRow - terminal.buffer.ydisp;
++      if (y >= 0 && y < terminal.rows) {
++        start = Math.min(start, y);
++        end = Math.max(end, y);
++      }
++    }
++    // The real cursor stays parked while the app moves its caret, so restart blink as its move would.
++    if (adopted && (adopted.row !== this._adoptedCaretRow || adopted.x !== this._adoptedCaretX)) {
++      this._cursorBlinkStateManager.value?.restartBlinkAnimation();
++    }
++    this._adoptedCaretRow = adopted?.row;
++    this._adoptedCaretX = adopted?.x;
+     let lastCursorX = -1;
+     const isCursorVisible =
+       this._coreService.isCursorInitialized &&
+-      !this._coreService.isCursorHidden &&
++      (adopted !== undefined || !this._coreService.isCursorHidden) &&
+       (!this._cursorBlinkStateManager.value || this._cursorBlinkStateManager.value.isCursorVisible);
++    const cursorMotion = this._updateCursorMotion(cursorX, cursorY, cursorStyle, preedit, adopted !== undefined);
+     this._model.cursor = undefined;
+     let modelUpdated = false;
+ 
+@@ -467,12 +591,15 @@ export class WebglRenderer extends Disposable implements IRenderer {
+         this._setRowBlinkState(y, false);
+         continue;
+       }
+-      line = bufferLine;
++      const isPreeditRow = preedit?.row === row;
++      line = adopted?.row === row ? adopted.composeLine(bufferLine) : bufferLine;
++      line = isPreeditRow ? preedit.composeLine(line) : line;
+       let rowHasBlinkingCells = false;
+       this._model.lineLengths[y] = 0;
+       isCursorRow = cursorY === row;
+       skipJoinedCheckUntilX = 0;
+-      joinedRanges = this._characterJoinerService.getJoinedCharacters(row);
++      // Joins are computed from the buffer, whose columns a composed-in preedit has shifted.
++      joinedRanges = isPreeditRow ? [] : this._characterJoinerService.getJoinedCharacters(row);
+       for (x = 0; x < terminal.cols; x++) {
+         lastBg = this._cellColorResolver.result.bg;
+         line.loadCell(x, cell);
+@@ -546,7 +673,7 @@ export class WebglRenderer extends Disposable implements IRenderer {
+             };
+             lastCursorX = cursorX + cell.getWidth() - 1;
+           }
+-          if (x >= cursorX && x <= lastCursorX &&
++          if (x >= cursorX && x <= lastCursorX && !cursorMotion.isAnimating &&
+               ((this._coreBrowserService.isFocused &&
+               cursorStyle === 'block') ||
+               (this._coreBrowserService.isFocused === false &&
+@@ -610,6 +737,17 @@ export class WebglRenderer extends Disposable implements IRenderer {
+     if (modelUpdated) {
+       this._rectangleRenderer.value!.updateBackgrounds(this._model);
+     }
++    if (cursorMotion.isAnimating) {
++      this._model.cursor = {
++        x: cursorMotion.x,
++        y: cursorMotion.row - terminal.buffer.ydisp,
++        width: cursorMotion.width,
++        style: cursorStyle,
++        cursorWidth: terminal.options.cursorWidth,
++        dpr: this._devicePixelRatio,
++        opacity: cursorMotion.opacity
++      };
++    }
+     this._rectangleRenderer.value!.updateCursor(this._model);
+     this._updateTextBlinkState();
+   }
+@@ -623,7 +761,7 @@ export class WebglRenderer extends Disposable implements IRenderer {
+   }
+ 
+   private _resetBlinkingRowState(): void {
+-    this._rowHasBlinkingCells = new Array(this._terminal.rows).fill(false);
++    this._rowHasBlinkingCells = new Array(this._terminal.rows + PIXEL_SCROLL_EXTRA_ROWS).fill(false);
+     this._rowHasBlinkingCellsCount = 0;
+   }
+ 
+diff --git a/src/WideGlyphFit.ts b/src/WideGlyphFit.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..fbd9855c62cbfbdab1fa867269f2860d46c89fbd
+--- /dev/null
++++ b/src/WideGlyphFit.ts
+@@ -0,0 +1,131 @@
++/**
++ * Copyright (c) 2026 The xterm.js authors. All rights reserved.
++ * @license MIT
++ */
++
++// Orca: sizes and centers wide glyphs whose fallback face leaves them narrower than their cells.
++// The WebGL addon cannot import new core files, so it ships a byte-identical copy; keep this file
++// import-free and limited to erasable TypeScript so Orca can unit test both copies as installed.
++
++/** Scripts a terminal font stack draws from one fallback face, so one scale keeps a line even. */
++export type WideGlyphScript = 'hangul' | 'han' | 'kana';
++
++// The script's scale and baseline shift must fit every glyph of the face: sample its extremes.
++const SCRIPT_SAMPLES: Record<WideGlyphScript, string> = {
++  hangul: '가갈뷁힣ㅎ',
++  han: '中國鬱龍語',
++  kana: 'あガぽヅカ'
++};
++
++export function getWideGlyphScript(code: number): WideGlyphScript | undefined {
++  if ((code >= 0xAC00 && code <= 0xD7A3) || (code >= 0x1100 && code <= 0x115F) ||
++    (code >= 0x3130 && code <= 0x318F) || (code >= 0xA960 && code <= 0xA97F)) {
++    return 'hangul';
++  }
++  if ((code >= 0x3040 && code <= 0x30FF) || (code >= 0x31F0 && code <= 0x31FF)) {
++    return 'kana';
++  }
++  if ((code >= 0x3400 && code <= 0x4DBF) || (code >= 0x4E00 && code <= 0x9FFF) ||
++    (code >= 0xF900 && code <= 0xFAFF) || (code >= 0x20000 && code <= 0x3FFFF)) {
++    return 'han';
++  }
++  return undefined;
++}
++
++/** The space a wide glyph may fill, measured from the alphabetic baseline it is drawn on. */
++export interface IWideGlyphBox {
++  /** Width of the cells the glyph occupies. */
++  span: number;
++  /** Room above the baseline, up to the top of the primary font's line box. */
++  ascent: number;
++  /** Room below the baseline, down to the bottom of the primary font's line box. */
++  descent: number;
++}
++
++export interface IWideGlyphFit {
++  /** Font size multiplier; 1 keeps the terminal font size. */
++  scale: number;
++  /** Space left of the scaled glyph that centers it in its span. */
++  offset: number;
++  /** How far to lower the baseline so the scaled ink stays inside the line box. */
++  shift: number;
++}
++
++/** The subset of TextMetrics the fit reads, measured at the alphabetic baseline. */
++export interface IWideGlyphMetrics {
++  width: number;
++  actualBoundingBoxAscent: number;
++  actualBoundingBoxDescent: number;
++}
++
++interface IInkExtent {
++  width: number;
++  ascent: number;
++  descent: number;
++}
++
++function inkExtent(metrics: IWideGlyphMetrics): IInkExtent {
++  return { width: metrics.width, ascent: metrics.actualBoundingBoxAscent, descent: metrics.actualBoundingBoxDescent };
++}
++
++/** Largest scale that keeps `ink` within the span and the line box's full height; below 1 when it cannot fit. */
++function maxScale(ink: IInkExtent, box: IWideGlyphBox): number {
++  const height = ink.ascent + ink.descent;
++  return Math.min(box.span / ink.width, height > 0 ? (box.ascent + box.descent) / height : Infinity);
++}
++
++/** The smallest baseline move that keeps `ink` at `scale` inside the line box. */
++function baselineShift(ink: IInkExtent, scale: number, box: IWideGlyphBox): number {
++  return Math.min(Math.max(0, ink.ascent * scale - box.ascent), box.descent - ink.descent * scale);
++}
++
++export class WideGlyphFitter {
++  private readonly _faces = new Map<string, { scale: number, ink: IInkExtent }>();
++
++  /**
++   * Fits a glyph that occupies exactly the cells of its first code point. `measure` reports the
++   * unscaled font; `fontKey` separates font variants. Undefined when the glyph already fills its
++   * span. Listed scripts grow as far as the span and line box allow, lowering the baseline only
++   * once the line box's ascent runs out; other glyphs only center.
++   */
++  public fit(chars: string, box: IWideGlyphBox, fontKey: string, measure: (text: string) => IWideGlyphMetrics): IWideGlyphFit | undefined {
++    const glyph = inkExtent(measure(chars));
++    if (!(glyph.width > 0) || glyph.width >= box.span) {
++      return undefined;
++    }
++    const script = getWideGlyphScript(chars.codePointAt(0) ?? 0);
++    const face = script && this._measureFace(script, box, fontKey, measure);
++    if (!face || face.scale <= 1) {
++      return { scale: 1, offset: (box.span - glyph.width) / 2, shift: 0 };
++    }
++    // Also bound by the glyph itself: a code point the samples miss may come from another face.
++    // Never shrinks: a glyph taller than the line box keeps its size and overflows it, as unfitted.
++    const scale = Math.max(1, Math.min(face.scale, maxScale(glyph, box)));
++    // The face's shift, not the glyph's, keeps every glyph of the face on one baseline; it only
++    // ever lowers, so an overflowing glyph never rises above where it draws unfitted.
++    const shift = Math.max(0, Math.min(
++      Math.max(baselineShift(face.ink, scale, box), glyph.ascent * scale - box.ascent),
++      box.descent - glyph.descent * scale
++    ));
++    return { scale, offset: (box.span - glyph.width * scale) / 2, shift };
++  }
++
++  private _measureFace(script: WideGlyphScript, box: IWideGlyphBox, fontKey: string, measure: (text: string) => IWideGlyphMetrics): { scale: number, ink: IInkExtent } {
++    const key = `${fontKey}|${script}|${box.span}|${box.ascent}|${box.descent}`;
++    let face = this._faces.get(key);
++    if (!face) {
++      const ink: IInkExtent = { width: 0, ascent: -Infinity, descent: -Infinity };
++      for (const sample of SCRIPT_SAMPLES[script]) {
++        const metrics = measure(sample);
++        if (metrics.width > 0) {
++          ink.width = Math.max(ink.width, metrics.width);
++          ink.ascent = Math.max(ink.ascent, metrics.actualBoundingBoxAscent);
++          ink.descent = Math.max(ink.descent, metrics.actualBoundingBoxDescent);
++        }
++      }
++      face = { scale: ink.width > 0 ? maxScale(ink, box) : 1, ink };
++      this._faces.set(key, face);
++    }
++    return face;
++  }
++}
+diff --git a/src/renderLayer/BaseRenderLayer.ts b/src/renderLayer/BaseRenderLayer.ts
+index 5b11615328957b6f5d41a174284c11e061910d91..14b1d946a760621da60e4f66f0cfa26aa70a4f0f 100644
+--- a/src/renderLayer/BaseRenderLayer.ts
++++ b/src/renderLayer/BaseRenderLayer.ts
+@@ -100,6 +100,10 @@ export abstract class BaseRenderLayer extends Disposable implements IRenderLayer
+     this._charAtlas.warmUp();
+   }
+ 
++  public setPixelScrollOffset(cssOffset: number): void {
++    this._canvas.style.transform = cssOffset ? `translateY(${-cssOffset}px)` : '';
++  }
++
+   public resize(terminal: Terminal, dim: IRenderDimensions): void {
+     this._deviceCellWidth = dim.device.cell.width;
+     this._deviceCellHeight = dim.device.cell.height;
+diff --git a/src/renderLayer/Types.ts b/src/renderLayer/Types.ts
+index feeceb145b2ed343f4295b8d84180baf4fe41354..91b17c3aa2f1f3e29150986417096f33a4c8cd9a 100644
+--- a/src/renderLayer/Types.ts
++++ b/src/renderLayer/Types.ts
+@@ -52,4 +52,7 @@ export interface IRenderLayer extends IDisposable {
+    * Clear the state of the render layer.
+    */
+   reset(terminal: Terminal): void;
++
++  /** Orca: moves the layer up with the grid's pixel-scroll offset, in CSS pixels. */
++  setPixelScrollOffset(cssOffset: number): void;
+ }

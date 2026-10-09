@@ -4,20 +4,31 @@ import { makePaneKey } from '../../../../shared/stable-pane-id'
 import { translate } from '@/i18n/i18n'
 import { copyTerminalHandleForPane } from './terminal-handle-copy'
 import { runTerminalCopy, runTerminalIdentityCopy } from './terminal-copy-rejection-guards'
-import { readTerminalClipboardSelection } from './terminal-clipboard-selection-text'
+import {
+  readTerminalClipboardSelection,
+  readTerminalRawSelection
+} from './terminal-clipboard-selection-text'
+import { showTerminalCopyFeedback } from './terminal-copy-feedback'
 
-export const copyTerminalPaneMenuSelection = async (pane: ManagedPane | null): Promise<void> => {
+export const copyTerminalPaneMenuSelection = async (
+  pane: ManagedPane | null,
+  mode: 'smart' | 'raw' = 'smart'
+): Promise<void> => {
   if (!pane) {
     return
   }
   await runTerminalCopy({
-    selection: readTerminalClipboardSelection(pane.terminal),
+    selection:
+      mode === 'raw'
+        ? readTerminalRawSelection(pane.terminal)
+        : readTerminalClipboardSelection(pane.terminal),
     writeClipboardText: window.api.ui.writeTerminalClipboardText,
     // Why: Radix returns focus to the menu trigger (the pane container) on
     // close, but xterm.js only accepts input when its own helper textarea is
     // focused. Without this, the user has to click the pane again before
     // typing works (see #592).
-    focus: () => pane.terminal.focus()
+    focus: () => pane.terminal.focus(),
+    onCopied: showTerminalCopyFeedback
   })
 }
 

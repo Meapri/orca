@@ -163,6 +163,7 @@ ${String(error)}`
 
   const sink = createWriteStream(outPath)
   let recording = true
+  let recordedBytes = 0
   term.onData((chunk) => {
     const bytes = typeof chunk === 'string' ? Buffer.from(chunk, 'utf8') : chunk
     // Why recording stops before the kill: an agent repaints an idle frame on its way out, so
@@ -170,6 +171,7 @@ ${String(error)}`
     // state you stopped to capture. A mid-turn or dialog capture cannot survive that.
     if (recording) {
       sink.write(bytes)
+      recordedBytes += bytes.length
     }
     process.stdout.write(bytes)
   })
@@ -201,7 +203,14 @@ ${String(error)}`
   })
   // Why scripted input: a dialog capture has to be driven, and CI (or an agent) has no TTY to
   // type into. The keystrokes ride the same PTY a human's would, so the capture is unchanged.
-  const sendTimers = options.sends.map((send) => setTimeout(() => term.write(send.text), send.atMs))
+  // Why the offset: a replay test slices the transcript there to see the screen each key landed on.
+  const sentAt = []
+  const sendTimers = options.sends.map((send) =>
+    setTimeout(() => {
+      sentAt.push({ atMs: send.atMs, text: send.text, transcriptByteOffset: recordedBytes })
+      term.write(send.text)
+    }, send.atMs)
+  )
   const durationTimer = options.duration === null ? null : setTimeout(stop, options.duration * 1000)
 
   const exitCode = await new Promise((resolveExit) => {
@@ -219,7 +228,7 @@ ${String(error)}`
   process.stdin.pause()
   await new Promise((done) => sink.end(done))
 
-  writeMeta(outPath, { command, cols, rows, note: options.note ?? null, exitCode })
+  writeMeta(outPath, { command, cols, rows, note: options.note ?? null, exitCode, sends: sentAt })
   const findings = scanTranscriptForSecrets(readFileSync(outPath, 'utf8'))
   console.log(`\nTranscript: ${outPath}`)
   console.log(formatFindings('scrub check', findings))
@@ -244,7 +253,8 @@ function writeMeta(outPath, details) {
         cols: details.cols,
         rows: details.rows,
         note: details.note,
-        exitCode: details.exitCode
+        exitCode: details.exitCode,
+        ...(details.sends.length > 0 ? { sends: details.sends } : {})
       },
       null,
       2
