@@ -91,6 +91,42 @@ describe('ServeReadinessPublisher', () => {
     )
   })
 
+  it('carries a phone offer beside the runtime one without changing the runtime field', () => {
+    const withMobile: ServeReadiness = {
+      ...ready,
+      mobilePairing: {
+        available: true,
+        url: 'orca://pair?code=phone',
+        endpoint: 'wss://orca.example.test/runtime',
+        deviceId: 'phone-1',
+        webClientUrl: null,
+        scope: 'mobile',
+        qr: '[qr]'
+      }
+    }
+
+    const json = JSON.parse(renderServeReadiness(withMobile, { mode: 'json' }))
+    expect(json.pairing).toEqual(ready.pairing)
+    expect(json.mobilePairing).toEqual(withMobile.mobilePairing)
+    const human = renderServeReadiness(withMobile, { mode: 'human' })
+    expect(human).toContain('Pairing URL: orca://pair?code=secret')
+    expect(human).toContain('Mobile pairing QR:\n[qr]\nMobile Pairing URL: orca://pair?code=phone')
+    expect(JSON.parse(renderServeReadiness(ready, { mode: 'json' }))).not.toHaveProperty(
+      'mobilePairing'
+    )
+  })
+
+  it('reports an unavailable phone offer under its own label', () => {
+    const human = renderServeReadiness(
+      {
+        ...ready,
+        mobilePairing: { available: false, reason: 'invalid_advertised_endpoint', guidance: 'g' }
+      },
+      { mode: 'human' }
+    )
+    expect(human).toContain('Mobile Pairing unavailable: invalid_advertised_endpoint')
+  })
+
   it('preserves the recipe JSON contract', () => {
     expect(renderServeReadiness(ready, { mode: 'recipe-json', projectRoot: '/workspace' })).toBe(
       '{"schemaVersion":1,"pairingCode":"orca://pair?code=secret","projectRoot":"/workspace"}'
@@ -153,6 +189,30 @@ describe('ServeReadinessPublisher', () => {
     // An operator reading the ready block must not have to infer this from a missing line.
     expect(human).toContain('PTY self-test FAILED')
     expect(human).toContain('terminals survive an orcad restart: NO')
+    expect(human).not.toContain('Degraded (')
+  })
+
+  it('lists published degradations in the human block and the JSON contract', () => {
+    const degraded: ServeReadiness = {
+      ...ready,
+      health: {
+        ...health,
+        degradations: [
+          {
+            code: 'terminal_daemon_unscoped',
+            severity: 'warning',
+            component: 'terminal-daemon',
+            message: 'The terminal daemon shares the service cgroup.'
+          }
+        ]
+      }
+    }
+    expect(renderServeReadiness(degraded, { mode: 'human' })).toContain(
+      'Degraded (warning): The terminal daemon shares the service cgroup.'
+    )
+    expect(
+      JSON.parse(renderServeReadiness(degraded, { mode: 'json' })).health.degradations[0].code
+    ).toBe('terminal_daemon_unscoped')
   })
 
   it('rejects concurrent and later duplicate publications', async () => {

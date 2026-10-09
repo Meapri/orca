@@ -6,6 +6,7 @@ import {
   STRUCTURED_AGENT_SESSION_HOLD_RUNTIME_CAPABILITY,
   STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY
 } from '../../../src/shared/protocol-version'
+import { SESSION_TABS_HOST_EDITOR_TABS_RUNTIME_CAPABILITY } from '../../../src/shared/host-owned-surface-capabilities'
 import {
   AGENT_LAUNCH_RUNTIME_CAPABILITY,
   AGENT_LAUNCH_TAB_CLOSED_CLIENT_CAPABILITY,
@@ -28,7 +29,11 @@ export const MOBILE_RUNTIME_CLIENT_CAPABILITIES = remoteRuntimeClientCapabilitie
   // Reads a listed launch tab with no terminal yet as not started, so the host may show it early.
   AGENT_LAUNCH_UNSTARTED_TAB_CLIENT_CAPABILITY,
   // Reads `agent_launch_tab_closed` (a user closed its tab, which stopped it) as a definite answer.
-  AGENT_LAUNCH_TAB_CLOSED_CLIENT_CAPABILITY
+  AGENT_LAUNCH_TAB_CLOSED_CLIENT_CAPABILITY,
+  // With it, a renderer-less host answers files.open/openDiff with its own tab, read through the
+  // same session list and markdown.readTab/saveTab as a desktop's; without it the host refuses
+  // renderer_unavailable and the device screens take over.
+  SESSION_TABS_HOST_EDITOR_TABS_RUNTIME_CAPABILITY
 ])
 
 export const MOBILE_RUNTIME_CLIENT_CAPABILITY_UPDATE_METHOD =

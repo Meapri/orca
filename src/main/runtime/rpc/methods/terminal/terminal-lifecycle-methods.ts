@@ -18,6 +18,7 @@ import {
   TerminalWait
 } from './unary-schemas'
 import { TerminalResizeForClient } from './stream-schemas'
+import { withoutAgentResumeLaunch } from '../../../agent-resume-pane-holder'
 
 export const TERMINAL_LIFECYCLE_METHODS = [
   defineMethod({
@@ -52,19 +53,26 @@ export const TERMINAL_LIFECYCLE_METHODS = [
           params.worktree,
           params.clientMutationId,
           params.reconcileExisting === true,
-          (canonicalWorktreeSelector, preAllocatedHandle) =>
-            runtime.createTerminal(canonicalWorktreeSelector, {
-              command: params.command,
+          async (canonicalWorktreeSelector, preAllocatedHandle) => {
+            // Why a plain shell and not a refusal: the same degrade a cold restore takes when it
+            // cannot resume; a second `--resume` would race the live pane's transcript.
+            const resumeHeldElsewhere =
+              params.resumeProviderSession !== undefined &&
+              params.launchAgent !== undefined &&
+              (await runtime.isAgentResumeHeldByAnotherPane(canonicalWorktreeSelector, params))
+            const launch = resumeHeldElsewhere ? withoutAgentResumeLaunch(params) : params
+            return runtime.createTerminal(canonicalWorktreeSelector, {
+              command: launch.command,
               ...(params.shell ? { shellOverride: params.shell } : {}),
-              startupCommandDelivery: params.startupCommandDelivery,
+              startupCommandDelivery: launch.startupCommandDelivery,
               env: params.env,
               envToDelete: params.envToDelete,
-              ...(params.launchConfig ? { launchConfig: params.launchConfig } : {}),
-              ...(params.resumeProviderSession
-                ? { resumeProviderSession: params.resumeProviderSession }
+              ...(launch.launchConfig ? { launchConfig: launch.launchConfig } : {}),
+              ...(launch.resumeProviderSession
+                ? { resumeProviderSession: launch.resumeProviderSession }
                 : {}),
-              ...(params.launchToken ? { launchToken: params.launchToken } : {}),
-              ...(params.launchAgent ? { launchAgent: params.launchAgent } : {}),
+              ...(launch.launchToken ? { launchToken: launch.launchToken } : {}),
+              ...(launch.launchAgent ? { launchAgent: launch.launchAgent } : {}),
               ...(params.terminalKittyKeyboardProtocol === true
                 ? { terminalKittyKeyboardProtocol: true }
                 : {}),
@@ -80,6 +88,7 @@ export const TERMINAL_LIFECYCLE_METHODS = [
               leafId: params.leafId,
               ...(preAllocatedHandle ? { preAllocatedHandle } : {})
             })
+          }
         )
       }
     }

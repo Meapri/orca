@@ -8,6 +8,7 @@ import { isRuntimeEnvironmentManuallyDisconnected } from './runtime-environment-
 import { runtimeEnvironmentChangedFailure } from './runtime-environment-revision-guard'
 import { attachRemoteControlDiagnostics } from './runtime-environment-status-diagnostics'
 import { withTailscaleHintForResponse } from './runtime-environment-tailscale-response'
+import { failOverRuntimeEnvironmentEndpoint } from './runtime-environment-endpoint-failover'
 
 export async function getRuntimeEnvironmentStatus(
   userDataPath: string,
@@ -35,8 +36,17 @@ export async function getRuntimeEnvironmentStatus(
   if (getRuntimeEnvironmentCapabilityIncarnation(environment.id) !== incarnation) {
     return runtimeEnvironmentChangedFailure(environment, 'status.get')
   }
+  const endpoint = getPreferredPairingOffer(environment).endpoint
+  if (!response.ok) {
+    failOverRuntimeEnvironmentEndpoint(
+      userDataPath,
+      environment.id,
+      endpoint,
+      response.error.message
+    )
+  }
   return attachRemoteControlDiagnostics(
-    withTailscaleHintForResponse(response, getPreferredPairingOffer(environment).endpoint),
+    withTailscaleHintForResponse(response, endpoint),
     environment.id
   )
 }

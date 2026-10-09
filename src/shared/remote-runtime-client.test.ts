@@ -12,7 +12,7 @@ import {
   publicKeyToBase64
 } from './e2ee-crypto'
 import { sendRemoteRuntimeRequest, subscribeRemoteRuntimeRequest } from './remote-runtime-client'
-import { remoteRuntimeClientCapabilities } from './remote-runtime-client-capabilities'
+import { nodeRemoteRuntimeClientCapabilities } from './remote-runtime-node-client-capabilities'
 import { MAX_TIMER_DELAY_MS } from './timer-delay'
 import {
   BROWSER_CLIENT_HOST_RUNTIME_CAPABILITY,
@@ -75,7 +75,7 @@ describe('subscribeRemoteRuntimeRequest', () => {
     await expect(server.nextAuth).resolves.toEqual({
       type: 'e2ee_auth',
       deviceToken: 'device-token',
-      clientCapabilities: remoteRuntimeClientCapabilities()
+      clientCapabilities: nodeRemoteRuntimeClientCapabilities()
     })
     const bytes = new Uint8Array([1, 2, 3])
     expect(subscription.sendBinary(bytes)).toBe(true)
@@ -104,7 +104,7 @@ describe('subscribeRemoteRuntimeRequest', () => {
     await expect(server.nextAuth).resolves.toEqual({
       type: 'e2ee_auth',
       deviceToken: 'device-token',
-      clientCapabilities: remoteRuntimeClientCapabilities([
+      clientCapabilities: nodeRemoteRuntimeClientCapabilities([
         BROWSER_NETWORK_TUNNEL_RUNTIME_CAPABILITY
       ])
     })
@@ -303,7 +303,7 @@ describe('sendRemoteRuntimeRequest', () => {
     )
 
     expect(receivedAuth).toMatchObject({
-      clientCapabilities: remoteRuntimeClientCapabilities()
+      clientCapabilities: nodeRemoteRuntimeClientCapabilities()
     })
   })
 

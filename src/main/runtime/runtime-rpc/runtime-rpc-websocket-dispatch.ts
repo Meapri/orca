@@ -13,6 +13,8 @@ import { classifyRuntimeLongPoll } from './runtime-rpc-long-poll'
 import type { RpcCallerScope } from '../rpc/rpc-caller-scope'
 import { limitRuntimeRpcReplySize } from './runtime-rpc-reply-size-limit'
 import { closeWebSocketWithinFlushBound } from '../rpc/ws-bounded-close'
+import { COMPRESSIBLE_RUNTIME_RPC_METHODS } from './runtime-rpc-compressible-methods'
+import type { E2EETextReply } from '../../../shared/e2ee-text-compression'
 
 // Why: status.get has no per-connection context in the dispatcher, so stamp the scope here at the transport boundary.
 function injectDeviceScope(response: string, scope: DeviceScope): string {
@@ -32,7 +34,7 @@ export class RuntimeRpcWebSocketDispatch extends RuntimeRpcRequestAdmission {
   // Why: WebSocket dispatch is streaming (multiple responses) and auths via per-device tokens, not the shared token.
   protected async handleWebSocketMessage(
     rawMessage: string,
-    reply: (response: string) => void,
+    reply: E2EETextReply,
     sendBinary: (response: Uint8Array<ArrayBufferLike>) => boolean | void,
     wsTransport?: WebSocketTransport,
     ws?: WebSocket,
@@ -95,9 +97,16 @@ export class RuntimeRpcWebSocketDispatch extends RuntimeRpcRequestAdmission {
 
     const abortRegistration = ws ? this.registerWebSocketDispatchAbort(ws) : null
 
+    // Why: the channel compresses only when this reply is on the policy list and the client can decode.
+    const replyOptions = COMPRESSIBLE_RUNTIME_RPC_METHODS.has(request.method)
+      ? { compressible: true }
+      : undefined
     // Why: older pairings may lack scope metadata, so stamp the authenticated scope onto status.get.
-    const boundedReply = limitRuntimeRpcReplySize(request.id, reply, (id, code, message) =>
-      this.buildError(id, code, message)
+    // Why: the size bound is on plaintext, matching the channel's own pre-compression check.
+    const boundedReply = limitRuntimeRpcReplySize(
+      request.id,
+      (response) => reply(response, replyOptions),
+      (id, code, message) => this.buildError(id, code, message)
     )
     const replyForRequest =
       request.method === 'status.get'
@@ -152,6 +161,8 @@ export class RuntimeRpcWebSocketDispatch extends RuntimeRpcRequestAdmission {
         closeConnection: ws
           ? (code, reason) => closeWebSocketWithinFlushBound(ws, code, reason)
           : undefined,
+        outboundBacklogBytes: authenticatedSocket?.outboundBacklogBytes,
+        awaitOutboundDelivery: authenticatedSocket?.awaitOutboundDelivery,
         registerBinaryStreamHandler: (streamId, handler) =>
           this.registerBinaryStreamHandler(connectionId, streamId, handler),
         registerBinaryMessageHandler: (handler) =>

@@ -39,6 +39,21 @@ export type DaemonPtySpawnContext = {
 }
 
 export abstract class DaemonPtySpawnRequest extends DaemonPtyRuntimeState {
+  protected recordSessionShellPid(
+    sessionId: string,
+    pid: number | null | undefined,
+    incarnationId?: string
+  ): void {
+    if (typeof pid === 'number' && pid > 0) {
+      const incarnation = incarnationId ?? this.sessionIncarnations.get(sessionId)
+      this.sessionShellPids.set(sessionId, {
+        pid,
+        ...(incarnation ? { incarnationId: incarnation } : {})
+      })
+      this.lostSessionShellPids.delete(sessionId)
+    }
+  }
+
   protected abstract takeSnapshotAndCheckpoint(
     sessionId: string,
     opts: {

@@ -146,6 +146,10 @@ export class OrcaRuntimeWithPersistHeadlessTerminalTitle extends OrcaRuntimeWith
   ): Promise<RuntimeMarkdownReadTabResult> {
     const worktreeId = await this.resolveMobileMarkdownWorktreeId(worktreeSelector, tabId)
     if (!this.notifier?.readMobileMarkdownTab) {
+      const hostRead = await this.hostEditorTabs.readMarkdown(worktreeId, tabId)
+      if (hostRead) {
+        return hostRead
+      }
       throw new Error('renderer_unavailable')
     }
     return await this.notifier.readMobileMarkdownTab(worktreeId, tabId)
@@ -159,6 +163,15 @@ export class OrcaRuntimeWithPersistHeadlessTerminalTitle extends OrcaRuntimeWith
   ): Promise<RuntimeMarkdownSaveTabResult> {
     const worktreeId = await this.resolveMobileMarkdownWorktreeId(worktreeSelector, tabId)
     if (!this.notifier?.saveMobileMarkdownTab) {
+      const hostSave = await this.hostEditorTabs.saveMarkdown(
+        worktreeId,
+        tabId,
+        baseVersion,
+        content
+      )
+      if (hostSave) {
+        return hostSave
+      }
       throw new Error('renderer_unavailable')
     }
     return await this.notifier.saveMobileMarkdownTab(worktreeId, tabId, baseVersion, content)

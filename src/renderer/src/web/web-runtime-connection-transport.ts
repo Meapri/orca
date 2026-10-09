@@ -19,6 +19,8 @@ import type { WebRuntimeTransportSubscription } from './web-runtime-subscription
 import { WebRuntimeSubscriptionRegistry } from './web-runtime-subscription-registry'
 import { WebRuntimeRequestRegistry } from './web-runtime-request-registry'
 import { WebRuntimeConnectionWaiters } from './web-runtime-connection-waiters'
+import { WebRuntimeEndpointPass } from './web-runtime-endpoint-pass'
+import { registerWebRuntimeResumeTarget } from './web-runtime-resume-signals'
 
 const CONNECT_TIMEOUT_MS = 12_000
 const HANDSHAKE_TIMEOUT_MS = 10_000
@@ -40,16 +42,22 @@ export class WebRuntimeConnectionTransport {
   private readonly subscriptionRegistry: WebRuntimeSubscriptionRegistry
   private readonly requestRegistry: WebRuntimeRequestRegistry
   private readonly connectionWaiters: WebRuntimeConnectionWaiters
+  readonly endpoints: WebRuntimeEndpointPass
+  private readonly unregisterResumeTarget: () => void
 
   constructor(
     private readonly pairing: WebPairingOffer,
     clock: { now: () => number; isDocumentVisible: () => boolean },
     private readonly lifecycle: {
       onStateChanged?: (state: WebRuntimeConnectionState) => void
+      /** The endpoint that just completed a handshake, so the caller can keep it preferred. */
+      onEndpointConnected?: (endpoint: string) => void
       reconnect?: boolean
     } = {}
   ) {
     this.serverPublicKey = publicKeyFromBase64(pairing.publicKeyB64)
+    this.endpoints = new WebRuntimeEndpointPass(pairing)
+    this.unregisterResumeTarget = registerWebRuntimeResumeTarget(this)
     this.connectionWaiters = new WebRuntimeConnectionWaiters({
       endpoint: pairing.endpoint,
       getState: () => this.state,
@@ -93,6 +101,7 @@ export class WebRuntimeConnectionTransport {
 
   close(options: { notifySubscriptions?: boolean } = {}): void {
     this.intentionallyClosed = true
+    this.unregisterResumeTarget()
     this.clearTimers()
     this.requestRegistry.rejectAll('Remote Orca runtime connection closed.')
     this.connectionWaiters.rejectAll(new Error('Remote Orca runtime connection closed.'))
@@ -117,7 +126,9 @@ export class WebRuntimeConnectionTransport {
       setConnected: () => {
         this.clearHandshakeTimer()
         this.reconnectAttempt = 0
+        this.endpoints.noteConnected()
         this.setState('connected')
+        this.lifecycle.onEndpointConnected?.(this.endpoints.dialed)
       },
       setAuthFailed: () => {
         this.intentionallyClosed = true
@@ -133,6 +144,8 @@ export class WebRuntimeConnectionTransport {
     if (this.ws !== closedWs) {
       return
     }
+    // Why only before open: an endpoint whose socket opened proves this address reaches the host.
+    const unanswered = this.state === 'connecting'
     this.ws = null
     this.sharedKey = null
     this.clearConnectTimer()
@@ -145,7 +158,29 @@ export class WebRuntimeConnectionTransport {
       return
     }
     this.setState('disconnected')
+    if (unanswered && this.endpoints.advanceAfterUnanswered()) {
+      this.openConnection()
+      return
+    }
     this.scheduleReconnect()
+  }
+
+  /** After a resume signal: probe a live socket quickly, or skip the remaining backoff wait. */
+  reviveAfterResume(): void {
+    if (this.intentionallyClosed || this.state === 'auth-failed') {
+      return
+    }
+    if (this.state === 'connected') {
+      this.heartbeat.probeNow()
+      return
+    }
+    if (this.reconnectTimer) {
+      window.clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = null
+      this.reconnectAttempt = 0
+      this.endpoints.restartPass()
+      this.openConnection()
+    }
   }
 
   setState(next: WebRuntimeConnectionState): void {
@@ -166,7 +201,7 @@ export class WebRuntimeConnectionTransport {
     }
     let socket: WebSocket
     try {
-      socket = new WebSocket(this.pairing.endpoint)
+      socket = new WebSocket(this.endpoints.beginDial())
     } catch (error) {
       this.requestRegistry.rejectAll(error instanceof Error ? error.message : String(error))
       this.scheduleReconnect()
@@ -208,7 +243,8 @@ export class WebRuntimeConnectionTransport {
     }
     socket.onclose = () => this.handleSocketClosed(socket)
     socket.onerror = () => {
-      if (this.state === 'connecting') {
+      // Why: while another paired address is still untried, the connect is not yet a failure.
+      if (this.state === 'connecting' && !this.endpoints.hasUntried()) {
         this.connectionWaiters.rejectUnavailable()
       }
     }

@@ -8,6 +8,7 @@ import type {
   TerminalInputWriteOutcome
 } from './terminal-input-sequence-ledger'
 import type { TerminalMultiplexConnection } from './terminal-multiplex-connection'
+import { chainInputGeometryClaim } from './terminal-input-geometry-claim'
 import type { TerminalMultiplexStream } from './terminal-stream-types'
 
 export function handleMultiplexInputFrame(
@@ -18,6 +19,19 @@ export function handleMultiplexInputFrame(
 ): void {
   const { runtime } = state
   const text = decodeTerminalStreamText(frame.payload)
+  if (
+    text &&
+    !stream.isMobile &&
+    stream.client?.id &&
+    !isTerminalInputLockedForClient(runtime, stream.ptyId, stream.client)
+  ) {
+    stream.desktopClaimTail = chainInputGeometryClaim(
+      runtime,
+      stream.ptyId,
+      stream.remoteDesktopSubscriptionKey,
+      stream.desktopClaimTail
+    )
+  }
   // Mobile already has the higher-priority floor, so a rejected desktop claim must not suppress later phone input.
   const inputClaimTail = stream.isMobile ? Promise.resolve(true) : stream.desktopClaimTail
   const inputSessionId = frame.seq > 0 ? stream.inputSessionId : null

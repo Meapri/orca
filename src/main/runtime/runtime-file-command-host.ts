@@ -49,22 +49,27 @@ export type RuntimeFileCommandHost = {
   resolveRuntimeGitTarget(
     selector: string
   ): Promise<{ worktree: ResolvedRuntimeFileWorktree; executionHostId: ExecutionHostId }>
+  /** `hostEditorTab` lets a renderer-less host open its own tab; it then answers the tab id. */
   openFile(
     worktreeId: string,
     filePath: string,
     relativePath: string,
     runtimeEnvironmentId?: string | null,
-    navigation?: RuntimeNavigationTarget
-  ): void
+    navigation?: RuntimeNavigationTarget,
+    hostEditorTab?: RuntimeHostEditorTabOpenOptions
+  ): { tabId: string } | void
   openDiff(
     worktreeId: string,
     filePath: string,
     relativePath: string,
     staged: boolean,
     runtimeEnvironmentId?: string | null,
-    navigation?: RuntimeNavigationTarget
-  ): void
+    navigation?: RuntimeNavigationTarget,
+    hostEditorTab?: RuntimeHostEditorTabOpenOptions
+  ): { tabId: string } | void
 }
+
+export type RuntimeHostEditorTabOpenOptions = { isMarkdown: boolean }
 
 export function watchWindowsRuntimeFileExplorer(
   rootPath: string,

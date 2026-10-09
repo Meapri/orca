@@ -15,6 +15,7 @@ import {
   publicKeyToBase64
 } from '../../shared/e2ee-crypto'
 import { RuntimeClient } from './client'
+import { E2EE_TEXT_DEFLATE_CAPABILITY } from '../../shared/e2ee-text-compression'
 import { launchOrcaApp } from './launch'
 import { addEnvironmentFromPairingCode } from './environments'
 import { RuntimeClientError } from './types'
@@ -87,7 +88,8 @@ describe('CLI remote WebSocket transport', () => {
           WORKTREE_VISIBILITY_DEFAULTS_RUNTIME_CAPABILITY,
           WORKTREE_VISIBILITY_SOURCE_DEFAULTS_RUNTIME_CAPABILITY,
           AUTOMATION_OWNER_FENCING_RUNTIME_CAPABILITY,
-          REPO_SEARCH_QUALIFIED_REFS_RUNTIME_CAPABILITY
+          REPO_SEARCH_QUALIFIED_REFS_RUNTIME_CAPABILITY,
+          E2EE_TEXT_DEFLATE_CAPABILITY
         ]
       })
     )

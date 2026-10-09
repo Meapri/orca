@@ -30,10 +30,17 @@ export function attachNodeWebSocketLifecycle(args: {
   // Why: read lazily so a handler registered after start still reaches sockets accepted earlier.
   getMessageHandler: () => WebSocketMessageHandler | null
   getConnectionCloseHandler: () => WebSocketConnectionCloseHandler | null
+  /** Sees each pong's payload, e.g. to settle delivery receipts carried on pings. */
+  onPong?: (payload: Buffer) => void
+  /** Runs once when the socket's lifecycle ends, before the close handler. */
+  onFinalize?: () => void
 }): void {
   const { ws } = args
   let finalized = false
-  const onPong = (): void => args.heartbeat.noteAlive(ws)
+  const onPong = (payload: Buffer): void => {
+    args.heartbeat.noteAlive(ws)
+    args.onPong?.(payload)
+  }
   const onMessage = (data: WebSocket.RawData, isBinary: boolean): void => {
     // Why: any inbound frame counts as proof of life, so an actively-talking client isn't reaped mid-request.
     args.heartbeat.noteAlive(ws)
@@ -60,6 +67,7 @@ export function attachNodeWebSocketLifecycle(args: {
     ws.off('close', finalize)
     ws.off('error', onError)
     clearNodeWebSocketPreAuthTimer(ws, args.preAuthTimers)
+    args.onFinalize?.()
     args.heartbeatConnections.delete(ws)
     if (args.heartbeatConnections.size === 0) {
       args.heartbeat.stop()

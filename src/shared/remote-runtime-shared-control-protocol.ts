@@ -1,4 +1,5 @@
-import { decrypt, encrypt } from './e2ee-crypto'
+import { encrypt } from './e2ee-crypto'
+import { decryptE2EEText } from './e2ee-text-compression'
 import type WebSocket from 'ws'
 import { RemoteRuntimeClientError } from './remote-runtime-client'
 import { serializeRemoteRuntimePayload } from './remote-runtime-memory-limits'
@@ -28,7 +29,7 @@ export function parseSharedControlFrame(
       error: invalidRemoteRuntimeResponseError('Remote Orca runtime returned a frame before E2EE.')
     }
   }
-  const plaintext = decrypt(frame, sharedKey)
+  const plaintext = decryptE2EEText(frame, sharedKey)
   if (plaintext === null) {
     return {
       type: 'error',

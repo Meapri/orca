@@ -21,6 +21,7 @@ import type {
   TerminalSurfaceCloseTarget
 } from '../../shared/terminal-surface-close-target'
 import { retireTerminalSurfacesFromSnapshot } from './mobile-session-terminal-retirement'
+import { recordClosedTerminalSurface } from './closed-terminal-surface-recording'
 import type { PtyControllerInventory } from './runtime-pty-controller-contract'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../shared/constants'
 import { captureAcknowledgedTerminalTabRetirement } from './workspace-session-terminal-tab-retirement-identity'
@@ -128,7 +129,7 @@ export class OrcaRuntimeWithBuildHeadlessMobileSessionBrowserTabs extends OrcaRu
       target.kind === 'tab' && !options.closedByLayoutOwner
         ? this.captureTerminalTabRetirement(worktreeId, target.tabId)
         : null
-    let ptyIdsToKill: string[] = []
+    let closedPtyIds: string[] | null = null
     let refusal: Error | undefined
     try {
       refusal = await store.runDurableMutation(
@@ -141,8 +142,8 @@ export class OrcaRuntimeWithBuildHeadlessMobileSessionBrowserTabs extends OrcaRu
           hostId: () => this.getWorkspaceSessionHostIdForWorktree(worktreeId),
           getSession: (hostId) => store.getWorkspaceSession(hostId),
           setSession: (session, hostId) => store.setWorkspaceSession(session, hostId),
-          onClosed: (closedPtyIds) => {
-            ptyIdsToKill = closedPtyIds
+          onClosed: (ptyIds) => {
+            closedPtyIds = ptyIds
           }
         })
       )
@@ -152,7 +153,8 @@ export class OrcaRuntimeWithBuildHeadlessMobileSessionBrowserTabs extends OrcaRu
     if (refusal) {
       throw refusal
     }
-    return ptyIdsToKill
+    recordClosedTerminalSurface(this.closedTerminalSurfaceLedger, worktreeId, target, closedPtyIds)
+    return closedPtyIds ?? []
   }
 
   /** The desktop renderer's close intent: it already guarded, removed and killed; this only reports. */

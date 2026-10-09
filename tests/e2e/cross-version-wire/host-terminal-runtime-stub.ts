@@ -185,6 +185,8 @@ export function createHostTerminalRuntimeStub(
     isMobileTerminalQueryReplyAuthority: () => false,
     markMobileActor: () => {},
     refreshRemoteDesktopViewer: async () => true,
+    // No desktop viewer here, so a typing client never takes shared geometry over.
+    claimRemoteDesktopViewerForInput: async () => false,
     resizeForClient: async () => ({ cols, rows }),
     waitForLeafPtyId: async () => ptyId,
     recoverTerminalPane: async () => null,

@@ -75,6 +75,10 @@ export class OrcaRuntimeWithTouchMobileSessionTabsForWorktree extends OrcaRuntim
     leafId: string,
     candidatePtyId: string | null | undefined
   ): boolean {
+    // Why before every licence below: a committed close outranks a stale publisher's copy.
+    if (this.closedTerminalSurfaceLedger.findRetiredSurface(parentTabId, leafId)) {
+      return false
+    }
     // Why `?? undefined`: the absence of a session is what licenses membership,
     // so a partition miss must read as absent and not as a distinct null value.
     const session = this.getWorkspaceSessionForWorktree(worktreeId) ?? undefined

@@ -10,7 +10,7 @@
  */
 import { hashOrcadLauncher } from '../../shared/orcad-build-identity'
 import process from 'node:process'
-import { checkDaemonHealthWithCoverage, type DaemonHealth } from '../daemon/daemon-health'
+import { checkDaemonHealthWithCoverage } from '../daemon/daemon-health'
 import { ptySpawnHealthPlatformCoverage } from '../daemon/daemon-health-identity'
 import {
   daemonOwnsFreshPersistentPtys,
@@ -20,66 +20,17 @@ import {
 import type { OrcadProfileStateAuthoritySelection } from './orcad-profile-state-telemetry'
 import { ORCAD_STOP_REQUESTS_CAPABILITY } from '../../shared/orcad-stop-request'
 import type { OrcadIdleStopRecord } from '../../shared/orcad-idle-exit'
+import type {
+  OrcadHealthReport,
+  OrcadPtySelfTest,
+  OrcadPtySelfTestCoverage,
+  OrcadTerminalDaemonHealth
+} from '../../shared/orcad-server-health-contract'
 
-/**
- * How much a green self-test actually proves.
- *
- * `pty-spawn` — the daemon spawned a real PTY inside its own process and it worked.
- * `handshake` — the daemon answered its protocol handshake, but its spawn probe is a no-op
- *   on this platform (win32: `checkPtySpawnHealth` returns without spawning). Reported
- *   separately rather than folded into `ok`, because claiming a PTY round trip we did not
- *   perform is the failure mode this surface exists to prevent.
- */
-export type PtySelfTestCoverage = 'pty-spawn' | 'handshake'
-
-export type PtySelfTest = {
-  ok: boolean
-  coverage: PtySelfTestCoverage
-  /** The daemon's own verdict word, so a failure is diagnosable without re-probing. */
-  verdict: DaemonHealth | 'no-daemon'
-  durationMs: number
-}
-
-export type TerminalDaemonHealth = {
-  /** `live` requires the daemon to have answered; absence is never inferred from silence. */
-  state: 'live' | 'degraded' | 'absent'
-  /** True only when FRESH terminals are daemon-owned, i.e. survive an orcad restart. */
-  ownsFreshSessions: boolean
-  pid: number | null
-  /** The build the LIVE daemon was forked from, which may predate this orcad after an update. */
-  buildVersion: string | null
-  entryPath: string | null
-  protocolVersion: number | null
-  /** The systemd scope unit the daemon self-detected landing in (see daemon-cgroup-scope.ts),
-   *  or null when it ran unscoped — the case a combined-unit `systemctl restart` still reaps. */
-  cgroupUnit: string | null
-  selfTest: PtySelfTest
-}
-
-export type OrcadHealth = {
-  /** Launcher hash understood by older clients; split launchers embed the server digest. */
-  buildHash: string
-  buildVersion: string
-  nodeVersion: string
-  /** `process.versions.modules`: the ABI every native addon on this host must match. */
-  nodeAbi: string
-  platform: NodeJS.Platform
-  arch: string
-  pid: number
-  terminalDaemon: TerminalDaemonHealth
-  /** The low-cardinality profile-state authority selected during startup, when available. */
-  profileStateAuthority?: OrcadProfileStateAuthoritySelection
-  /**
-   * Present when this build consumes stop-request files and answers the managed-stop commands.
-   * Absent on older builds, which a client must keep stopping with SIGTERM.
-   */
-  stopRequests?: typeof ORCAD_STOP_REQUESTS_CAPABILITY
-  /**
-   * Managed launches only: how the previous run ended if it stopped for idleness, else null
-   * (a crash, a signal, or a first start). Absent on user-started and older builds.
-   */
-  previousIdleStop?: OrcadIdleStopRecord | null
-}
+export type PtySelfTestCoverage = OrcadPtySelfTestCoverage
+export type PtySelfTest = OrcadPtySelfTest
+export type TerminalDaemonHealth = OrcadTerminalDaemonHealth
+export type OrcadHealth = OrcadHealthReport
 
 /**
  * Launcher identity shared with clients that predate split server bundles.

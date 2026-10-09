@@ -8,6 +8,9 @@ export const NODE_RUNTIME_INCLUDE = [
   'src/main/ssh/ssh-relay-endpoint-incumbent-shell.integration.test.ts',
   'src/main/ssh/ssh-remote-commands.test.ts',
   'src/shared/child-process/run-process.test.ts',
+  // Read ws's negotiated extensions and pong payloads off a real Node socket.
+  'src/main/runtime/rpc/ws-transport-compression.test.ts',
+  'src/main/runtime/rpc/ws-delivery-receipts.test.ts',
   'tests/e2e/cursor-quota-transport.unit.test.ts',
   'src/main/ai-vault-search/session-search-index-writer.test.ts',
   'src/main/ai-vault/session-scanner-unlimited-dedup.test.ts',

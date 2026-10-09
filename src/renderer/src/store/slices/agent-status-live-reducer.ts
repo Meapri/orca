@@ -7,7 +7,7 @@ import {
   noteLiveAgentStatusCount
 } from './agent-status-capacity-eviction'
 import { removePaneKeys } from './agent-status-pane-keyed-records'
-import { recoveryRecordMatches } from './agent-status-recovery-equivalence'
+import { recoveryRecordMatches } from '../../../../shared/sleeping-agent-record-equivalence'
 import type { AgentStatusLiveEntryBuild } from './agent-status-live-entry-builder'
 import { agentProviderSessionsEqual } from '../../../../shared/agent-session-resume'
 
