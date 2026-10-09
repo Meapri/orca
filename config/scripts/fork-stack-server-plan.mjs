@@ -290,6 +290,11 @@ export function renderServerSummary(summary) {
     lines.push(`- 스택: ${topics.map(topicLine).join(', ')}`)
     lines.push(...blockerLines(topics))
   }
+  const merge = summary.integration?.conflict
+  if (merge) {
+    const files = (merge.files ?? []).slice(0, 5).map((file) => file.path ?? file)
+    lines.push(`- 막힌 곳: 통합 단계, ${merge.topic} 스택을 병합할 때 (파일: ${files.join(', ')})`)
+  }
   if ((summary.checks ?? []).length > 0) {
     lines.push(`- 검사: ${summary.checks.map(checkLine).join(' / ')}`)
   }
