@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { APP_DISTRIBUTION } from '../../shared/app-distribution'
 
 vi.mock('electron', () => {
   const paths = new Map<string, string>([['appData', '/tmp/app-data']])
@@ -352,14 +353,19 @@ describe('configureDevUserDataPath', () => {
     expect(app.setPath).toHaveBeenCalledWith('userData', join('/tmp/app-data', 'orca-dev'))
   })
 
-  it('leaves packaged runs on the default userData path', async () => {
+  it('pins packaged runs to the distribution userData dir, never the official orca one', async () => {
     const { app } = await import('electron')
     const { configureDevUserDataPath } = await import('./configure-process')
 
     vi.mocked(app.setPath).mockClear()
     configureDevUserDataPath(false)
 
-    expect(app.setPath).not.toHaveBeenCalled()
+    expect(app.setPath).toHaveBeenCalledTimes(1)
+    expect(app.setPath).toHaveBeenCalledWith(
+      'userData',
+      join('/tmp/app-data', APP_DISTRIBUTION.packageName)
+    )
+    expect(app.setPath).not.toHaveBeenCalledWith('userData', join('/tmp/app-data', 'orca'))
   })
 })
 

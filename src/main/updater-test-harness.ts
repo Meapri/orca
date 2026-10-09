@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events'
 import { afterAll, vi } from 'vitest'
+import { APP_DISTRIBUTION_RELEASES_URL } from '../shared/app-distribution'
 import type { Mock } from 'vitest'
 import { clearTrackedRealTimers, trackRealTimers } from './updater-test-timer-tracking'
 
@@ -259,8 +260,7 @@ export function createUpdaterMocks(): UpdaterMocks {
           ? { tags: result, state: result.length > 0 ? 'ready' : 'no-newer' }
           : result
       },
-      getReleaseDownloadUrl: (tag: string) =>
-        `https://github.com/stablyai/orca/releases/download/${tag}`
+      getReleaseDownloadUrl: (tag: string) => `${APP_DISTRIBUTION_RELEASES_URL}/download/${tag}`
     }),
     localBuildSwitch: () => ({ chooseLocalBuild: chooseLocalBuildMock }),
     localBuildFeedServer: () => ({ startLocalBuildFeed: startLocalBuildFeedMock })
