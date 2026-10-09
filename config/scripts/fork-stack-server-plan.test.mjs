@@ -223,6 +223,19 @@ describe('summary', () => {
     expect(text).toContain('걸린 시간: 10분')
   })
 
+  it('names the stack whose integration merge conflicted', () => {
+    const text = renderServerSummary({
+      date: '2026-10-09',
+      status: 'conflict',
+      exitCode: 20,
+      integration: {
+        status: 'conflict',
+        conflict: { topic: 'orcad-runtime', files: [{ path: 'src/a.ts', kind: 'both modified' }] }
+      }
+    })
+    expect(text).toContain('막힌 곳: 통합 단계, orcad-runtime 스택을 병합할 때 (파일: src/a.ts)')
+  })
+
   it('lists check results and the pull request', () => {
     const text = renderServerSummary({
       date: '2026-10-09',
