@@ -39,8 +39,10 @@ const TOOLS_REFS = ['origin/main', 'origin/stack/sync-automation']
 const MAIN_UPDATE_PREFIX = 'main-update/fork-'
 const USAGE = `Usage: fork-stack-server-sync.mjs [--dry-run] [--full-tests=auto|always|never]
   [--date=YYYY-MM-DD] [--logs=<dir>] [--worktree=<dir>] [--baseline-worktree=<dir>]
-  [--xterm-work-dir=<dir>] [--upstream-ref=<commit>] [--no-self-update]
-  --upstream-ref re-stacks onto that upstream commit instead of the branch tip (reproduce a run).`
+  [--xterm-work-dir=<dir>] [--upstream-ref=<commit>] [--manifest=<file>]
+  [--no-self-update]
+  --upstream-ref re-stacks onto that upstream commit instead of the branch tip (reproduce a run).
+  --manifest reads the manifest from a file, e.g. one naming a stack re-stacked by hand.`
 
 function parseArgs(argv) {
   const options = {}
@@ -342,8 +344,11 @@ function sync({ options, toolsDir, summary, runDir }) {
   }
   const forkRepo = forkRepository(repoGit)
   repoGit.run(['fetch', '--quiet', '--prune', 'origin'])
-  const source = manifestSource(repoGit)
-  const manifestText = repoGit.text(['show', `${source}:${MANIFEST_PATH}`])
+  // Why a file: after re-stacking a blocked topic by hand, point the run at the new stack ref.
+  const source = options.manifest ? path.resolve(options.manifest) : manifestSource(repoGit)
+  const manifestText = options.manifest
+    ? readFileSync(source, 'utf8')
+    : repoGit.text(['show', `${source}:${MANIFEST_PATH}`])
   const manifest = parseManifest(manifestText)
   if (!repoGit.ok(['remote', 'get-url', 'upstream'])) {
     repoGit.run([

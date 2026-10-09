@@ -97,8 +97,14 @@ only); it has no schedule, so it never races the server.
 ```sh
 env -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_CACHE_HOME PATH="$HOME/.local/bin:$PATH" \
   node <clone>-wt/_sync-tools/config/scripts/fork-stack-server-sync.mjs [--dry-run] \
-  [--full-tests=auto|always|never] [--date=YYYY-MM-DD] [--logs=<dir>]
+  [--full-tests=auto|always|never] [--date=YYYY-MM-DD] [--logs=<dir>] [--manifest=<file>]
 ```
+
+`--manifest=<file>` replaces the manifest from main: after re-stacking a blocked topic by hand
+(Manual Sync, step 1), copy the manifest, point that topic's `ref` at the pushed
+`stack-sync/<date>/<topic>` and its `base` at the upstream commit it was built on, and run the
+script with it. The integration commit it builds records that manifest, so the next daily run
+starts from it once main adopts the PR.
 
 The `env -u` clears XDG paths a service account may point elsewhere, so `gh` finds the owner's
 login.
